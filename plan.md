@@ -2,7 +2,7 @@
 
 Nov 15, 2026
 
-**Product:** an edge device watches a freight yard and reads truck telematics. A quant engine fuses that with Gemini prediction-market odds and sizes a CVaR-optimal hedge: WTI perps on Solana plus Gemini event contracts. A Solana program enforces risk limits and records every input and decision on-chain.
+**Product:** an edge device watches a freight yard and reads truck telematics. A engine fuses that with Gemini prediction-market odds and sizes a CVaR-optimal hedge: WTI perps on Solana plus Gemini event contracts. A Solana program enforces risk limits and records every input and decision on-chain.
 
 **Exposure being hedged:** diesel is 25–35% of fleet opex; demurrage and detention run $150–$400+ per container per day.
 
