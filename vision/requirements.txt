@@ -1,0 +1,12 @@
+# P2 (Vision & LLM) dependencies, see plan.md §5 "P2 deliverables"
+ultralytics          # YOLO detection, fine-tuning, export (pulls in torch, torchvision, opencv)
+supervision          # ROI polygon zones (gate queue, yard dwell), line counting, annotators
+trackers             # ByteTrack (moved out of supervision into Roboflow's trackers package)
+scikit-learn         # logistic disruption-likelihood model (plan §4.3)
+pandas               # rolling time-of-day baselines for the congestion z-score
+pydantic             # strict schemas (congestion_snapshot, LLM output)
+fastapi              # shared FastAPI layer (plan §3)
+uvicorn[standard]    # runs the FastAPI service
+onnx                 # export format; TensorRT/Hailo conversion happens on the edge device
+onnxruntime          # run/benchmark the exported model on the laptop
+pytest               # tests
