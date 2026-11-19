@@ -20,6 +20,19 @@
         <dl><div><dt>FreightOS plan</dt><dd>$13.45</dd></div><div><dt>Early pay on main invoice</dt><dd>$150.00</dd></div></dl>
         <p>Taking early pay on the smaller return trip lets the driver collect the full $3,000 on the main invoice.</p>
       </div>
+      <details class="public-fuel" id="public-fuel"><summary>Why did the reserve pay $555?</summary>
+        <p id="public-fuel-status" role="status">Checking the fuel evidence…</p>
+        <div id="public-fuel-result" hidden>
+          <p id="fuel-basis"></p>
+          <table class="reference-prices" id="fuel-reference"><caption id="fuel-terms"></caption>
+            <thead><tr><th scope="col">Starting oil price</th><th scope="col">Fuel budget</th><th scope="col">Reserve</th></tr></thead>
+            <tbody id="reference-rows"></tbody>
+          </table>
+          <a id="try-settlement" class="ledger-back" href="/bill">Try the reported-price estimate →</a>
+          <a class="ledger-back" href="/evidence/gemini-settlements" target="_blank" rel="noopener">See the recorded Gemini settlement ↗</a>
+        </div>
+        <button class="secondary" id="fuel-retry" hidden>Check the evidence again</button>
+      </details>
       <a class="ledger-back" href="/bill">Try the bill in the practice workspace →</a>
     </section>
     <section class="public-slip" aria-labelledby="paid-title">

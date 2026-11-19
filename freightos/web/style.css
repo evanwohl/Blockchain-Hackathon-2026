@@ -672,3 +672,16 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .share-ledger div { display: flex; align-items: baseline; justify-content: space-between; gap: .8rem; padding: .3rem 0; }
 .share-ledger dd { margin: 0; font-variant-numeric: tabular-nums; }
 .share-ledger div:last-child { border-top: 1px solid #a6b098; margin-top: .25rem; font-weight: 600; }
+
+.public-fuel { margin-top: 1rem; border-block: 1px solid #626c57; }
+.public-fuel summary { min-height: 46px; color: #e3edbf; }
+.public-fuel[open] { padding-bottom: .85rem; }
+.public-cover .public-fuel p { margin: .4rem 0; color: #f3f1e9; }
+.public-fuel .ledger-back { display: block; margin: .55rem 0 0; }
+#public-fuel-status { font-size: .86rem; color: #d7e7a5; }
+
+.reference-prices { width: 100%; border-collapse: collapse; margin-top: .65rem; font-size: .9rem; font-variant-numeric: tabular-nums; }
+.reference-prices caption { position: static; width: auto; height: auto; clip-path: none; white-space: normal; text-align: left; margin: 0 0 .5rem; color: #e6e9dc; }
+.reference-prices th, .reference-prices td { padding: .4rem .2rem; text-align: right; border-block-start: 1px solid #68705f; }
+.reference-prices th:first-child { text-align: left; padding-inline-start: 0; }
+.reference-prices thead th { color: #d7e7a5; font-weight: 500; }

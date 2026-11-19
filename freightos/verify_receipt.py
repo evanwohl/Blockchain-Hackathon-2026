@@ -102,7 +102,10 @@ def replay(receipt):
                 raise ValueError("Funding source snapshot differs")
         sample = json.loads((DATA / "sample_calendar.json").read_bytes())
         if "cash_policy" in decision or "late_freight" in decision:
-            plan = demo_plans()[0][decision["profile"]][decision["scenario"]]
+            policy = decision.get("cash_policy") or decision["late_freight"]
+            version = policy.get("version", 1)
+            policies = demo_plans() if version == 2 else demo_plans(version)
+            plan = policies[0][decision["profile"]][decision["scenario"]]
         else:
             plan = funding_plan(sample, evidence, decision["scenario"], decision["profile"])
         if (
