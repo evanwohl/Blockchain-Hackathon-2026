@@ -21,6 +21,11 @@
           <label>Diesel price ($/gal)<input id="trip-pump" type="number" inputmode="decimal" min=".001" max="99.999" step=".001" value="3.999" required></label>
           <label>Fuel budget ($)<input id="trip-budget" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="400.00" required></label>
         </div>
+        <label class="trip-reserve-choice"><input id="use-trip-reserve" type="checkbox"> Include my demo fuel reserve</label>
+        <div id="trip-road-fields" hidden>
+          <label>Keep for tolls and repairs ($)<input id="trip-road" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="25.00" required disabled></label>
+          <p>Only the remainder can cover extra fuel. Enter a fuel budget that excludes this reserve.</p>
+        </div>
         <button id="trip-check" class="primary">Compare my trip</button>
         <button id="trip-recorded" class="secondary" type="button" hidden>Use recorded market prices</button>
       </form>
@@ -36,7 +41,7 @@
           <label><input type="radio" name="timing" value="after"> After I can spend a payout</label>
         </fieldset>
         <div class="trip-outcome" aria-live="polite"><small id="trip-bound"></small><strong id="trip-cash"></strong><p id="trip-why"></p></div>
-        <dl id="trip-options" class="facts"></dl>
+        <dl id="trip-options" class="facts"></dl><p id="reserve-observation" hidden></p>
         <a id="trip-reserve" class="ledger-back">Check the cash buffer on Solana →</a>
         <details><summary>Which oil contracts were compared?</summary>
           <p id="trip-method"></p><dl id="trip-legs" class="facts"></dl><p id="trip-fees"></p>
