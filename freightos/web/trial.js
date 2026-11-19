@@ -89,6 +89,10 @@ async function showStress() {
       el("adverse").textContent = "Checking the stressed funding plans…";
       stressReport = await request("/api/trial/stress");
     }
+    const timing = stressReport.one_day_delay;
+    el("delay-only").textContent = "A one-day reserve delay alone leaves " + timing.misses + " planned loads short by "
+      + money(timing.shortfall_cents) + " in total at their first missed deadlines. Allowing for that day before choosing funding adds "
+      + money(timing.replanning_fee_cents) + " in total fees across the " + report.cases + " simulated loads.";
     const result = stressReport[el("baseline").value];
     el("adverse").textContent = "Add $5 per reserve use, half a percentage point in term costs and one day of delay. After repricing, savings versus the selected comparison total "
       + money(result.savings_cents) + " across " + report.cases + " loads. An unexpected delay after locking the original plans would miss " + report.surprise_delay_misses + " deadlines.";

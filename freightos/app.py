@@ -14,6 +14,7 @@ from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, reserve_return
 from freightos.funding import DATA, LOAD, demo_plans, funding_plan
 from hedging.quick_pay import price_calendar
+from hedging.payment_timing import reserve_deadline
 
 ASSETS = Path(__file__).with_name("web")
 
@@ -45,9 +46,19 @@ def verified_sample(load):
 def stressed_trial():
     _, cases = trial_data()
     comparisons = {"conventional": [], "composition": []}
+    timing = {"misses": 0, "shortfall_cents": 0, "replanning_fee_cents": 0}
     for row in cases.values():
         case = row["case"]
         reserve = case["funding"][0]
+        selected = row["decision"]
+        cutoff = reserve_deadline(case, selected["payments"], selected["funding"], reserve["id"])
+        if cutoff and cutoff["arrival_day"] + 1 > cutoff["last_day"]:
+            timing["misses"] += 1
+            timing["shortfall_cents"] += cutoff["shortfall_cents"]
+            offers = [{**s, "latest_available_day": cutoff["arrival_day"] + 1} if s["id"] == reserve["id"] else s
+                      for s in case["funding"]]
+            alternative = price_calendar({**case, "funding": offers})
+            timing["replanning_fee_cents"] += alternative["cost_cents"] - selected["cost_cents"]
         delayed = {**reserve, "available_day": reserve["available_day"] + 1,
                    "fixed_cost_cents": reserve["fixed_cost_cents"] + 500,
                    "term_cost_bps": reserve["term_cost_bps"] + 50}
@@ -64,7 +75,7 @@ def stressed_trial():
         k = (len(values) + 9) // 10
         counts[name] = {"savings_cents": sum(values), "positive_cases": sum(x > 0 for x in values),
                         "replaced_cases": k, "worst_mix_cents": sum(sorted(values)[:-k]) + k * min(values)}
-    return counts
+    return {**counts, "one_day_delay": timing}
 
 
 class LoadSettlement:
@@ -233,6 +244,8 @@ class LoadSettlement:
                     raise ValueError("Unknown payment plan")
                 plan = self.plans[profile][scenario]
                 if not plan["payment_cents"]:
+                    if plan.get("backup_for"):
+                        raise ValueError("Pay the vendor directly using the selected backup")
                     raise ValueError("Available cash covers the bill")
                 return self.fork.review(LOAD, plan["payment_cents"] * 10000, plan)
             if action == "approve":
@@ -351,6 +364,7 @@ class Handler(BaseHTTPRequestHandler):
             "/style.css": ("style.css", "text/css"),
             "/app.js": ("app.js", "text/javascript"),
             "/wallet.js": ("wallet.js", "text/javascript"),
+            "/bill_tabs.js": ("bill_tabs.js", "text/javascript"),
             "/media/freightos-mark.svg": ("media/freightos-mark.svg", "image/svg+xml"),
             "/media/instrument-serif-latin-400-italic.woff2": ("media/instrument-serif-latin-400-italic.woff2", "font/woff2"),
             "/media/barlow-condensed-latin-600-normal.woff2": ("media/barlow-condensed-latin-600-normal.woff2", "font/woff2"),
