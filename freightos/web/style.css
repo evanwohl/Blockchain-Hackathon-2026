@@ -766,3 +766,13 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 }
 #pump-help { margin: .4rem 0; font-size: .84rem; }
 #pump-limit { margin: .5rem 0 .9rem; font-weight: 600; }
+
+#cover-timing { margin: 1.15rem 0 0; padding: 0; border: 0; }
+#cover-timing legend { font-weight: 600; margin-bottom: .35rem; }
+#cover-timing label { display: flex; align-items: center; gap: .65rem; padding: .6rem .85rem; min-height: 44px; border: 1px solid #939c86; cursor: pointer; }
+#cover-timing label + label { border-top: 0; }
+#cover-timing label:has(:checked) { background: #f8f7f0; font-weight: 600; }
+#cover-timing input { appearance: auto; width: 1.1rem; height: 1.1rem; accent-color: #415234; }
+#cover-reserve { display: block; margin-top: 1rem; }
+#cover-reserve[hidden] { display: none; }
+#refresh-cover { margin-top: .8rem; }

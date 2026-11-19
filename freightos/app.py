@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, fuel_update, next_stop, public_offer, reserve_return
+from freightos import bill, devnet, fuel_cover, fuel_update, next_stop, public_offer, reserve_return
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -558,6 +558,17 @@ class Handler(BaseHTTPRequestHandler):
             snapshot = next_stop.TWO_STOPS if self.path == "/evidence/two-stops" else next_stop.SNAPSHOT
             self.reply(200, "application/json", gzip.decompress(snapshot.read_bytes()), static=True)
             return
+        if self.path == "/evidence/fuel-cover":
+            self.reply(200, "application/json", gzip.decompress(fuel_cover.SNAPSHOT.read_bytes()), static=True)
+            return
+        if self.path in ("/api/fuel-cover", "/api/fuel-cover/refresh"):
+            refresh = self.path.endswith("/refresh")
+            try:
+                comparison = self.server.fuel_cover.read() if refresh else fuel_cover.saved()
+                self.respond(200, {**comparison, "source": "gemini-api" if refresh else "saved"})
+            except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError):
+                self.respond(503, {"error": "The Gemini contract and order book could not be checked."})
+            return
         if self.path == "/evidence/offer-fuel-update":
             self.reply(200, "application/json", gzip.decompress(fuel_update.SNAPSHOT.read_bytes()), static=True)
             return
@@ -707,6 +718,7 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
+    server.fuel_cover = PublicCheck(fuel_cover.live)
     server.offer_fuel = PublicCheck(fuel_update.live)
     server.public_reserve = PublicCheck(reserve_observation)
     offer_run = json.loads(public_offer.SAMPLE.read_bytes())

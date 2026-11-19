@@ -31,8 +31,8 @@ def watch_terms():
     return decision, g, original, window, target["ticker"]
 
 
-def fetch_event(ticker):
-    request = Request(API + ticker, headers={"User-Agent": "FreightOS/0.1", "Accept": "application/json"})
+def fetch_json(url):
+    request = Request(url, headers={"User-Agent": "FreightOS/0.1", "Accept": "application/json"})
     with urlopen(request, timeout=5) as response:
         date = response.headers.get("Date")
         if not date:
@@ -41,7 +41,12 @@ def fetch_event(ticker):
         raw = response.read(1_000_001)
     if len(raw) > 1_000_000:
         raise ValueError("Gemini event exceeds the expected size")
-    return {"reported_at": stamp, "event": json.loads(raw)}
+    return stamp, json.loads(raw)
+
+
+def fetch_event(ticker):
+    stamp, event = fetch_json(API + ticker)
+    return {"reported_at": stamp, "event": event}
 
 
 def capture(fetch=fetch_event):
