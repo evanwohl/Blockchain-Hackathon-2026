@@ -100,8 +100,10 @@ dd { text-align: right; font-variant-numeric: tabular-nums; font-weight: 560; }
 .split i { display: block; background: var(--green); }
 .split { position: relative; }
 .split::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(115deg,transparent 0 12px,#fff9 12px 14px); }
-.split { margin-bottom: 24px; }
-.caption { font-size: .80rem; color: var(--muted); text-align: center; margin-top: 8px; }
+.split { margin-bottom: 1.15rem; }
+.explain-plan { display: none; }
+#fee-saving { color: var(--muted); font-size: .83rem; margin-top: .12rem; }
+.plan-fee { font-size: .91rem; color: var(--ink); margin: 0 0 .85rem; }
 .analysis-grid { margin-top: clamp(1.2rem,2.5vh,2rem); flex: 1; }
 .ledger, .costs { min-width: 0; padding: clamp(1rem,1.7vw,1.65rem); border: 1px solid var(--line); border-radius: 16px; }
 .ledger { display: flex; flex-direction: column; background: #fffefa; }
@@ -261,6 +263,10 @@ pre { max-height: 230px; white-space: pre-wrap; overflow-wrap: anywhere; overflo
   .split { margin-bottom: 17px; }
   .analysis-grid { margin-top: 25px; gap: 17px; }
   .analysis-grid { flex: auto; }
+  .explain-plan { display: flex; justify-content: space-between; align-items: center; width: 100%; color: var(--ink); background: transparent; border-bottom: 1px solid var(--line); border-radius: 0; text-align: left; padding: 12px 4px; margin-top: .75rem; }
+  .explain-plan::after { content: "+"; font-size: 1.12rem; }
+  .explain-plan[aria-expanded="true"]::after { content: "−"; }
+  .explain-plan[aria-expanded="false"] + .analysis-grid { display: none; }
   .ledger, .costs { padding: 16px; }
   .market-note { padding-inline: 14px; }
   .market-note summary { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; padding-block: 10px; }

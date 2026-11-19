@@ -1,9 +1,9 @@
 import { downloadReceipt, el, facts, money, request, tokenUnits } from "./common.js";
 
 const profiles = {
-  "quick pay": { source: "Backhaul quick pay", fallback: "Quick pay on $3,000 invoice", terms: "Quick pay releases your invoice early for a 5% fee." },
-  "credit line": { source: "Bank credit line", fallback: "Credit line alone", terms: "The sample credit line offers $800 at 1% for the term." },
-  "cash on hand": { source: "Available cash", fallback: "Paying from cash", terms: "Available cash covers the bill by its due date." }
+  "quick pay": { source: "Early backhaul payment", comparison: "invoice quick pay", fallback: "Quick pay on $3,000 invoice", terms: "Quick pay releases your invoice early for a 5% fee." },
+  "credit line": { source: "Bank credit line", comparison: "using bank credit alone", fallback: "Credit line alone", terms: "The sample credit line offers $800 at 1% for the term." },
+  "cash on hand": { source: "Available cash", comparison: "paying from cash", fallback: "Paying from cash", terms: "Available cash covers the bill by its due date." }
 };
 let state;
 let pending = "";
@@ -74,6 +74,7 @@ function renderPlan(plan) {
   el("amount").textContent = money(plan.payment_cents);
   el("other").textContent = money(plan.other_funds_cents);
   el("other-label").textContent = profile.source;
+  el("reserve-source").hidden = el("funding-bar").hidden = !plan.payment_cents;
   el("bar").style.width = (100 * plan.payment_cents / plan.bill_cents) + "%";
   const costs = plan.funding.map(item => [
     item.source === "reserve redemption" ? "Using the reserve" : "Using bank credit",
@@ -89,8 +90,8 @@ function renderPlan(plan) {
   el("terms").textContent = profile.terms + " Reserve costs include the sample fixed charge and estimated interest given up.";
   const g = plan.gemini;
   el("market-assumption").textContent = plan.scenario === "oil stress"
-    ? "$" + g.stress_level + "/barrel stress case · " + g.gallons + " gallons"
-    : "Original estimate · " + g.gallons + " gallons";
+    ? g.gallons + " gallons · Higher price estimate"
+    : g.gallons + " gallons · Original estimate";
   el("signal").textContent = "Gemini’s previous oil settlement was at least $" + g.lower_inclusive + " and below $" + g.upper_exclusive + " a barrel. At the recorded $" + g.stress_level + " threshold, the sample estimates up to " + money(g.extra_fuel_cents_interval[1]) + " extra for " + g.gallons + " gallons. This is a stress scenario.";
 }
 
@@ -98,18 +99,18 @@ function paymentView(plan) {
   const { receipt, review } = state;
   if (receipt) return {
     stage: 2, title: "Reserve payment delivered", button: "Start another demo",
-    description: "This receipt records the reserve portion sent to the approved fuel vendor.",
-    rows: [["Sent to the fuel vendor", tokenUnits(receipt.vendor_received_usdc_raw) + " USDC"], ["Covered separately in the plan", money(plan.other_funds_cents)]]
+    description: "Your fuel vendor received the reserve payment in test USDC.",
+    rows: [["Sent to the fuel vendor", tokenUnits(receipt.vendor_received_usdc_raw) + " USDC"], ["Planned from other funds", money(plan.other_funds_cents)]]
   };
   if (!plan.payment_cents) return {
-    stage: -1, title: "Pay from available cash", button: "No reserve payment needed",
-    description: "You have enough cash to pay the vendor directly. Your reserve can stay where it is.",
+    stage: -1, title: "Pay from available cash", button: "Done",
+    description: "Pay the vendor directly from your available cash.",
     rows: [["Cash needed", money(plan.bill_cents)], ["Financing cost", money(plan.cost_cents)]]
   };
   if (review) return {
     stage: 1, title: "Review your payment", button: "Pay " + money(plan.payment_cents) + " in test USDC",
-    description: "Check the fuel vendor and the amount before sending. This review expires within one minute.",
-    rows: [["To", "Fuel vendor · " + review.payee_account.slice(0, 4) + "…" + review.payee_account.slice(-4)], ["Vendor receives", tokenUnits(review.usdc_raw) + " USDC"], ["Paid separately under this plan", money(plan.other_funds_cents)], ["Network fee", review.network_fee_lamports / 1e9 + " SOL"]]
+    description: "Confirm the amount going to your fuel vendor. Approval is valid for one minute.",
+    rows: [["To", "Fuel vendor · " + review.payee_account.slice(0, 4) + "…" + review.payee_account.slice(-4)], ["Vendor receives", tokenUnits(review.usdc_raw) + " USDC"], ["Still to cover separately", money(plan.other_funds_cents)], ["Network fee", review.network_fee_lamports / 1e9 + " SOL"]]
   };
   if (state.deposit) return {
     stage: 1, title: "Your reserve is ready", button: "Review " + money(plan.payment_cents) + " payment",
@@ -118,9 +119,9 @@ function paymentView(plan) {
   };
   const amount = tokenUnits(state.wallet_usdc_raw);
   return {
-    stage: 0, title: "Fund your reserve", button: "Deposit " + amount + " test USDC",
-    description: "Move the demo wallet’s digital dollars into your Kamino reserve. You’ll approve the vendor payment separately.",
-    rows: [["Available in demo wallet", amount + " USDC"]]
+    stage: 0, title: "Set aside demo funds", button: "Set aside $" + amount + " and review",
+    description: "Move the demo balance into your reserve. You’ll check the vendor and approve the payment on the next screen.",
+    rows: [["Move to your reserve", "$" + amount], ["For this fuel bill", money(plan.payment_cents)]]
   };
 }
 
@@ -133,8 +134,10 @@ function render() {
   const busy = Boolean(pending);
   el("configure").disabled = busy || Boolean(review || receipt);
   el("open-payment").disabled = busy;
-  el("open-label").textContent = receipt ? "View receipt" : review ? "Return to review" : plan.payment_cents ? "Open payment plan" : "View cash plan";
-  el("fund-caption").textContent = receipt ? "Reserve payment delivered · Test funds" : review ? "Awaiting your approval · Test funds" : "Estimated financing cost " + money(plan.cost_cents);
+  el("open-label").textContent = receipt ? "View receipt" : review ? "Return to review" : plan.payment_cents ? "Review " + money(plan.payment_cents) + " reserve payment" : "View cash plan";
+  el("fund-caption").textContent = receipt ? "Reserve payment delivered" : review ? "Ready for your approval" : plan.cost_cents ? money(plan.cost_cents) + " in estimated fees" : "No financing fees";
+  el("fee-saving").hidden = Boolean(receipt || review || !plan.savings_cents);
+  el("fee-saving").textContent = "Save " + money(plan.savings_cents) + " compared with " + profiles[profile].comparison + ".";
   el("receipt-head").hidden = !receipt;
   el("receipt-load").textContent = receipt ? plan.load : "";
   el("reset").hidden = !receipt;
@@ -151,7 +154,7 @@ function render() {
     if (index === view.stage) step.setAttribute("aria-current", "step");
     else step.removeAttribute("aria-current");
   });
-  el("primary").disabled = busy || !plan.payment_cents;
+  el("primary").disabled = busy;
   el("primary").textContent = pending || view.button;
   el("cancel").hidden = el("challenge").hidden = !review;
   el("verify").hidden = el("download").hidden = !receipt;
@@ -162,8 +165,9 @@ function render() {
   }
   if (!receipt) el("verified").textContent = "";
   currentStep = receipt || review || state.deposit;
-  el("proof").hidden = !currentStep;
-  if (el("proof").open) el("details").textContent = JSON.stringify(currentStep, null, 2);
+  el("proof").hidden = !plan.payment_cents;
+  el("details").hidden = !currentStep;
+  if (el("proof").open && currentStep) el("details").textContent = JSON.stringify(currentStep, null, 2);
 }
 
 async function sync(restore = false) {
@@ -219,11 +223,19 @@ function showRetry(error) {
   el("cancel").hidden = el("challenge").hidden = el("verify").hidden = el("download").hidden = true;
 }
 
+function prepareReview() {
+  return request("/api/review", { profile, scenario });
+}
+
 el("primary").onclick = () => {
   if (!state) return location.reload();
-  if (!state.deposit) return run("Funding reserve…", () => request("/api/deposit", {}));
+  if (!state.funding_plans[profile][scenario].payment_cents) return el("payment").close();
+  if (!state.deposit) return run("Setting aside funds…", async () => {
+    await request("/api/deposit", {});
+    await prepareReview();
+  });
   if (state.review) return run("Sending payment…", () => request("/api/approve", { approval: state.review.id }));
-  return run("Preparing review…", () => request("/api/review", { profile, scenario }));
+  return run("Preparing review…", prepareReview);
 };
 el("cancel").onclick = () => run("Cancelling…", () => request("/api/cancel", { approval: state.review.id }));
 el("check").onclick = () => run("Checking recipient…", async () => {
@@ -243,6 +255,10 @@ function previewSettings() {
   el("draft-cost").textContent = money(plan.cost_cents);
 }
 
+el("explain-plan").onclick = event => {
+  const button = event.currentTarget;
+  button.setAttribute("aria-expanded", String(button.getAttribute("aria-expanded") !== "true"));
+};
 el("configure").onclick = () => {
   el("profile").value = profile;
   el("scenario").value = scenario;
@@ -258,7 +274,12 @@ el("apply").onclick = () => {
   render();
   el("settings").close();
 };
-el("open-payment").onclick = () => el("payment").showModal();
+el("open-payment").onclick = () => {
+  el("payment").showModal();
+  if (state?.deposit && !state.review && !state.receipt && state.funding_plans[profile][scenario].payment_cents) {
+    run("Preparing review…", prepareReview);
+  }
+};
 for (const button of document.querySelectorAll("[data-dismiss]")) {
   button.onclick = () => button.closest("dialog").close();
 }
@@ -270,5 +291,5 @@ el("reset").onclick = () => run("Starting over…", async () => {
   sessionStorage.removeItem("fuel-scenario");
   el("payment").close();
 });
-el("proof").ontoggle = () => { el("details").textContent = el("proof").open ? JSON.stringify(currentStep, null, 2) : ""; };
+el("proof").ontoggle = () => { el("details").textContent = el("proof").open && currentStep ? JSON.stringify(currentStep, null, 2) : ""; };
 sync(true).catch(showRetry);
