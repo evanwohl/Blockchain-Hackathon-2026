@@ -33,5 +33,31 @@
       <a class="receipt-fallback" target="_blank" rel="noopener" href="https://explorer.solana.com/tx/5A5yKCDw8qZAr4MwvAHBm3op1FdS79wPM7kCD8k6czkRqAG2dx8EgxCtRvbyooy9vozHCurhviXxEeMPLhuvoKv3?cluster=devnet">Open the payment on Explorer ↗</a>
     </section>
   </div>
+  <section class="reserve-proof" id="remaining" aria-labelledby="remaining-title">
+    <div class="reserve-balance">
+      <p class="panel-label">After the fuel payment</p>
+      <h2 id="remaining-title">What stayed with the driver?</h2>
+      <p>Vault shares give the driver a claim on the fuel money they set aside.</p>
+      <dl class="share-ledger" id="share-ledger" hidden>
+        <div><dt>Shares issued at deposit</dt><dd id="shares-issued"></dd></div>
+        <div><dt>Shares used to pay for fuel</dt><dd id="shares-spent"></dd></div>
+        <div><dt>Shares left after payment</dt><dd id="shares-left"></dd></div>
+      </dl>
+      <a id="shares-link" class="ledger-back" target="_blank" rel="noopener" hidden>View the public share account ↗</a>
+    </div>
+    <div class="reserve-quote">
+      <h3>Try a return to the driver’s wallet</h3>
+      <p>Solana simulates the withdrawal against the public Kamino vault. The shares stay invested.</p>
+      <div class="preview-choices" aria-label="Choose a return to preview">
+        <button class="secondary" id="preview-road" disabled>Preview $10 for the road</button>
+        <button class="secondary" id="preview-all" disabled>Preview the full return</button>
+      </div>
+      <div class="preview-outcome" id="preview-outcome" hidden>
+        <span>Wallet would receive</span><strong id="preview-amount"></strong><p id="preview-value"></p>
+        <dl><div><dt>Shares used</dt><dd id="preview-used"></dd></div><div><dt>Shares kept from this deposit</dt><dd id="preview-kept"></dd></div></dl>
+      </div>
+      <p class="public-status" id="preview-status" role="status" aria-atomic="true"></p>
+    </div>
+  </section>
 </main>
 </body></html>
