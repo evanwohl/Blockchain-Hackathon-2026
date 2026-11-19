@@ -4,3 +4,6 @@ __pycache__/
 *.onnx
 .env
 .DS_Store
+.pytest_cache/
+*.egg-info/
+settlement_program/target/

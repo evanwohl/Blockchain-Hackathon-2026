@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FreightOS · Carrier trial</title><link rel="stylesheet" href="/style.css"><script src="/trial.js" defer></script>
+</head>
+<body>
+<header><div class="bar"><span class="brand">Freight<span>OS</span></span><span class="network">Solana fork · Test funds</span></div></header>
+<main>
+  <a href="/">← Back to fuel bill</a><h1>Synthetic carrier trial</h1>
+  <p class="intro">The same bills, deadlines and offers are priced under three funding strategies. Every selected reserve payment is signed and replayed on a fresh fork.</p>
+  <div class="grid">
+    <section class="panel"><div class="headline"><p class="label">Modeled financing costs avoided</p><strong id="total">—</strong><p>Across <span id="n">—</span> synthetic loads, versus the best conventional plan.</p></div>
+      <div class="inside"><dl>
+        <div><dt>Reserve payments executed</dt><dd id="executed">—</dd></div>
+        <div><dt>No reserve draw</dt><dd id="skipped">—</dd></div>
+        <div><dt>Median saving per load</dt><dd id="median">—</dd></div>
+        <div><dt>Savings over the simpler same-access strategy</dt><dd id="composition">—</dd></div>
+      </dl><details><summary>What the comparisons mean</summary><p id="method"></p></details>
+      <details><summary>If the reserve costs more and arrives late</summary><p id="adverse"></p></details>
+      <details><summary>Model assumptions</summary><p id="assumptions"></p><a href="/evidence/carrier-trial">View all cases and signed receipts</a></details></div>
+    </section>
+    <section class="panel"><div class="actionhead"><p class="label">Inspect a load</p></div>
+      <div class="inside"><label for="case">Synthetic case</label><select id="case"></select>
+        <dl><div><dt>Fuel bill</dt><dd id="bill">—</dd></div><div><dt>Reserve used</dt><dd id="draw">—</dd></div><div><dt>FreightOS plan cost</dt><dd id="chosen">—</dd></div><div><dt>Best conventional plan cost</dt><dd id="conventional">—</dd></div><div><dt>Same-access strategy cost</dt><dd id="simple">—</dd></div></dl>
+        <p id="outcome"></p><button id="receipt" class="secondary" hidden>Download signed receipt</button>
+        <details><summary>Offers and invoice elections</summary><pre id="terms"></pre></details></div>
+    </section>
+  </div><p role="status" id="status"></p>
+</main></body></html>

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "freightos"
+version = "0.1.0"
+description = "Load funding decisions and verifiable Solana reserve settlement"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.12",
+    "solders==0.29.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["hedging", "freightos"]
+
+[tool.setuptools.package-data]
+freightos = ["web/*.html", "web/*.css", "web/*.js", "artifacts/*/*.json", "artifacts/*/*.gz", "artifacts/*/*.so"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

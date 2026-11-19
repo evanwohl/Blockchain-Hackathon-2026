@@ -1,0 +1,65 @@
+{
+  "opening_cash_cents": 0,
+  "reserve_floor_cents": 0,
+  "bills": [
+    {
+      "id": "fuel statement",
+      "day": 5,
+      "cents": 74500
+    }
+  ],
+  "invoices": [
+    {
+      "id": "primary load",
+      "face_cents": 300000,
+      "options": [
+        {
+          "name": "standard",
+          "day": 28,
+          "fee_bps": 0
+        },
+        {
+          "name": "one day",
+          "day": 1,
+          "fee_bps": 500
+        },
+        {
+          "name": "seven days",
+          "day": 7,
+          "fee_bps": 300
+        }
+      ]
+    },
+    {
+      "id": "backhaul",
+      "face_cents": 20000,
+      "options": [
+        {
+          "name": "standard",
+          "day": 28,
+          "fee_bps": 0
+        },
+        {
+          "name": "one day",
+          "day": 1,
+          "fee_bps": 500
+        },
+        {
+          "name": "seven days",
+          "day": 7,
+          "fee_bps": 300
+        }
+      ]
+    }
+  ],
+  "funding": [
+    {
+      "id": "reserve redemption",
+      "available_day": 4,
+      "restore_day": 28,
+      "net_capacity_cents": 60000,
+      "fixed_cost_cents": 200,
+      "term_cost_bps": 26
+    }
+  ]
+}
