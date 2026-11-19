@@ -7,7 +7,7 @@ function displayQuote() {
   const scenario = el("quote-scenario").value;
   const plan = state.funding_plans[profile][scenario];
   const locked = state.review || state.receipt || state.manual_payment;
-  const source = { "quick pay": "You pay from early invoice pay", "credit line": "You pay with bank credit", "cash on hand": "You pay with cash" };
+  const source = { "quick pay": "You pay from the return invoice", "credit line": "You pay with bank credit", "cash on hand": "You pay with cash" };
   const due = plan.calendar.bills[0].day;
   const paid = plan.invoice_elections.find(item => item.invoice === "primary load").day;
   el("window-due").textContent = "Day " + due;
@@ -24,7 +24,7 @@ function displayQuote() {
   el("quote-fees").textContent = money(plan.cost_cents) + " estimated fees";
   const alternative = profile === "credit line" ? "Bank credit alone" : "Early pay on the main invoice";
   el("quote-compare").textContent = plan.savings_cents
-    ? alternative + " costs " + money(plan.alternative_cost_cents) + ". Estimated savings of " + money(plan.savings_cents) + "."
+    ? alternative + " costs " + money(plan.alternative_cost_cents) + ". You save an estimated " + money(plan.savings_cents) + "."
     : "Available cash covers the bill with no financing fee.";
   el("quote-open").href = locked ? "/bill" : "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario });
   el("quote-open").textContent = locked ? "Return to current bill" : "Review this bill";
