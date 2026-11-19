@@ -42,6 +42,10 @@ button:disabled, select:disabled { opacity: .6; cursor: default; }
 .bar, main, .frame { width: min(90rem, 100%); margin-inline: auto; padding-inline: var(--page-gutter); }
 main { flex: 1; }
 .desk { display: flex; flex-direction: column; }
+#load-status { display: none; padding-block: 2.5rem; }
+body:has(.desk[data-loading]) .environment { visibility: hidden; }
+.desk[data-loading] > :not(#load-status) { display: none; }
+.desk[data-loading] #load-status { display: grid; justify-items: start; gap: 1rem; }
 
 .mast { background: #141317; border-bottom: 1px solid var(--line); }
 .bar { min-height: 4.25rem; display: flex; align-items: center; gap: clamp(24px,5vw,76px); }
@@ -299,7 +303,7 @@ pre { max-height: 230px; white-space: pre-wrap; overflow-wrap: anywhere; overflo
   dialog[open] .sheet { animation: reveal .18s ease-out both; }
   .primary .icon { transition: transform .16s ease-out; }
   .primary:hover:enabled .icon { transform: translateX(3px); }
-  @keyframes reveal { from { transform: translateY(6px); opacity: .55; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes reveal { from { transform: translateY(6px); } to { transform: translateY(0); } }
 }
 
 @media (max-width: 1080px) {

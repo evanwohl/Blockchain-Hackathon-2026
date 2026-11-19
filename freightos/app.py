@@ -1,4 +1,6 @@
 import argparse
+import gzip
+import hashlib
 import json
 from functools import cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -145,17 +147,38 @@ class LoadSettlement:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def reply(self, status, content_type, body):
+    def reply(self, status, content_type, body, *, static=False):
+        cache_control = "no-cache" if static else "no-store"
+        etag = None
+        if static:
+            etag = f'W/"{hashlib.sha256(body).hexdigest()}"'
+            validators = self.headers.get("If-None-Match", "").split(",")
+            if any(value.strip() in (etag, etag[2:], "*") for value in validators):
+                status = 304
+            if content_type == "font/woff2":
+                cache_control = "private, max-age=86400"
+        compressible = len(body) >= 1024 and content_type != "font/woff2"
         self.send_response(status)
+        self.send_header("Cache-Control", cache_control)
+        if etag:
+            self.send_header("ETag", etag)
+        if compressible:
+            self.send_header("Vary", "Accept-Encoding")
+        if status == 304:
+            self.end_headers()
+            return
+        encodings = self.headers.get("Accept-Encoding", "").lower().split(",")
+        if compressible and any(value.strip() == "gzip" for value in encodings):
+            body = gzip.compress(body, compresslevel=4, mtime=0)
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
     def respond(self, status, obj):
-        self.reply(status, "application/json", json.dumps(obj).encode())
+        self.reply(status, "application/json", json.dumps(obj, separators=(",", ":")).encode())
 
     def do_GET(self):
         if self.path == "/api/trial":
@@ -198,7 +221,7 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(404, {"error": "Page unavailable"})
             return
         name, mime = assets[self.path]
-        self.reply(200, mime, (ASSETS / name).read_bytes())
+        self.reply(200, mime, (ASSETS / name).read_bytes(), static=True)
 
     def do_POST(self):
         host = f"127.0.0.1:{self.server.server_port}"

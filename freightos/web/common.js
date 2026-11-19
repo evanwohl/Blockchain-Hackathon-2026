@@ -5,6 +5,7 @@ export const money = cents => dollars.format(cents / 100);
 export const tokenUnits = raw => (raw / 1e6).toLocaleString("en-US", { maximumFractionDigits: 6 });
 
 export async function request(path, body, signal) {
+  signal ??= AbortSignal.timeout(20000);
   const options = body === undefined ? { signal } : {
     method: "POST",
     headers: { "Content-Type": "application/json" },
