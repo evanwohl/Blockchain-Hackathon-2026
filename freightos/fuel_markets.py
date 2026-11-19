@@ -60,13 +60,23 @@ def settled_reference(checksum, ticker, index, as_of, lower, upper):
     events = [event for event in json.loads(raw)["data"] if event["ticker"] == ticker]
     if len(events) != 1 or events[0]["sourceDetails"]["index"] != index or events[0]["status"] != "settled":
         raise ValueError("Unexpected Gemini settlement event")
-    as_of = datetime.fromisoformat(as_of)
+    price, strikes = reported_close(events[0], datetime.fromisoformat(as_of))
+    if not all(strikes.values()) or max(strikes["yes"]) != Decimal(lower) or min(strikes["no"]) != Decimal(upper):
+        raise ValueError("Gemini contracts disagree on the reference price or band")
+    return price
+
+
+def reported_close(event, as_of):
+    expiry = datetime.fromisoformat(event["expiryDate"])
+    if event["status"] != "settled" or not expiry <= datetime.fromisoformat(event["resolvedAt"]) <= as_of:
+        raise ValueError("Gemini close is not available at the check time")
     values = set()
     strikes = {"yes": [], "no": []}
-    for item in events[0]["contracts"]:
+    for item in event["contracts"]:
         if item["isCombo"] or item["strike"]["type"] != "above":
             continue
-        if (item["status"] != "settled" or datetime.fromisoformat(item["resolvedAt"]) > as_of
+        if (item["status"] != "settled" or not expiry <= datetime.fromisoformat(item["resolvedAt"]) <= as_of
+                or datetime.fromisoformat(item["expiryDate"]) != expiry
                 or item["resolutionSide"] not in strikes):
             raise ValueError("Gemini settlement was unavailable at the decision time")
         value = Decimal(item["settlementValue"])
@@ -75,10 +85,12 @@ def settled_reference(checksum, ticker, index, as_of, lower, upper):
             raise ValueError("Reported settlement contradicts the contract outcome")
         values.add(value)
         strikes[item["resolutionSide"]].append(level)
-    if (len(values) != 1 or not all(strikes.values()) or max(strikes["yes"]) != Decimal(lower)
-            or min(strikes["no"]) != Decimal(upper)):
-        raise ValueError("Gemini contracts disagree on the reference price or band")
-    return values.pop()
+    if len(values) != 1:
+        raise ValueError("Gemini contracts disagree on the reported close")
+    price = values.pop()
+    if event.get("settlement", {}).get("value") is not None and Decimal(event["settlement"]["value"]) != price:
+        raise ValueError("Gemini event and contracts report different closes")
+    return price, strikes
 
 
 def settlement_budget(evidence):
