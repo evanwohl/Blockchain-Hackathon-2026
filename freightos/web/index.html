@@ -100,6 +100,13 @@
         <dl class="backup-fees"><div><dt>With reserve</dt><dd id="normal-fee"></dd></div><div><dt>Without reserve</dt><dd id="backup-fee"></dd></div></dl>
         <p id="backup-copy"></p><button class="secondary" id="switch-timing" type="button"></button><p id="backup-lock" hidden></p>
       </details>
+      <details class="invoice-delay" id="invoice-delay"><summary>What if the freight customer pays late?</summary>
+        <dl class="delay-dates"><div><dt>Diesel paid</dt><dd id="delay-bill-date"></dd></div><div><dt>Reserve refill</dt><dd id="delay-refill-date"></dd></div><div><dt>Late freight</dt><dd id="delay-freight-date"></dd></div></dl>
+        <p id="delay-gap"></p>
+        <dl class="backup-fees"><div><dt>Usual invoice terms</dt><dd id="delay-normal-fee"></dd></div><div><dt>Earlier freight payment</dt><dd id="delay-safe-fee"></dd></div></dl>
+        <p id="delay-terms"></p><p id="delay-wallet"></p>
+        <button class="secondary" type="button" id="switch-invoice"></button><p id="invoice-lock" hidden></p>
+      </details>
     </section>
     <section class="fuel-window" aria-labelledby="window-title"><p class="panel-label">Fuel planning</p><h2 id="window-title">If fuel prices change</h2>
       <p id="policy-copy"></p><details id="policy-detail"><summary>Compare fuel estimates</summary><p id="budget-help"></p><table class="cost-lines"><caption>Reserve payment and fees by fuel estimate</caption>
@@ -150,6 +157,7 @@
     </fieldset>
     <p id="access-help"></p>
     <label for="scenario">Fuel budget</label><select id="scenario"><option value="oil stress">Allow for higher fuel prices</option><option value="fuel budget">Original fuel estimate</option></select>
+    <label class="no-reserve" id="late-freight-field"><input type="checkbox" id="late-freight">Plan for the main customer to pay a week late</label>
     <label class="no-reserve" id="no-reserve-field"><input type="checkbox" id="no-reserve">Plan without the fuel reserve</label>
     <fieldset class="cash-choice" hidden>
         <legend>What matters more on this trip?</legend>

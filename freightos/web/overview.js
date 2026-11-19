@@ -33,6 +33,8 @@ function displayQuote() {
     : "Available cash covers the bill with no financing fee.";
   el("quote-open").href = locked ? "/bill" : "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario });
   el("quote-open").textContent = locked ? "Return to current bill" : "Walk through this bill";
+  el("delay-link").hidden = locked || !state.pairing_values[profile][scenario].invoice_delay;
+  el("delay-link").href = "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario, view: "late-freight" });
   el("quote-scope").textContent = plan.payment_cents ? "Test dollars on a local copy of Solana. No wallet setup needed." : "Cash covers this bill. You can record your direct payment in the demo.";
   const original = state.plans["fuel budget"].bill_cents;
   el("mechanism-fuel").textContent = "Start with " + money(original) + " for " + plan.gemini.gallons

@@ -89,6 +89,10 @@ async function showStress() {
       el("adverse").textContent = "Checking the stressed funding plans…";
       stressReport = await request("/api/trial/stress");
     }
+    const late = stressReport.late_freight;
+    el("freight-delay-result").textContent = "When standard freight payments arrive a week late, " + late.short_cases + " of "
+      + report.cases + " original plans run short. Their individual cash gaps sum to " + money(late.peak_gaps_cents)
+      + ". Planning for the delay upfront costs an extra " + money(late.replanning_fee_cents) + " across the synthetic trial. Early-pay offers keep their quoted dates.";
     const timing = stressReport.one_day_delay;
     el("delay-only").textContent = "A one-day reserve delay alone leaves " + timing.misses + " planned loads short by "
       + money(timing.shortfall_cents) + " in total at their first missed deadlines. Allowing for that day before choosing funding adds "

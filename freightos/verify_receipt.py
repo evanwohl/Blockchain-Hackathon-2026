@@ -101,7 +101,7 @@ def replay(receipt):
             if hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != checksum:
                 raise ValueError("Funding source snapshot differs")
         sample = json.loads((DATA / "sample_calendar.json").read_bytes())
-        if "cash_policy" in decision:
+        if "cash_policy" in decision or "late_freight" in decision:
             plan = demo_plans()[0][decision["profile"]][decision["scenario"]]
         else:
             plan = funding_plan(sample, evidence, decision["scenario"], decision["profile"])
