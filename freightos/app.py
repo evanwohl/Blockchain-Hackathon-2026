@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, fuel_cover, fuel_update, next_stop, public_offer, reserve_return
+from freightos import bill, devnet, fuel_cover, fuel_update, next_stop, public_offer, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -558,6 +558,12 @@ class Handler(BaseHTTPRequestHandler):
             snapshot = next_stop.TWO_STOPS if self.path == "/evidence/two-stops" else next_stop.SNAPSHOT
             self.reply(200, "application/json", gzip.decompress(snapshot.read_bytes()), static=True)
             return
+        if self.path == "/api/trip-cover":
+            self.respond(200, {**trip_cover.saved(), "source": "recorded"})
+            return
+        if self.path == "/evidence/trip-cover":
+            self.reply(200, "application/json", gzip.decompress(trip_cover.SNAPSHOT.read_bytes()), static=True)
+            return
         if self.path == "/evidence/fuel-cover":
             self.reply(200, "application/json", gzip.decompress(fuel_cover.SNAPSHOT.read_bytes()), static=True)
             return
@@ -617,6 +623,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/trip-cover": ("trip_cover.html", "text/html; charset=utf-8"),
+            "/trip_cover.js": ("trip_cover.js", "text/javascript"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
             "/next_stop.js": ("next_stop.js", "text/javascript"),
             "/public-offer": ("public_offer.html", "text/html; charset=utf-8"),
@@ -646,11 +654,9 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(200, mime, (ASSETS / name).read_bytes(), static=True)
 
     def do_POST(self):
-        host = f"127.0.0.1:{self.server.server_port}"
-        if self.headers.get("Host") != host or self.headers.get("Origin") not in (
-            None,
-            "http://" + host,
-        ):
+        host = self.headers.get("Host", "")
+        allowed_hosts = (f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}")
+        if host not in allowed_hosts or self.headers.get("Origin") not in (None, "http://" + host):
             self.respond(403, {"error": "Local demo requests only"})
             return
         try:
@@ -663,6 +669,18 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/trip-cover":
+                trip = {key: data.get(key) for key in trip_cover.EXAMPLE}
+                trip_cover.validate(trip)
+                source = data.get("source", "live")
+                if source not in ("live", "recorded"):
+                    raise ValueError("Unknown market source")
+                try:
+                    snapshot = self.server.trip_books.read() if source == "live" else trip_cover.recorded()
+                    self.respond(200, {**trip_cover.analyze(snapshot, trip), "source": source})
+                except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError):
+                    self.respond(503, {"error": "Could not verify the market comparison for this trip."})
+                return
             if self.path in ("/api/next-stop", "/api/two-stops"):
                 fuel, road = data.get("fuel_cents"), data.get("road_cents")
                 next_stop.amounts(fuel, road)
@@ -718,6 +736,7 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
+    server.trip_books = PublicCheck(trip_cover.capture)
     server.fuel_cover = PublicCheck(fuel_cover.live)
     server.offer_fuel = PublicCheck(fuel_update.live)
     server.public_reserve = PublicCheck(reserve_observation)
