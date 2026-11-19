@@ -2,7 +2,7 @@
 
 import gzip
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from email.utils import parsedate_to_datetime
 from functools import cache
@@ -71,7 +71,7 @@ def compare(snapshot):
         event = sample["event"]
         stamp = datetime.fromisoformat(sample["reported_at"])
         expiry = datetime.fromisoformat(event["expiryDate"])
-        if (stamp > checked or expiry != datetime.fromisoformat(original["expiryDate"])
+        if (stamp > checked + timedelta(seconds=2) or expiry != datetime.fromisoformat(original["expiryDate"])
                 or any(event[k] != original[k] for k in ("id", "ticker", "series", "sourceDetails"))):
             raise ValueError("Gemini event identity or timestamp differs from the recorded window")
         if not instruments(original).issubset(instruments(event)):
@@ -89,7 +89,8 @@ def compare(snapshot):
         raise ValueError("Gemini threshold differs from the original fuel contract")
     stamp = datetime.fromisoformat(target["reported_at"])
     trading = (event["status"] == contract["status"] == "active" and contract["marketState"] == "open"
-               and datetime.fromisoformat(contract["effectiveDate"]) <= stamp <= checked < datetime.fromisoformat(g["expiry"]))
+               and datetime.fromisoformat(contract["effectiveDate"]) <= min(stamp, checked)
+               and checked < datetime.fromisoformat(g["expiry"]))
     fresh = (checked - stamp).total_seconds() <= 120
     ask = contract["prices"].get("buy", {}).get("yes") if trading and fresh else None
     if ask is not None and not Decimal(0) <= Decimal(ask) <= Decimal(1):

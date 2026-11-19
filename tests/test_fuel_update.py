@@ -1,5 +1,6 @@
 import gzip
 import json
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -65,3 +66,16 @@ def test_invalid_market_observations_fail_closed(change):
         e["contracts"][0]["settlementValue"] = "1"
     with pytest.raises(ValueError):
         fuel_update.compare(raw)
+
+
+@pytest.mark.parametrize("skew", [1, 3])
+def test_gemini_response_date_can_lead_the_client_clock_by_one_second(skew):
+    raw = observation()
+    target = raw["events"]["WTI2611202200"]
+    checked = datetime.fromisoformat(raw["checked_at"])
+    target["reported_at"] = (checked + timedelta(seconds=skew)).isoformat()
+    if skew == 1:
+        assert fuel_update.compare(raw)["open"]
+    else:
+        with pytest.raises(ValueError, match="timestamp"):
+            fuel_update.compare(raw)
