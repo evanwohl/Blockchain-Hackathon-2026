@@ -13,7 +13,7 @@ from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, devnet, reserve_return
 from freightos.live import reserve_observation
-from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, refill_cost
+from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, refill_cost
 from hedging.quick_pay import price_calendar
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
@@ -129,18 +129,22 @@ class LoadSettlement:
 
     def state(self):
         with self.lock:
+            wallet = self.fork.balance(self.fork.cash)
+            setup = {} if self.manual_payment or LOAD in self.fork.receipts else self.setup_quotes()
+            review = self.fork.pending_review()
             return {
                 "load": LOAD,
                 "slot": self.fork.slot,
                 "reserve_shares_raw": self.fork.balance(self.fork.shares),
-                "wallet_usdc_raw": self.fork.balance(self.fork.cash),
-                "setup_cents": {} if self.manual_payment or LOAD in self.fork.receipts else self.setup_quotes(),
+                "wallet_usdc_raw": wallet,
+                "setup_cents": setup,
+                "next_trip": next_trip_options(self.plans, setup, wallet) if setup and not review else None,
                 "deposit": self.deposit_receipt,
                 "last_return": self.latest_return(),
                 "manual_payment": self.manual_payment,
                 "record_version": self.record_version,
                 "receipt": self.fork.receipts.get(LOAD),
-                "review": self.fork.pending_review(),
+                "review": review,
                 "plans": self.plans["quick pay"],
                 "funding_plans": self.plans,
                 "pairing_values": self.edges,
@@ -406,6 +410,7 @@ class Handler(BaseHTTPRequestHandler):
             "/media/instrument-serif-latin-400-italic.woff2": ("media/instrument-serif-latin-400-italic.woff2", "font/woff2"),
             "/media/barlow-condensed-latin-600-normal.woff2": ("media/barlow-condensed-latin-600-normal.woff2", "font/woff2"),
             "/media/inter-latin-wght-normal.woff2": ("media/inter-latin-wght-normal.woff2", "font/woff2"),
+            "/next_trip.js": ("next_trip.js", "text/javascript"),
             "/common.js": ("common.js", "text/javascript"),
         }
         if self.path not in assets:

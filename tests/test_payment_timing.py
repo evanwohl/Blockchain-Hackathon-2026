@@ -147,3 +147,65 @@ def test_optional_refill_savings_reconcile_to_two_late_customer_deadlines():
     report = stressed_trial()["flexible_refill"]
     assert sum(savings) == report["savings_cents"] == 347094
     assert sum(s > 0 for s in savings) == report["cheaper_cases"] == 39
+
+
+def test_next_expense_protects_future_fees_and_accepts_same_day_receipts():
+    from hedging.payment_timing import spendable_on
+
+    calendar = {"opening_cash_cents": 140, "reserve_floor_cents": 20,
+                "funding": [{"id": "line", "available_day": 1, "restore_day": 6}],
+                "bills": [{"day": 7, "earliest_day": 5, "cents": 5, "max_cents": 25}]}
+    draws = [{"source": "line", "net_proceeds_cents": 30, "cost_cents": 3}]
+    receipts = [{"day": 4, "receipt_cents": 18}, {"day": 10, "receipt_cents": 50}]
+    assert [spendable_on(calendar, receipts, draws, day) for day in [0, 4, 6, 9, 10, 20]] == [110, 110, 110, 110, 160, 160]
+
+
+def test_next_trip_limits_match_repricing_with_one_extra_bill():
+    from freightos.funding import REFILL_LATER
+
+    app = LoadSettlement()
+    state = app.state()
+    comparison = state["next_trip"]
+    assert comparison["budgets"] == 5
+    assert [row["capacity_cents"] for row in comparison["options"]] == [2999, 236650, 289000]
+    for option in comparison["options"]:
+        profile = option["profile"]
+        expected_terms = None
+        has_boundary = False
+        for p in app.plans[profile].values():
+            elections = {e["invoice"]: e["option"] for e in p["invoice_elections"]}
+            assert expected_terms in (None, elections)
+            expected_terms = elections
+            case = p["calendar"]
+            fixed_invoices = [{**invoice, "options": [o for o in invoice["options"]
+                               if o["name"] == elections[invoice["id"]]]} for invoice in case["invoices"]]
+            decision = price_calendar({**case, "invoices": fixed_invoices})
+            assert decision["funding"] == p["funding"]
+            ledger = decision["balances_cents"]
+            day = comparison["day"]
+            at_day = ledger[max(d for d in ledger if d <= day)]
+            balances = [at_day, *(v for d, v in ledger.items() if d > day)]
+            cash_after_setup = state["wallet_usdc_raw"] // 10000 - state["setup_cents"][profile]
+            remaining = min(balances) + cash_after_setup - option["capacity_cents"]
+            assert remaining >= case["reserve_floor_cents"]
+            has_boundary |= remaining == case["reserve_floor_cents"]
+        assert has_boundary
+    app.act("deposit", {"profile": REFILL_LATER, "max_cents": 57001, "version": app.record_version})
+    after = app.state()["next_trip"]["options"]
+    assert after[0]["capacity_cents"] == 2999
+    assert after[-1]["capacity_cents"] == 289000 - 57001
+    review = app.act("review", {"profile": REFILL_LATER, "scenario": "oil stress"})
+    assert app.state()["next_trip"] is None
+    app.act("approve", {"approval": review["id"]})
+    assert app.state()["next_trip"] is None
+
+
+def test_next_trip_excludes_a_plan_that_changes_invoice_terms_after_observing_fuel():
+    from freightos.funding import LATE_PLANS, next_trip_options
+
+    plans, _, _, _ = demo_plans()
+    backup = BACKUPS[LATE_PLANS["quick pay"]]
+    option = plans[backup]["oil stress"]
+    elections = [{**e, "option": "standard"} for e in option["invoice_elections"]]
+    changed = {**plans, backup: {**plans[backup], "oil stress": {**option, "invoice_elections": elections}}}
+    assert not next_trip_options(changed, {backup: 0}, 600000000)["options"]
