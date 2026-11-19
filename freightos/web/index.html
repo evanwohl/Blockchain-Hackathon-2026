@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#f7f8f4"><title>Load overview · FreightOS</title>
+  <meta name="theme-color" content="#141317"><title>Load overview · FreightOS</title>
   <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
   <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
@@ -10,38 +10,36 @@
 <body>
 <header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/" aria-current="page"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M8 15h3"/></svg>Fuel desk</a><a href="/trial"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M6 16v-4m6 4V5m6 11V9"/></svg>Carrier trial</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
 <main class="desk">
-  <div class="page-heading"><div><h1>Load <em id="load-id">overview</em></h1></div>
-    <button class="secondary configure" id="configure" disabled><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h5m5 0h6M4 17h10m5 0h1"/><circle cx="11.5" cy="7" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/></svg>Plan settings</button>
-  </div>
-  <div class="overview">
-    <section class="bill-card" aria-labelledby="bill-label">
-      <div class="bill-face">
-        <div class="bill-balance">
-          <h2 id="bill-label">Fuel bill</h2>
-          <strong id="bill" class="display">—</strong>
-        </div>
-        <dl class="bill-invoice"><dt>Freight invoice</dt><dd id="invoice-value">—</dd></dl>
-      </div>
-      <div class="cash-calendar">
-        <div class="calendar-axis">
-          <span>Fuel due <strong id="bill-due">—</strong></span>
-          <span>Invoice expected <strong id="invoice-day">—</strong></span>
-        </div>
-        <div id="day-strip" aria-hidden="true"></div>
-        <p id="timing"></p>
-      </div>
-    </section>
-    <section class="card funding" aria-labelledby="funding-title">
-      <h2 id="funding-title">Your payment plan</h2>
-      <dl class="mix"><div id="reserve-source"><dt><i></i>From your reserve</dt><dd id="amount">—</dd></div><div><dt><i></i><span id="other-label">Other funds</span></dt><dd id="other">—</dd></div></dl>
-      <div id="funding-bar" class="split" aria-hidden="true"><i id="bar"></i></div>
+  <section class="overview" aria-labelledby="plan-head">
+    <div class="hero-tools"><span>Load <b id="load-id">—</b></span><button class="secondary configure" id="configure" disabled><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h5m5 0h6M4 17h10m5 0h1"/><circle cx="11.5" cy="7" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/></svg>Plan settings</button></div>
+    <div class="hero-intro">
+      <p class="due-line">Fuel due <b id="fuel-day">—</b><span aria-hidden="true"> / </span>Freight pays <b id="invoice-day">—</b></p>
+      <h1 id="plan-head">Fuel payment</h1>
+      <p id="edge-reason"></p>
+    </div>
+    <div class="flow-map" aria-label="Planned funding for the fuel bill">
+      <dl class="flow-sources"><div id="reserve-source"><dt>Fuel reserve</dt><dd id="amount">—</dd></div><div><dt id="other-label">Other funds</dt><dd id="other">—</dd></div></dl>
+      <svg class="flow-art" viewBox="0 0 280 160" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="reserve-ink" x1="0" y1="0" x2="1" y2=".16" gradientUnits="objectBoundingBox"><stop stop-color="#ed9289"/><stop offset=".23" stop-color="#ffe8c1"/><stop offset=".54" stop-color="#eff5f1"/><stop offset=".82" stop-color="#bcb0f5"/><stop offset="1" stop-color="#92b8f5"/></linearGradient>
+          <linearGradient id="other-ink" x1="0" y1="0" x2="1" y2=".2" gradientUnits="objectBoundingBox"><stop stop-color="#ad9ade"/><stop offset=".48" stop-color="#d5bdf1"/><stop offset="1" stop-color="#9ce2e0"/></linearGradient>
+          <pattern id="slits" patternUnits="userSpaceOnUse" width="3.8" height="200" patternTransform="skewX(-8)"><rect width="2.1" height="200" fill="white"/></pattern>
+          <mask id="flow-mask"><rect width="280" height="160" fill="url(#slits)"/></mask>
+        </defs>
+        <g mask="url(#flow-mask)"><path id="reserve-ribbon" fill="url(#reserve-ink)"/><path id="other-ribbon" fill="url(#other-ink)"/></g>
+      </svg>
+      <div class="flow-bill"><h2>Fuel bill</h2><strong id="bill">—</strong><small>Due <b id="bill-due">—</b></small></div>
+    </div>
+    <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p></details>
+    <div class="plan-action">
       <div class="plan-fee"><p id="fund-caption" role="status"></p><p id="fee-saving" hidden></p></div>
-      <button id="open-payment" class="primary" disabled><span id="open-label">Loading plan</span><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button>
-    </section>
-  </div>
+      <button id="open-payment" class="primary" disabled><span id="open-label">Loading plan</span><span aria-hidden="true">↗</span></button>
+    </div>
+    <p id="payment-scope"></p>
+  </section>
   <button class="explain-plan" id="explain-plan" aria-expanded="false" aria-controls="plan-analysis">Timing and fee comparison</button>
   <div class="analysis-grid" id="plan-analysis">
-    <section class="ledger" aria-labelledby="calendar-title"><div class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><h2 id="calendar-title">Payment schedule</h2></div><ol id="timeline" aria-label="Planned cash movements"></ol></section>
+    <section class="ledger" aria-labelledby="calendar-title"><div class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><h2 id="calendar-title">Payment schedule</h2></div><p id="timing"></p><ol id="timeline" aria-label="Planned cash movements"></ol></section>
     <section class="costs" aria-labelledby="cost-title"><div class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14m-4-4 4 4-4 4M19 16H5m4-4-4 4 4 4"/></svg><h2 id="cost-title">Cost comparison</h2></div>
       <div class="saving"><strong id="saved">—</strong><span>in estimated fee savings</span></div>
       <dl class="compare"><div><dt>FreightOS plan</dt><dd id="plan-cost">—</dd><i><b id="plan-bar"></b></i></div><div><dt id="alternative">Alternative</dt><dd id="other-cost">—</dd><i><b id="other-bar"></b></i></div></dl>

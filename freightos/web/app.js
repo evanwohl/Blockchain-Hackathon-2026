@@ -1,7 +1,7 @@
 import { downloadReceipt, el, facts, money, request, tokenUnits } from "./common.js";
 
 const profiles = {
-  "quick pay": { source: "Early backhaul payment", comparison: "invoice quick pay", fallback: "Quick pay on $3,000 invoice", terms: "Quick pay releases your invoice early for a 5% fee." },
+  "quick pay": { source: "Return-load quick pay", comparison: "invoice quick pay", fallback: "Quick pay on $3,000 invoice", terms: "Quick pay releases your invoice early for a 5% fee." },
   "credit line": { source: "Bank credit line", comparison: "using bank credit alone", fallback: "Credit line alone", terms: "The sample credit line offers $800 at 1% for the term." },
   "cash on hand": { source: "Available cash", comparison: "paying from cash", fallback: "Paying from cash", terms: "Available cash covers the bill by its due date." }
 };
@@ -19,26 +19,16 @@ function renderCalendar(plan) {
   const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
   el("load-id").textContent = plan.load;
   el("bill-due").textContent = "Day " + bill.day;
-  el("invoice-value").textContent = money(primary.receipt_cents);
+  el("fuel-day").textContent = "Day " + bill.day;
+  el("method").textContent = "FreightOS compares the funds and payment terms available to this load. It chooses the lowest estimated total fee among combinations that cover the bill by day " + bill.day + " and preserve your minimum cash balance.";
   el("invoice-day").textContent = "Day " + primary.day;
   const gap = primary.day - bill.day;
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
     : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
-  const days = Math.max(primary.day, bill.day, 1);
-  const strip = el("day-strip");
-  const ticks = document.createDocumentFragment();
-  for (let day = 1; day <= days; day++) {
-    const tick = document.createElement("i");
-    if (day >= Math.min(bill.day, primary.day) && day <= Math.max(bill.day, primary.day)) tick.className = "between";
-    if (day === bill.day) tick.classList.add("due-day");
-    if (day === primary.day) tick.classList.add("invoice-day");
-    ticks.append(tick);
-  }
-  strip.replaceChildren(ticks);
   const events = [
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true },
     ...plan.invoice_elections.map(item => ({
-      day: item.day, label: item.invoice === "backhaul" ? "Backhaul invoice" : "Freight invoice",
+      day: item.day, label: item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
       note: item.option === "standard" ? "Scheduled payment" : "Early payment", amount: item.receipt_cents
     })),
     ...plan.funding.map(item => ({
@@ -68,6 +58,34 @@ function renderCalendar(plan) {
   }));
 }
 
+function fundingRibbon(startY, endY, thickness) {
+  if (!thickness) return "";
+  const boundary = offset => {
+    const start = startY + offset;
+    const end = endY + offset;
+    return [start, start - 15, end + 30, end];
+  };
+  const [top, topBend, topFold, topEnd] = boundary(-thickness / 2);
+  const [bottom, bottomBend, bottomFold, bottomEnd] = boundary(thickness / 2);
+  return `M0 ${top} C100 ${topBend} 154 ${topFold} 280 ${topEnd}
+    L280 ${bottomEnd} C154 ${bottomFold} 100 ${bottomBend} 0 ${bottom} Z`;
+}
+
+function explainChoice(plan) {
+  const primary = plan.calendar.invoices.find(invoice => invoice.id === "primary load");
+  if (plan.profile === "cash on hand") {
+    return ["Pay from cash.", "Your available cash covers the fuel bill on time. You can leave your reserve untouched and collect the freight invoice on its normal schedule."];
+  }
+  if (plan.profile === "credit line") {
+    return ["Borrow only the gap.", "Using your reserve cuts the bank draw to " + money(plan.other_funds_cents) + ". Financing the whole bill on credit would cost " + money(plan.alternative_cost_cents) + "."];
+  }
+  const backhaul = plan.calendar.invoices.find(invoice => invoice.id === "backhaul");
+  const election = plan.invoice_elections.find(item => item.invoice === backhaul.id);
+  const reserve = plan.funding.find(item => item.source === "reserve redemption");
+  const dollars = cents => money(cents).replace(/\.00$/, "");
+  return ["Advance the smaller invoice.", "Quick pay on the " + dollars(primary.face_cents) + " freight invoice costs " + dollars(plan.alternative_cost_cents) + ". The " + dollars(backhaul.face_cents) + " return load costs " + dollars(backhaul.face_cents - election.receipt_cents) + " to advance. Using your reserve adds " + dollars(reserve.cost_cents) + "."];
+}
+
 function renderPlan(plan) {
   const profile = profiles[plan.profile];
   renderCalendar(plan);
@@ -85,8 +103,14 @@ function renderPlan(plan) {
   el("amount").textContent = money(plan.payment_cents);
   el("other").textContent = money(plan.other_funds_cents);
   el("other-label").textContent = profile.source;
-  el("reserve-source").hidden = el("funding-bar").hidden = !plan.payment_cents;
-  el("bar").style.width = (100 * plan.payment_cents / plan.bill_cents) + "%";
+  const reserve = 54 * plan.payment_cents / plan.bill_cents;
+  const other = 54 - reserve;
+  el("reserve-source").hidden = !plan.payment_cents;
+  el("reserve-ribbon").setAttribute("d", fundingRibbon(other ? 40 : 80, 53 + reserve / 2, reserve));
+  el("other-ribbon").setAttribute("d", fundingRibbon(reserve ? 122 : 80, 107 - other / 2, other));
+  const [heading, reason] = explainChoice(plan);
+  el("plan-head").textContent = heading;
+  el("edge-reason").textContent = reason;
   const costs = plan.funding.map(item => [
     item.source === "reserve redemption" ? "Using the reserve" : "Using bank credit",
     money(item.cost_cents)
@@ -149,6 +173,10 @@ function render() {
   el("fund-caption").textContent = receipt ? "Reserve payment delivered" : review ? "Ready for your approval" : plan.cost_cents ? money(plan.cost_cents) + " in estimated fees" : "No financing fees";
   el("fee-saving").hidden = Boolean(receipt || review || !plan.savings_cents);
   el("fee-saving").textContent = "Save " + money(plan.savings_cents) + " compared with " + profiles[profile].comparison + ".";
+  const separate = profile === "credit line" ? "your bank credit line" : "return-load quick pay";
+  el("payment-scope").textContent = !plan.payment_cents ? "Pay the fuel vendor directly from your available cash."
+    : (receipt ? "Your vendor received " : "After approval, your vendor receives ") + money(plan.payment_cents)
+      + " in test USDC. Pay the remaining " + money(plan.other_funds_cents) + " separately using " + separate + ".";
   el("receipt-head").hidden = !receipt;
   el("receipt-load").textContent = receipt ? plan.load : "";
   el("reset").hidden = !receipt;
