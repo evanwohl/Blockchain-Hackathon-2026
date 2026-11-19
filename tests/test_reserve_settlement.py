@@ -242,3 +242,39 @@ def test_refresh_restores_active_review_and_drops_expired_review(monkeypatch):
     with pytest.raises(ValueError, match="expired"):
         app.act("approve", {"approval": quote["id"]})
     assert app.state()["receipt"] is None
+
+
+def test_outside_payment_is_separate_from_reserve_receipt():
+    app = LoadSettlement()
+    request = {"profile": "quick pay", "scenario": "oil stress", "version": app.record_version}
+    with pytest.raises(ValueError, match="reserve payment first"):
+        app.act("record-payment", request)
+    app.act("deposit", {})
+    review = app.act("review", request)
+    with pytest.raises(ValueError, match="current bill"):
+        app.act("record-payment", {**request, "profile": "cash on hand"})
+    receipt = app.act("approve", {"approval": review["id"]})
+    with pytest.raises(ValueError, match="plan on the reserve receipt"):
+        app.act("record-payment", {**request, "scenario": "fuel budget"})
+    entry = app.act("record-payment", request)
+    assert entry["cents"] == 19000
+    assert app.act("record-payment", request) == entry
+    assert app.state()["receipt"] == receipt
+    app.act("undo-record", request)
+    assert app.state()["manual_payment"] is None
+    assert app.state()["receipt"] == receipt
+    with pytest.raises(ValueError, match="bill has changed"):
+        app.act("record-payment", request)
+
+
+def test_cash_record_and_reset_without_a_transfer():
+    app = LoadSettlement()
+    request = {"profile": "cash on hand", "scenario": "fuel budget", "version": app.record_version}
+    assert app.act("record-payment", request)["cents"] == 70000
+    with pytest.raises(ValueError, match="already covered"):
+        app.act("review", {**request, "profile": "credit line"})
+    assert app.state()["deposit"] is None and app.state()["receipt"] is None
+    app.act("reset", {})
+    assert app.state()["manual_payment"] is None
+    with pytest.raises(ValueError, match="bill has changed"):
+        app.act("record-payment", request)

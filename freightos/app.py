@@ -6,6 +6,7 @@ from functools import cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import RLock
+from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
@@ -84,6 +85,8 @@ class LoadSettlement:
         self.lock = RLock()
         self.fork = ReserveFork()
         self.deposit_receipt = None
+        self.manual_payment = None
+        self.record_version = uuid4().hex
         self.evidence = json.loads((DATA / "case_report.json").read_bytes())
         self.sample = json.loads((DATA / "sample_calendar.json").read_bytes())
         self.plans = {
@@ -102,6 +105,8 @@ class LoadSettlement:
                 "reserve_shares_raw": self.fork.balance(self.fork.shares),
                 "wallet_usdc_raw": self.fork.balance(self.fork.cash),
                 "deposit": self.deposit_receipt,
+                "manual_payment": self.manual_payment,
+                "record_version": self.record_version,
                 "receipt": self.fork.receipts.get(LOAD),
                 "review": self.fork.pending_review(),
                 "plans": self.plans["quick pay"],
@@ -111,11 +116,38 @@ class LoadSettlement:
     def act(self, action, data):
         with self.lock:
             if action == "reset":
-                if LOAD not in self.fork.receipts:
+                if data.get("version", self.record_version) != self.record_version:
+                    raise ValueError("This demo session has changed")
+                if not self.manual_payment and LOAD not in self.fork.receipts:
                     raise ValueError("Finish the demo before starting a new session")
                 self.fork = ReserveFork()
                 self.deposit_receipt = None
+                self.manual_payment = None
+                self.record_version = uuid4().hex
                 return {"reset": True}
+            if action in ("record-payment", "undo-record"):
+                if data.get("version") != self.record_version:
+                    raise ValueError("This bill has changed. Review its current balance.")
+                if action == "undo-record":
+                    self.manual_payment = None
+                    self.record_version = uuid4().hex
+                    return {"removed": True}
+                profile, scenario = data.get("profile"), data.get("scenario")
+                plan = self.plans.get(profile, {}).get(scenario)
+                if not plan or self.fork.pending_review():
+                    raise ValueError("Review the current bill before recording a payment")
+                receipt = self.fork.receipts.get(LOAD)
+                if receipt and receipt["decision"] != plan:
+                    raise ValueError("Use the plan on the reserve receipt")
+                if plan["payment_cents"] and not receipt:
+                    raise ValueError("Complete the reserve payment first")
+                entry = {"profile": profile, "scenario": scenario, "cents": plan["other_funds_cents"]}
+                if self.manual_payment and self.manual_payment != entry:
+                    raise ValueError("An outside payment is already recorded")
+                self.manual_payment = entry
+                return entry
+            if self.manual_payment and action in ("deposit", "review"):
+                raise ValueError("This bill is already covered")
             if action == "cancel":
                 return self.fork.cancel(data.get("approval"))
             if action == "check-vendor":
@@ -249,6 +281,8 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/check-vendor",
                 "/api/verify",
                 "/api/reset",
+                "/api/record-payment",
+                "/api/undo-record",
             ):
                 self.respond(404, {"error": "Action unavailable"})
                 return

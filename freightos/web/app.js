@@ -21,7 +21,6 @@ function renderCalendar(plan) {
   const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
   el("load-id").textContent = plan.load;
   el("bill-due").textContent = "Day " + bill.day;
-  el("fuel-day").textContent = "Day " + bill.day;
   el("method").textContent = "FreightOS compares the funds and payment terms available to this load. It chooses the lowest estimated total fee among combinations that cover the bill by day " + bill.day + " and preserve your minimum cash balance.";
   el("invoice-day").textContent = "Day " + primary.day;
   const gap = primary.day - bill.day;
@@ -98,10 +97,7 @@ function renderPlan(plan) {
   const highestCost = Math.max(plan.cost_cents, plan.alternative_cost_cents, 1);
   el("plan-bar").style.width = (100 * plan.cost_cents / highestCost) + "%";
   el("other-bar").style.width = (100 * plan.alternative_cost_cents / highestCost) + "%";
-  const [dollars, cents] = money(plan.bill_cents).split(".");
-  const fraction = document.createElement("small");
-  fraction.textContent = "." + cents;
-  el("bill").replaceChildren(dollars, fraction);
+  el("bill").textContent = money(plan.bill_cents);
   el("amount").textContent = money(plan.payment_cents);
   el("other").textContent = money(plan.other_funds_cents);
   el("other-label").textContent = profile.source;
@@ -141,8 +137,8 @@ function paymentView(plan) {
   const { receipt, review } = state;
   if (receipt) return {
     stage: 2, title: "Reserve payment delivered", button: "Start another demo",
-    description: "Your fuel vendor received the reserve payment. The remaining amount below is yours to pay separately.",
-    rows: [["Sent to the fuel vendor", tokenUnits(receipt.vendor_received_usdc_raw) + " USDC"], ["Still to pay separately", money(plan.other_funds_cents)]]
+    description: "Your fuel vendor received the reserve payment in demo dollars.",
+    rows: [["Sent to the fuel vendor", tokenUnits(receipt.vendor_received_usdc_raw) + " USDC"], [state.manual_payment ? "Recorded separately by you" : "Still to pay separately", money(plan.other_funds_cents)]]
   };
   if (!plan.payment_cents) return {
     stage: -1, title: "Pay from available cash", button: "Done",
@@ -177,16 +173,31 @@ function render() {
   const { review, receipt } = state;
   const view = paymentView(plan);
   const busy = Boolean(pending);
-  el("configure").disabled = busy || Boolean(review || receipt);
-  el("open-payment").disabled = busy;
-  el("open-label").textContent = receipt ? "View receipt" : review ? "Return to review" : plan.payment_cents ? (state.deposit ? "Review " : "Prepare ") + money(plan.payment_cents) + " payment" : "View cash plan";
-  el("fund-caption").textContent = receipt ? "Reserve payment delivered" : review ? "Ready for your approval" : plan.cost_cents ? money(plan.cost_cents) + " in estimated fees" : "No financing fees";
-  el("fee-saving").hidden = Boolean(receipt || review || !plan.savings_cents);
-  el("fee-saving").textContent = "Save " + money(plan.savings_cents) + " compared with " + profiles[profile].comparison + ".";
-  const separate = profile === "credit line" ? "your bank credit line" : "return-load quick pay";
-  el("payment-scope").textContent = !plan.payment_cents ? "Pay the fuel vendor directly from your available cash."
-    : (receipt ? "Your vendor received " : "After approval, your vendor receives ") + money(plan.payment_cents)
-      + " in demo dollars (USDC). Pay the remaining " + money(plan.other_funds_cents) + " separately using " + separate + ".";
+  const entry = state.manual_payment;
+  const separate = plan.payment_cents ? profiles[profile].source.toLowerCase() : "available cash";
+  const delivered = receipt ? receipt.vendor_received_usdc_raw / 10000 : 0;
+  const balance = plan.bill_cents - delivered - (entry?.cents || 0);
+  const recordable = receipt || !plan.payment_cents;
+  el("balance").textContent = money(balance);
+  el("bill-status").textContent = entry ? "Paid" : receipt ? "Partly paid" : "Open";
+  el("bill-status").dataset.stage = entry ? "paid" : receipt ? "partial" : "open";
+  el("configure").disabled = busy || Boolean(review || receipt || entry);
+  el("open-payment").disabled = el("save-record").disabled = busy;
+  el("reserve-receipt").hidden = !receipt;
+  el("new-demo").hidden = !entry;
+  el("reserve-receipt").disabled = el("new-demo").disabled = busy;
+  el("return-bill").hidden = !receipt;
+  el("action-title").textContent = entry ? "Bill covered" : recordable ? "Pay outside FreightOS" : review ? "Approve the vendor payment" : "Pay from your reserve";
+  el("open-label").textContent = entry ? "Review outside payment" : recordable ? "Record outside payment" : review ? "Return to approval" : (state.deposit ? "Review " : "Prepare ") + money(plan.payment_cents) + " payment";
+  el("payment-scope").textContent = entry ? "Your payment record covers the full bill."
+    : recordable ? "Pay " + money(balance) + " to the fuel vendor using " + separate + ". Record it here once you’ve paid."
+    : state.deposit ? "Check the recipient and amount before approving the reserve payment."
+    : "Set aside demo dollars for fuel, then review the amount before sending it to your vendor.";
+  el("plan-jump").textContent = "See funding plan · " + money(plan.cost_cents) + " in fees ↓";
+  const rows = [];
+  if (plan.payment_cents) rows.push([receipt ? "Delivered from reserve" : "Planned from reserve", money(receipt ? delivered : plan.payment_cents)]);
+  rows.push([entry ? "Recorded by you" : "You pay from " + separate, money(plan.other_funds_cents)]);
+  facts(el("payment-log"), rows);
   el("receipt-head").hidden = !receipt;
   el("receipt-load").textContent = receipt ? plan.load : "";
   el("reset").hidden = !receipt;
@@ -223,10 +234,10 @@ async function sync(restore = false) {
   const previousApproval = state?.review?.id;
   state = await request("/api/state");
   if (previousApproval && state.receipt?.approval === previousApproval) el("status").textContent = "";
-  const locked = state.receipt || state.review;
+  const locked = (state.receipt || state.review)?.decision || state.manual_payment;
   if (locked) {
-    scenario = locked.decision.scenario;
-    profile = locked.decision.profile;
+    scenario = locked.scenario;
+    profile = locked.profile;
   }
   if (!Object.hasOwn(state.funding_plans, profile)) profile = "quick pay";
   if (!Object.hasOwn(state.funding_plans[profile], scenario)) scenario = "oil stress";
@@ -255,15 +266,15 @@ async function sync(restore = false) {
   reopenPayment = false;
 }
 
-async function run(label, action) {
+async function run(label, action, feedback = el("status")) {
   if (pending) return;
   pending = label;
-  el("status").textContent = "";
+  feedback.textContent = "";
   render();
   try {
     await action();
   } catch (error) {
-    el("status").textContent = error.message;
+    feedback.textContent = error.message;
   } finally {
     try { await sync(); } catch { showRetry(); }
     pending = "";
@@ -272,6 +283,7 @@ async function run(label, action) {
 }
 
 function showRetry() {
+  el("record").close();
   clearTimeout(expiryTimer);
   clearInterval(clockTimer);
   if (el("payment").open) {
@@ -337,10 +349,6 @@ function previewSettings() {
   el("draft-cost").textContent = money(plan.cost_cents);
 }
 
-el("explain-plan").onclick = event => {
-  const button = event.currentTarget;
-  button.setAttribute("aria-expanded", String(button.getAttribute("aria-expanded") !== "true"));
-};
 el("configure").onclick = () => {
   for (const input of el("profile").querySelectorAll("input")) input.checked = input.value === profile;
   el("scenario").value = scenario;
@@ -356,7 +364,33 @@ el("apply").onclick = () => {
   render();
   el("settings").close();
 };
+let recordRequest;
+
+function openRecord(plan) {
+  const undo = Boolean(state.manual_payment);
+  recordRequest = { undo, body: { version: state.record_version, profile, scenario } };
+  el("record-title").textContent = undo ? "Recorded outside payment" : "Record your payment";
+  el("record-help").textContent = undo ? "You marked this amount as paid outside FreightOS. Undoing the entry reopens that balance."
+    : "Confirm you already paid the fuel vendor outside FreightOS. This updates the bill record only.";
+  facts(el("record-facts"), [["Load", plan.load], ["Source", profiles[profile].source], ["Amount", money(plan.other_funds_cents)]]);
+  el("save-record").textContent = undo ? "Undo payment entry" : "I paid " + money(plan.other_funds_cents);
+  el("record-error").textContent = "";
+  el("record").showModal();
+}
+
+el("save-record").onclick = async () => {
+  const { undo, body } = recordRequest;
+  await run("Updating bill…", () => request(undo ? "/api/undo-record" : "/api/record-payment", body), el("record-error"));
+  if (state && (undo ? !state.manual_payment : state.manual_payment?.profile === body.profile && state.manual_payment?.scenario === body.scenario)) {
+    el("record").close();
+    el("open-payment").focus();
+  }
+};
+el("return-bill").onclick = () => { el("payment").close(); el("open-payment").focus(); };
+el("reserve-receipt").onclick = () => el("payment").showModal();
 el("open-payment").onclick = () => {
+  const plan = state.funding_plans[profile][scenario];
+  if (state.receipt || !plan.payment_cents) return openRecord(plan);
   el("payment").showModal();
   if (state?.deposit && !state.review && !state.receipt && state.funding_plans[profile][scenario].payment_cents) {
     run("Preparing review…", prepareReview);
@@ -365,8 +399,8 @@ el("open-payment").onclick = () => {
 for (const button of document.querySelectorAll("[data-dismiss]")) {
   button.onclick = () => button.closest("dialog").close();
 }
-el("reset").onclick = () => run("Starting over…", async () => {
-  await request("/api/reset", {});
+el("new-demo").onclick = el("reset").onclick = () => run("Starting over…", async () => {
+  await request("/api/reset", { version: state.record_version });
   profile = "quick pay";
   scenario = "oil stress";
   sessionStorage.removeItem("funding-profile");
