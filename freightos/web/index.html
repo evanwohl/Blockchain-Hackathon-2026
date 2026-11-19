@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#f8f8f1"><title>Load overview · FreightOS</title>
+  <meta name="theme-color" content="#f7f8f4"><title>Load overview · FreightOS</title>
   <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
   <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head>
 <body>
 <header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/" aria-current="page"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M8 15h3"/></svg>Fuel desk</a><a href="/trial"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M6 16v-4m6 4V5m6 11V9"/></svg>Carrier trial</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
-<main>
+<main class="desk">
   <div class="page-heading"><div><h1>Load <em>overview</em></h1></div>
     <button class="secondary configure" id="configure" disabled><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h5m5 0h6M4 17h10m5 0h1"/><circle cx="11.5" cy="7" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/></svg>Plan settings</button>
   </div>
@@ -29,15 +29,19 @@
     </section>
   </div>
   <div class="analysis-grid">
-    <section class="ledger" aria-labelledby="calendar-title"><div class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><h2 id="calendar-title">Load timeline</h2></div><ol id="timeline" aria-label="Planned cash movements"></ol></section>
+    <section class="ledger" aria-labelledby="calendar-title"><div class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><h2 id="calendar-title">Load timeline</h2></div><p class="timing" id="timing"></p><ol id="timeline" aria-label="Planned cash movements"></ol></section>
     <section class="costs" aria-labelledby="cost-title"><div class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14m-4-4 4 4-4 4M19 16H5m4-4-4 4 4 4"/></svg><h2 id="cost-title">Cost comparison</h2></div>
       <div class="saving"><strong id="saved">—</strong><span>in estimated fee savings</span></div>
       <dl class="compare"><div><dt>FreightOS plan</dt><dd id="plan-cost">—</dd><i><b id="plan-bar"></b></i></div><div><dt id="alternative">Alternative</dt><dd id="other-cost">—</dd><i><b id="other-bar"></b></i></div></dl>
       <details><summary>Fee breakdown</summary><dl id="fees" class="facts"></dl><p id="terms"></p></details>
-      <details><summary>Gemini fuel scenario</summary><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">View recorded oil contracts ↗</a></details>
+
     </section>
   </div>
-  <footer>Test funds on a local Solana fork. This sample fuel vendor accepts USDC.</footer>
+
+  <details class="market-note">
+    <summary><span>Gemini fuel scenario</span><span id="market-assumption"></span></summary>
+    <div><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">View recorded oil contracts ↗</a></div>
+  </details>
   <dialog id="settings" aria-labelledby="settings-title"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Load assumptions</p><button type="button" class="close" aria-label="Close settings" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
     <h2 id="settings-title">Plan settings</h2>
@@ -62,4 +66,5 @@
     <details id="challenge" hidden><summary>Test the vendor protection</summary><p>Try the reviewed payment with a different recipient.</p><button class="secondary" id="check">Test a different vendor</button><p id="result" role="status"></p></details>
     <details id="proof" hidden><summary>Transaction details</summary><pre id="details"></pre></details>
   </div></dialog></main>
+<footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Solana local fork</span><span>Sample fuel vendor accepts test USDC.</span></div></footer>
 </body></html>

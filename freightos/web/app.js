@@ -21,6 +21,9 @@ function renderCalendar(plan) {
   el("bill-scenario").textContent = plan.scenario === "oil stress" ? "Higher fuel estimate" : "Original fuel estimate";
   el("invoice-value").textContent = money(primary.receipt_cents);
   el("invoice-day").textContent = "Day " + primary.day;
+  const gap = primary.day - bill.day;
+  el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
+    : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
   const events = [
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true },
     ...plan.invoice_elections.map(item => ({
@@ -85,6 +88,9 @@ function renderPlan(plan) {
   facts(el("fees"), costs);
   el("terms").textContent = profile.terms + " Reserve costs include the sample fixed charge and estimated interest given up.";
   const g = plan.gemini;
+  el("market-assumption").textContent = plan.scenario === "oil stress"
+    ? "$" + g.stress_level + "/barrel stress case · " + g.gallons + " gallons"
+    : "Original estimate · " + g.gallons + " gallons";
   el("signal").textContent = "Gemini’s previous oil settlement was at least $" + g.lower_inclusive + " and below $" + g.upper_exclusive + " a barrel. At the recorded $" + g.stress_level + " threshold, the sample estimates up to " + money(g.extra_fuel_cents_interval[1]) + " extra for " + g.gallons + " gallons. This is a stress scenario.";
 }
 
