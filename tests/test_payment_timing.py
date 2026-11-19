@@ -106,3 +106,44 @@ def test_delayed_invoice_plan_replays_and_trial_gaps_match_saved_balances():
                                  in decision["balances_cents"].items() if primary["day"] <= int(day) < primary["day"] + 7)))
     trial = stressed_trial()["late_freight"]
     assert (trial["short_cases"], trial["peak_gaps_cents"]) == (sum(g > 0 for g in gaps), sum(gaps))
+
+
+def test_owner_can_refill_later_at_recorded_carry_cost_and_settle_the_same_fuel_amount():
+    from freightos.funding import REFILL_LATER
+    from freightos.verify_receipt import replay
+    from hedging.payment_timing import later_refill_calendar
+
+    app = LoadSettlement()
+    choices = app.plans[REFILL_LATER]
+    for key, plan in choices.items():
+        original = app.plans["quick pay"][key]
+        assert plan["payment_cents"] == original["payment_cents"]
+        assert plan["refill_policy"]["extra_term_bps"] == 7
+        assert [(i["option"], i["day"]) for i in plan["invoice_elections"]] == [("standard", 35), ("one day", 1)]
+        assert plan["cost_cents"] == 1200 + (plan["payment_cents"] * 33 + 9999) // 10000
+        assert min(price_calendar(plan["calendar"])["balances_cents"].values()) >= 0
+    assert choices["oil stress"]["cost_cents"] == 1384
+    app.act("deposit", {"profile": REFILL_LATER, "max_cents": 57001, "version": app.record_version})
+    review = app.act("review", {"profile": REFILL_LATER, "scenario": "oil stress"})
+    receipt = app.act("approve", {"approval": review["id"]})
+    assert replay(receipt)["vendor_received_usdc_raw"] == 555000000
+    credit = app.plans["credit line"]["oil stress"]["calendar"]
+    moved = later_refill_calendar(credit, "reserve redemption", 7, 7)
+    assert moved["funding"][1] == credit["funding"][1]
+    assert moved["funding"][0]["restore_day"] == credit["funding"][0]["restore_day"] + 7
+
+
+def test_optional_refill_savings_reconcile_to_two_late_customer_deadlines():
+    from freightos.funding import DELAY_DAYS
+    from hedging.payment_timing import late_invoice_calendar, later_refill_calendar
+
+    _, cases = trial_data()
+    savings = []
+    for row in cases.values():
+        late = late_invoice_calendar(row["case"], "primary load", DELAY_DAYS)
+        fixed = price_calendar(late)
+        flexible = price_calendar(later_refill_calendar(late, "Kamino reserve", DELAY_DAYS, 7))
+        savings.append(max(0, fixed["cost_cents"] - flexible["cost_cents"]))
+    report = stressed_trial()["flexible_refill"]
+    assert sum(savings) == report["savings_cents"] == 347094
+    assert sum(s > 0 for s in savings) == report["cheaper_cases"] == 39

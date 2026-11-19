@@ -70,8 +70,8 @@ function displayBaseline() {
   const savings = report[el("baseline").value + "_savings"];
   el("total").textContent = money(savings.total_cents);
   el("baseline-description").textContent = same
-    ? "Both strategies can use the reserve. FreightOS also checks combinations with credit. Fees fell on " + savings.positive_cases + " of " + report.cases + " sample loads."
-    : "Compared with the cheapest available plan without a reserve, fees fell on " + savings.positive_cases + " of " + report.cases + " sample loads.";
+    ? "Both strategies can use the reserve. FreightOS also checks combinations with credit. Modeled costs fell on " + savings.positive_cases + " of " + report.cases + " sample loads."
+    : "Compared with the cheapest available plan without a reserve, modeled costs fell on " + savings.positive_cases + " of " + report.cases + " sample loads.";
   facts(el("stats"), [
     ["Loads with lower financing costs", savings.positive_cases + " of " + report.cases],
     ["Loads with equal costs", savings.ties + " of " + report.cases],
@@ -93,10 +93,14 @@ async function showStress() {
     el("freight-delay-result").textContent = "When standard freight payments arrive a week late, " + late.short_cases + " of "
       + report.cases + " original plans run short. Their individual cash gaps sum to " + money(late.peak_gaps_cents)
       + ". Planning for the delay upfront costs an extra " + money(late.replanning_fee_cents) + " across the synthetic trial. Early-pay offers keep their quoted dates.";
+    const flex = stressReport.flexible_refill;
+    el("flexible-result").textContent = "With the same late customers and bank deadlines, having the option to refill the driver’s own reserve one week later cuts modeled costs by "
+      + money(flex.savings_cents) + " across " + flex.cheaper_cases + " loads versus keeping the original refill date. The extra week includes "
+      + (flex.extra_term_bps / 100).toFixed(2) + "% in estimated missed earnings on the reserve draw.";
     const timing = stressReport.one_day_delay;
     el("delay-only").textContent = "A one-day reserve delay alone leaves " + timing.misses + " planned loads short by "
       + money(timing.shortfall_cents) + " in total at their first missed deadlines. Allowing for that day before choosing funding adds "
-      + money(timing.replanning_fee_cents) + " in total fees across the " + report.cases + " simulated loads.";
+      + money(timing.replanning_fee_cents) + " in total estimated costs across the " + report.cases + " simulated loads.";
     const result = stressReport[el("baseline").value];
     el("adverse").textContent = "Add $5 per reserve use, half a percentage point in term costs and one day of delay. After repricing, savings versus the selected comparison total "
       + money(result.savings_cents) + " across " + report.cases + " loads. An unexpected delay after locking the original plans would miss " + report.surprise_delay_misses + " deadlines.";
@@ -117,7 +121,7 @@ async function load() {
   const used = report.loads.filter(item => item.used_reserve).length;
   el("reserve-count").textContent = used;
   el("outside-count").textContent = report.cases - used;
-  el("context").textContent = "Choose one of " + report.cases + " loads to inspect its fees and payments.";
+  el("context").textContent = "Choose one of " + report.cases + " loads to inspect its costs and payments.";
   el("baseline").disabled = false;
   el("composition").textContent = "Combining funding sources saved " + money(report.composition_savings.total_cents) + " versus the simpler reserve strategy. A driver making the same choices manually could match these costs.";
   el("assumptions").textContent = report.assumptions;

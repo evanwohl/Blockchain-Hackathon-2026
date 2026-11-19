@@ -73,14 +73,14 @@ export function cashPriority(state, funding, scenario, late = false) {
     row.querySelector("b").textContent = money(fee);
     row.querySelector("strong").textContent = cash;
     input.setAttribute("aria-label", row.querySelector("span").textContent + ", " + money(fee)
-      + " estimated fees" + (available ? ", " + cash + " left in wallet" : ""));
+      + " estimated costs" + (available ? ", " + cash + " left in wallet" : ""));
   }
   const credit = resolve("credit line"), road = resolve("road cash");
   const delta = state.setup_cents[credit] - state.setup_cents[road];
   const premium = state.funding_plans[road][scenario].cost_cents - state.funding_plans[credit][scenario].cost_cents;
-  field.querySelector(".cash-note").textContent = !quoted ? "Reserve setup is closed for this bill. You can still compare estimated fees."
+  field.querySelector(".cash-note").textContent = !quoted ? "Reserve setup is closed for this bill. You can still compare estimated costs."
     : state.setup_cents[credit] === null || state.setup_cents[road] === null ? "A dash means the reserve is unavailable for that option."
-    : delta > 0 ? "After setup, keep " + money(delta) + " more available for tolls or repairs for " + money(premium) + " in extra fees."
+    : delta > 0 ? "After setup, keep " + money(delta) + " more available for tolls or repairs for " + money(premium) + " in extra costs."
     : "The plans leave the same wallet balance after setup. In the bill, check unused money to see what you can move back to your wallet.";
   return selected;
 }

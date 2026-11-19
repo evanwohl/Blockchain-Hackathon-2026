@@ -13,9 +13,9 @@ from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, devnet, reserve_return
 from freightos.live import reserve_observation
-from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan
+from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, refill_cost
 from hedging.quick_pay import price_calendar
-from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, reserve_deadline
+from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
 ASSETS = Path(__file__).with_name("web")
 
@@ -49,18 +49,27 @@ def stressed_trial():
     comparisons = {"conventional": [], "composition": []}
     timing = {"misses": 0, "shortfall_cents": 0, "replanning_fee_cents": 0}
     freight_delay = {"days": DELAY_DAYS, "short_cases": 0, "peak_gaps_cents": 0, "replanning_fee_cents": 0}
+    refill = refill_cost(json.loads((DATA / "case_report.json").read_bytes()), DELAY_DAYS)
+    flexible = {"cheaper_cases": 0, "savings_cents": 0, "extra_term_bps": refill["extra_term_bps"]}
     for row in cases.values():
         case = row["case"]
         reserve = case["funding"][0]
         selected = row["decision"]
         gap = invoice_delay_gap(case, selected["payments"], selected["funding"], "primary load", DELAY_DAYS)
+        late_case = late_invoice_calendar(case, "primary load", DELAY_DAYS)
+        fixed_cost = selected["cost_cents"]
         if gap["extra_cash_cents"]:
-            revised = price_calendar(late_invoice_calendar(case, "primary load", DELAY_DAYS))
+            revised = price_calendar(late_case)
             if revised["status"] != "funded":
                 raise ValueError("No delayed-freight plan covers this trial load")
             freight_delay["short_cases"] += 1
             freight_delay["peak_gaps_cents"] += gap["extra_cash_cents"]
-            freight_delay["replanning_fee_cents"] += revised["cost_cents"] - selected["cost_cents"]
+            fixed_cost = revised["cost_cents"]
+            freight_delay["replanning_fee_cents"] += fixed_cost - selected["cost_cents"]
+        deferred = price_calendar(later_refill_calendar(late_case, reserve["id"], DELAY_DAYS, refill["extra_term_bps"]))
+        if deferred["status"] == "funded" and deferred["cost_cents"] < fixed_cost:
+            flexible["savings_cents"] += fixed_cost - deferred["cost_cents"]
+            flexible["cheaper_cases"] += 1
         cutoff = reserve_deadline(case, selected["payments"], selected["funding"], reserve["id"])
         if cutoff and cutoff["arrival_day"] + 1 > cutoff["last_day"]:
             timing["misses"] += 1
@@ -85,7 +94,7 @@ def stressed_trial():
         k = (len(values) + 9) // 10
         counts[name] = {"savings_cents": sum(values), "positive_cases": sum(x > 0 for x in values),
                         "replaced_cases": k, "worst_mix_cents": sum(sorted(values)[:-k]) + k * min(values)}
-    return {**counts, "one_day_delay": timing, "late_freight": freight_delay}
+    return {**counts, "one_day_delay": timing, "late_freight": freight_delay, "flexible_refill": flexible}
 
 
 class LoadSettlement:
@@ -353,6 +362,9 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(
                 200, "application/json", (DATA / "carrier_trial.json").read_bytes()
             )
+            return
+        if self.path == "/evidence/reserve-yield":
+            self.reply(200, "application/json", (DATA / "vault_metrics.json").read_bytes())
             return
         if self.path == "/evidence/gemini":
             self.reply(
