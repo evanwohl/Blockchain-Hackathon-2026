@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#22271f"><title>Next stop · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/next_stop.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
+<main class="public-ledger next-stop">
+  <a class="ledger-back" href="/public-offer">← Paid fuel bill</a>
+  <div class="public-spread">
+    <section class="public-cover">
+      <p class="panel-label">Driver’s reserve · After settlement</p>
+      <h1>Fuel for the<br><em>next stop.</em></h1>
+      <p>Two paid demo bills left money in the same fuel reserve. Preview cashing out both remainders, paying the next fuel bill and putting the rest back in your wallet.</p>
+      <details class="public-fuel" id="reserve-history"><summary>Where the money came from</summary>
+        <dl class="facts" id="share-history"></dl><p id="share-check"></p>
+        <p>These are unused deposits from two separate payments. The preview checks both receipts and the shares still held in the driver’s wallet.</p>
+        <a href="/public-payment#remaining">First payment receipt →</a><br><a href="/public-offer">Customer and reserve payment receipt →</a>
+      </details>
+    </section>
+    <section class="public-slip" aria-labelledby="stop-title">
+      <p class="panel-label">Public Solana preview</p>
+      <h2 id="stop-title">What do you need at the stop?</h2>
+      <form id="stop-form">
+        <div class="surcharge-fields">
+          <label>Fuel bill<span class="expense-input"><span aria-hidden="true">$</span><input id="stop-fuel" type="number" inputmode="decimal" min=".01" max="10000000000" step=".01" value="20.00" required></span></label>
+          <label>Minimum cash back<span class="expense-input"><span aria-hidden="true">$</span><input id="stop-road" type="number" inputmode="decimal" min="0" max="10000000000" step=".01" value="10.00" required></span></label>
+        </div>
+        <button class="primary" id="stop-check">Check on public Solana</button>
+      </form>
+      <p id="stop-status" role="status">Opening the saved preview…</p>
+      <section class="stop-result" id="stop-result" aria-labelledby="stop-verdict" hidden>
+        <h3 id="stop-verdict"></h3><dl class="facts" id="stop-breakdown"></dl>
+        <details><summary>Check the network amounts</summary><p id="stop-network"></p><a href="/evidence/next-stop" download="FreightOS-saved-next-stop.json">Download the original $20 simulation</a></details>
+      </section>
+      <p class="stop-note">Preview only. One test cent represents one dollar of the trip budget. Checking sends no funds.</p>
+    </section>
+  </div>
+</main>
+</body></html>

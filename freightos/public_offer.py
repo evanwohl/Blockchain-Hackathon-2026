@@ -113,21 +113,23 @@ def verify(run, rpc=None):
         meta = data["meta"]
         vault_delta = devnet.token_delta(data, keys, payment.custody, devnet.MINT, payment.vault_authority)
         if step == "prepare":
-            minted = devnet.token_delta(data, keys, payment.shares, devnet.SHARES, payment.payer)
+            carried, prepared = devnet.token_balances(meta, keys, payment.shares, devnet.SHARES, payment.payer)
+            minted = prepared - carried
             seeded = devnet.token_delta(data, keys, payment.customer_cash, devnet.MINT, payment.customer)
             spent = devnet.token_delta(data, keys, payment.cash, devnet.MINT, payment.payer)
             if (minted < payment.cap or seeded != payment.gross or spent != -seeded - run["deposit_raw"]
                     or vault_delta != run["deposit_raw"]):
                 raise ValueError("Reserve deposit or customer funding differs")
         else:
-            burned = -devnet.token_delta(data, keys, payment.shares, devnet.SHARES, payment.payer)
+            opened, closed = devnet.token_balances(meta, keys, payment.shares, devnet.SHARES, payment.payer)
+            burned = opened - closed
             received = devnet.token_delta(data, keys, payment.destination, devnet.MINT, payment.payee)
             before, after = devnet.token_balances(meta, keys, payment.customer_cash, devnet.MINT, payment.customer)
             reserve_paid = -vault_delta
             staging_delta = devnet.token_delta(data, keys, payment.staging, devnet.MINT, payment.payer)
-            carrier_delta = devnet.token_delta(data, keys, payment.cash, devnet.MINT, payment.payer)
-            if (not 0 < burned <= payment.cap or before != payment.gross or before - after != payment.customer_part
-                    or carrier_delta != 0 or staging_delta != 0 or reserve_paid != payment.amount
+            cash_before, cash_after = devnet.token_balances(meta, keys, payment.cash, devnet.MINT, payment.payer)
+            if (opened != prepared or not 0 < burned <= payment.cap or before != payment.gross or before - after != payment.customer_part
+                    or cash_before != cash_after or staging_delta != 0 or reserve_paid != payment.amount
                     or received != reserve_paid + payment.customer_part):
                 raise ValueError("The two contributions do not reconcile to the fuel bill")
         steps[step] = {"signature": signature, "slot": data["slot"]}
@@ -141,7 +143,8 @@ def verify(run, rpc=None):
     payment.check_receipt(receipt["value"], 2)
     return {"decision": run["decision"], "cost_comparison": compare_costs(), "received_raw": received, "customer_paid_raw": before - after,
             "customer_kept_raw": after, "reserve_paid_raw": reserve_paid, "shares_burned_raw": burned,
-            "receipt": str(payment.receipt), "steps": steps, "source": "public-rpc" if rpc else "saved-receipt"}
+            "wallet_after_settlement_raw": cash_after, "shares_before_setup_raw": carried, "shares_minted_raw": minted, "shares_after_raw": closed,
+            "share_account": str(payment.shares), "receipt": str(payment.receipt), "steps": steps, "source": "public-rpc" if rpc else "saved-receipt"}
 
 
 def main():
