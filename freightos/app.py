@@ -635,6 +635,7 @@ class Handler(BaseHTTPRequestHandler):
             "/bill": ("index.html", "text/html; charset=utf-8"),
             "/trial": ("trial.html", "text/html; charset=utf-8"),
             "/trial.js": ("trial.js", "text/javascript"),
+            "/workspace.css": ("workspace.css", "text/css"),
             "/style.css": ("style.css", "text/css"),
             "/app.js": ("app.js", "text/javascript"),
             "/wallet.js": ("wallet.js", "text/javascript"),

@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#22271f"><title>Next stop · FreightOS</title>
   <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css"><script type="module" src="/next_stop.js"></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/next_stop.js"></script>
 </head>
 <body class="workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
@@ -43,8 +43,7 @@
       </form>
       <p id="stop-status" role="status">Opening the saved preview…</p>
       <section class="stop-result" id="stop-result" aria-labelledby="stop-verdict" hidden>
-        <h3 id="stop-verdict"></h3><dl class="facts" id="stop-breakdown"></dl>
-        <p id="stop-adjustment" hidden></p>
+        <h3 id="stop-verdict"></h3><p id="stop-adjustment" hidden></p><dl class="facts" id="stop-breakdown"></dl>
         <p id="pump-limit" hidden></p>
         <details id="gallon-assumption" hidden><summary>How we priced the gallons</summary><p id="gallon-method"></p><a id="gallon-event" target="_blank" rel="noopener">See the Gemini oil close ↗</a> <a id="scenario-event" target="_blank" rel="noopener" hidden>See the oil threshold ↗</a></details>
         <details><summary>Check the network amounts</summary><p id="stop-network"></p><a id="stop-transcript" href="/evidence/next-stop" download="FreightOS-saved-next-stop.json">Download the original $20 simulation</a></details>

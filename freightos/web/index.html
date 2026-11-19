@@ -7,7 +7,7 @@
   <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/media/barlow-condensed-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="modulepreload" href="/common.js"><link rel="preload" href="/api/state" as="fetch" crossorigin>
-  <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/app.js"></script>
 </head>
 <body class="workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill" aria-current="page">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
@@ -74,7 +74,6 @@
       <p class="panel-label" id="plan-kind">Recommended plan</p>
       <h2 id="plan-head" tabindex="-1">Loading plan</h2>
       <p id="edge-reason"></p>
-      <button type="button" class="delay-launch" id="expense-note" aria-haspopup="dialog" hidden><span></span><span aria-hidden="true">→</span></button>
       <dl class="difference" aria-label="Estimated fee comparison">
         <div class="saving"><dt id="difference-label">Estimated savings</dt><dd id="saved"></dd></div>
         <div class="fee-row"><dt>Estimated plan cost</dt><dd id="chosen-cost"></dd></div>
@@ -86,6 +85,7 @@
         <tbody id="sources"></tbody>
         <tfoot><tr><th scope="row">Total</th><td id="for-fuel"></td><td id="plan-cost"></td></tr></tfoot>
       </table>
+      <button type="button" class="delay-launch" id="expense-note" aria-haspopup="dialog" hidden><span></span><span aria-hidden="true">→</span></button>
       <button type="button" class="delay-launch" id="open-surcharge" aria-haspopup="dialog" hidden>Check a customer fuel surcharge <span aria-hidden="true">↗</span></button>
       <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p><dl class="pair-fees facts" id="pair-fees"></dl><p id="pair-limit"></p><p id="terms"></p></details>
     </section>

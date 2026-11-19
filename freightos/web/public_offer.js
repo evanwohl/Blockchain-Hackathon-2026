@@ -2,7 +2,6 @@ import { el, facts, money, request, tokenUnits } from "./common.js";
 
 const verify = el("verify-offer");
 const status = el("offer-status");
-el("offer-trace").open = matchMedia("(min-width: 761px)").matches;
 
 function renderComparison(comparison, decision) {
   const labels = [["customer_fee_cents", "Customer fee"], ["invoice_fees_cents", "Freight invoice discounts"], ["reserve_cost_cents", "Fuel reserve cost"]];
@@ -145,7 +144,7 @@ function renderCover() {
   const reserve = el("cover-reserve");
   reserve.hidden = !cover.cash_only_cents;
   reserve.href = "/next-stop#fuel-buffer=" + cover.cash_only_cents;
-  reserve.textContent = "Check the " + buffer + " cash buffer on Solana →";
+  reserve.textContent = "Check the " + buffer + " cash buffer on Solana";
 }
 
 async function checkCover(live) {
