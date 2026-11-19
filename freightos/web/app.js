@@ -1,5 +1,6 @@
 import { cashPriority, downloadReceipt, el, facts, money, oilOptions, request, saveFile, tokenUnits, usesCredit } from "./common.js";
 import { bindWallet, walletState } from "./wallet.js";
+import { openBillTab } from "./bill_tabs.js";
 
 const roundedDollars = cents => money(cents).replace(/\.00$/, "");
 
@@ -9,6 +10,8 @@ const profiles = {
   "cash on hand": { source: "Available cash", comparison: "paying from cash", fallback: "If you pay directly with cash", terms: "Available cash covers the bill by its due date." }
 };
 profiles["road cash"] = profiles["credit line"];
+profiles["invoice backup"] = { ...profiles["quick pay"], source: "Early pay on the main invoice" };
+profiles["bank backup"] = profiles["road cash backup"] = profiles["credit line"];
 let state;
 let pending = "";
 let expiryTimer;
@@ -68,28 +71,35 @@ function renderCalendar(plan) {
     ? "We find the smallest fuel reserve that covers every tested bill within " + money(plan.cash_policy.fee_allowance_cents) + " of its lowest fee. Then we price the bank draw for this bill."
     : "FreightOS compares funding that arrives by day " + bill.day + " and prices the fees through repayment.";
   el("invoice-day").textContent = dayLabel(primary.day);
+  renderDeadline(plan);
   const gap = primary.day - bill.day;
-  el("day-gap").textContent = gap ? Math.abs(gap) + "-day gap" : "Same-day schedule";
+  el("day-gap").textContent = "View dates →";
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
     : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
-  el("timeline").replaceChildren(...scheduleEvents(plan).map(event => {
-    const row = document.createElement("li");
-    const day = document.createElement("span");
-    const pin = document.createElement("i");
-    const label = document.createElement("span");
-    const note = document.createElement("small");
-    const amount = document.createElement("strong");
-    day.className = "day";
-    pin.className = "pin";
-    label.className = "event-label";
-    day.textContent = dayLabel(event.day);
-    label.textContent = event.label;
-    note.textContent = event.note;
-    amount.textContent = (event.outgoing ? "−" : "+") + money(event.amount);
-    if (event.bill) row.dataset.bill = "";
-    label.append(note);
-    row.append(day, pin, label, amount);
-    return row;
+  const days = new Map();
+  for (const event of scheduleEvents(plan)) {
+    if (!days.has(event.day)) days.set(event.day, []);
+    days.get(event.day).push(event);
+  }
+  el("timeline").replaceChildren(...Array.from(days, ([day, events]) => {
+    const group = document.createElement("li");
+    const heading = document.createElement("h3");
+    heading.textContent = dayLabel(day);
+    const list = document.createElement("ul");
+    for (const event of events) {
+      const row = document.createElement("li");
+      const label = document.createElement("span");
+      const note = document.createElement("small");
+      const amount = document.createElement("strong");
+      label.textContent = event.label;
+      note.textContent = event.note;
+      amount.textContent = (event.outgoing ? "−" : "+") + money(event.amount);
+      row.append(label, amount, note);
+      list.append(row);
+      if (event.bill) group.dataset.bill = "";
+    }
+    group.append(heading, list);
+    return group;
   }));
 }
 
@@ -115,6 +125,15 @@ el("trip-form").onsubmit = event => {
 
 function explainChoice(plan) {
   const primary = plan.calendar.invoices.find(invoice => invoice.id === "primary load");
+  if (plan.backup_for) {
+    if (plan.backup_for === "quick pay") {
+      const early = plan.invoice_elections.find(item => item.invoice === primary.id);
+      return ["Use early pay on the main load", "Arrange early pay on the " + money(primary.face_cents) + " invoice. It releases "
+        + money(early.receipt_cents) + " on " + dayLabel(early.day) + ". Use " + money(plan.bill_cents) + " of that money for fuel."];
+    }
+    return ["Use the bank line for fuel", "Draw " + money(plan.bill_cents) + " from the sample bank line and pay the fuel company directly. Repayment including fees is "
+      + money(plan.bill_cents + plan.cost_cents) + "."];
+  }
   if (plan.profile === "cash on hand") {
     return ["Use the cash you have", "You have enough to pay for fuel on time. Collect both invoices on their usual dates."];
   }
@@ -178,14 +197,17 @@ function renderPlan(plan) {
   renderCalendar(plan);
   drawFunding(plan);
   el("allocation").style.setProperty("--reserve-share", (100 * plan.payment_cents / plan.bill_cents) + "%");
-  el("saved").textContent = money(plan.savings_cents);
+  const comparison = plan.backup_for ? state.funding_plans[plan.backup_for][plan.scenario].cost_cents : plan.alternative_cost_cents;
+  el("plan-kind").textContent = plan.backup_for ? "Selected backup plan" : "Recommended plan";
+  el("difference-label").textContent = plan.backup_for ? "Extra fee for backup" : "Estimated savings";
+  el("saved").textContent = money(plan.backup_for ? plan.cost_cents - comparison : plan.savings_cents);
   el("plan-cost").textContent = el("chosen-cost").textContent = money(plan.cost_cents);
-  const scale = Math.max(1, plan.cost_cents, plan.alternative_cost_cents);
-  for (const [id, cost] of [["chosen-cost", plan.cost_cents], ["other-cost", plan.alternative_cost_cents]]) {
+  const scale = Math.max(1, plan.cost_cents, comparison);
+  for (const [id, cost] of [["chosen-cost", plan.cost_cents], ["other-cost", comparison]]) {
     el(id).parentElement.style.setProperty("--share", (100 * cost / scale) + "%");
   }
-  el("alternative").textContent = profile.fallback;
-  el("other-cost").textContent = money(plan.alternative_cost_cents);
+  el("alternative").textContent = plan.backup_for ? "If the reserve arrives in time" : profile.fallback;
+  el("other-cost").textContent = money(comparison);
   el("bill").textContent = el("for-fuel").textContent = money(plan.bill_cents);
   const [heading, reason] = explainChoice(plan);
   el("plan-head").textContent = heading;
@@ -232,40 +254,74 @@ function renderFuelPolicy(plan) {
     ? options + " can work with the reserve to save " + money(edge.pairing_savings_cents) + " versus the cheaper group alone. With "
       + money(limit.minimum_useful_capacity_cents) + " available in the reserve, fees are " + money(limit.cost_at_threshold_cents)
       + ". One cent less brings fees to " + money(limit.cost_one_cent_below_cents) + "."
-    : "Your available cash already covers the bill. Combining sources adds no fee savings.";
+    : plan.backup_for ? "This backup leaves the fuel reserve out. The fees shown are for paying directly." : "Your available cash already covers the bill. Combining sources adds no fee savings.";
   const g = plan.gemini;
   const market = state.market_levels[g.stress_level];
   el("quote-evidence").textContent = "Recorded " + market.expiry.slice(0, 10) + " expiry. "
     + (market.recorded_buy_yes == null ? "The snapshot has no YES ask at this level." : "The recorded YES offer was $" + market.recorded_buy_yes + " per contract.")
     + " Each level is a planning scenario. Your local diesel price can move differently.";
   const policy = state.invoice_policies[plan.profile];
-  el("policy-detail").hidden = !policy;
-  if (!policy) {
-    el("policy-copy").textContent = "This option assumes you already have enough cash for the selected bill.";
-    return;
-  }
-  const base = state.funding_plans[plan.profile];
-  const budgets = Object.values(base).map(choice => choice.bill_cents);
-  el("policy-copy").textContent = "Fuel bills from " + roundedDollars(Math.min(...budgets)) + " to " + roundedDollars(Math.max(...budgets))
-    + " can use the same invoice terms. Keep up to " + roundedDollars(policy.peak_reserve_cents) + " available in the reserve.";
-  const plans = base;
-  const sorted = Object.entries(policy.outcomes).sort(([a], [b]) => plans[a].bill_cents - plans[b].bill_cents);
-  el("policy-rows").replaceChildren(...sorted.map(([key, outcome]) => {
+  const plans = state.funding_plans[plan.profile];
+  const sorted = Object.entries(plans).sort(([, a], [, b]) => a.bill_cents - b.bill_cents);
+  const locked = Boolean(state.review || state.receipt || state.manual_payment);
+  el("policy-copy").textContent = policy ? "The same invoice terms cover the tested bills from " + roundedDollars(sorted[0][1].bill_cents)
+    + " to " + roundedDollars(sorted.at(-1)[1].bill_cents) + ". Keep up to " + roundedDollars(policy.peak_reserve_cents) + " in the reserve."
+    : plan.backup_for ? "This backup uses outside funds across the tested fuel budgets." : "This option assumes you have cash for the selected fuel bill.";
+  el("budget-help").textContent = locked ? "This bill is locked to its selected estimate."
+    : "Choose a fuel bill to see the payment split and fees. Changing the estimate moves no money.";
+  el("policy-rows").replaceChildren(...sorted.map(([key, choice]) => {
     const row = document.createElement("tr");
     const header = document.createElement("th");
     header.scope = "row";
-    header.textContent = money(plans[key].bill_cents);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.value = key;
+    button.disabled = locked;
+    button.textContent = money(choice.bill_cents);
+    const subtitle = document.createElement("small");
+    subtitle.textContent = key === "fuel budget" ? "Original estimate" : "$" + choice.gemini.stress_level + " oil per barrel";
+    button.append(subtitle);
+    button.setAttribute("aria-pressed", String(key === plan.scenario));
+    header.append(button);
     row.append(header);
-    row.insertCell().textContent = money(outcome.reserve_cents);
-    row.insertCell().textContent = money(outcome.cost_cents);
+    row.insertCell().textContent = money(choice.payment_cents);
+    row.insertCell().textContent = money(choice.cost_cents);
     if (key === plan.scenario) row.className = "current-budget";
     return row;
   }));
-  el("policy-method").textContent = plan.cash_policy
+  el("policy-method").hidden = !policy;
+  if (policy) el("policy-method").textContent = plan.cash_policy
     ? "Both invoices stay on their usual terms. Across these fuel budgets, the most you pay above the lowest fee with the full reserve available is "
       + money(policy.worst_regret_cents) + "."
     : "We hold both invoice choices fixed, then resize funding for each fuel budget. The most this costs above choosing invoices after seeing the bill is "
       + money(policy.worst_regret_cents) + " in these scenarios.";
+}
+
+function renderDeadline(plan) {
+  const normal = plan.backup_for || plan.profile;
+  const cutoff = state.pairing_values[normal][plan.scenario].timing;
+  el("deadline").hidden = !cutoff;
+  if (!cutoff) return;
+  const backup = state.funding_plans[cutoff.backup_profile][plan.scenario];
+  const late = Boolean(plan.backup_for);
+  const days = cutoff.last_day - cutoff.arrival_day;
+  el("deadline-title").textContent = late ? "Paying without the reserve" : days === 0 ? "Funds must arrive on time"
+    : "Reserve can arrive " + days + (days === 1 ? " day late" : " days late");
+  el("arrival-date").textContent = dayLabel(cutoff.arrival_day);
+  el("cutoff-date").textContent = dayLabel(cutoff.last_day);
+  el("cutoff-copy").textContent = late ? "This backup covers the fuel bill even if the reserve arrives late."
+    : "If the money hasn’t cleared when fuel is due on " + dayLabel(cutoff.last_day) + ", this plan falls " + money(cutoff.shortfall_cents) + " short.";
+  el("normal-fee").textContent = money(state.funding_plans[normal][plan.scenario].cost_cents);
+  el("backup-fee").textContent = money(backup.cost_cents);
+  el("backup-copy").textContent = (normal === "quick pay" ? "Arrange early pay on the main invoice" : "Arrange a draw on your approved bank line")
+    + " before committing to invoice terms. Paying directly adds " + money(cutoff.extra_fee_cents) + " in estimated fees.";
+  el("backup-detail").querySelector("summary").textContent = late ? "Compare with the reserve plan" : "What if the reserve runs late?";
+  el("switch-timing").textContent = late ? "Use the reserve plan" : "Use this backup plan";
+  el("switch-timing").value = late ? normal : cutoff.backup_profile;
+  const locked = Boolean(state.review || state.receipt || state.manual_payment);
+  el("switch-timing").hidden = locked;
+  el("backup-lock").hidden = !locked;
+  el("backup-lock").textContent = state.review ? "Cancel the pending approval to change plans." : "A payment is recorded. This comparison is for reference.";
 }
 
 function paymentView(plan) {
@@ -312,6 +368,8 @@ function render() {
   const unavailable = state.setup_cents[profile] === null && !review && !receipt && !state.manual_payment;
   walletState(state, profile, busy);
   const entry = state.manual_payment;
+  el("switch-timing").disabled = busy;
+  el("policy-rows").inert = busy;
   const separate = profiles[profile].source.toLowerCase();
   el("reserve-ticket").classList.toggle("settled", Boolean(receipt));
   el("direct-ticket").classList.toggle("settled", Boolean(entry));
@@ -334,12 +392,13 @@ function render() {
   el("return-bill").hidden = !receipt;
   el("action-title").textContent = entry ? "This bill is paid" : recordable ? "Pay " + roundedDollars(balance) + " directly"
     : review ? "Check your payment" : state.setup_cents[profile] ? "Cover fuel in two payments" : "Review the fuel payment";
-  el("open-label").textContent = entry ? "View your payment entry" : recordable ? "I already paid this" : review ? "Return to approval" : state.deposit && !state.setup_cents[profile] ? "Review payment" : "Set aside " + money(state.setup_cents[profile]);
+  el("open-label").textContent = entry ? "View your payment entry" : recordable ? "Record my payment" : review ? "Return to approval" : state.deposit && !state.setup_cents[profile] ? "Review payment" : "Review reserve setup";
   el("payment-scope").textContent = entry ? "Your payment record covers the full bill."
+    : plan.backup_for ? "Arrange " + separate + " before the deadline. Pay the fuel company directly and record it here once paid."
     : recordable ? "Use " + separate + " to pay the fuel company yourself. Once you’ve paid, enter it here."
     : state.deposit && !state.setup_cents[profile] ? "Check the recipient and amount before approving the reserve payment."
-    : "Your fuel reserve will cover " + roundedDollars(plan.payment_cents) + " after approval. Pay the other "
-      + roundedDollars(plan.other_funds_cents) + " with " + separate + ".";
+    : (state.deposit ? "Add " : "Set aside ") + money(state.setup_cents[profile]) + " to cover the tested fuel budgets. After approval, "
+      + money(plan.payment_cents) + " goes to the fuel company. You pay " + money(plan.other_funds_cents) + " separately.";
   el("plan-jump").textContent = plan.savings_cents ? "See how this saves " + money(plan.savings_cents) : "See why this plan costs " + money(plan.cost_cents);
   if (unavailable) {
     el("open-payment").disabled = true;
@@ -529,10 +588,22 @@ el("check-public").onclick = async () => {
   }
 };
 el("download").onclick = () => downloadReceipt(state.load, state.receipt);
+function draftProfile() {
+  const funding = el("profile").querySelector(":checked").value;
+  const omit = el("no-reserve").checked && funding !== "cash on hand";
+  el("no-reserve-field").hidden = funding === "cash on hand";
+  const normal = cashPriority(state, funding, el("scenario").value);
+  if (!omit) return normal;
+  document.querySelector(".cash-choice").hidden = true;
+  return state.pairing_values[normal][el("scenario").value].timing?.backup_profile || normal;
+}
+
 function previewSettings() {
-  const choice = cashPriority(state, el("profile").querySelector(":checked").value, el("scenario").value);
+  const choice = draftProfile();
   for (const input of el("profile").querySelectorAll("input")) {
-    const estimate = state.funding_plans[usesCredit(choice) && usesCredit(input.value) ? choice : input.value][el("scenario").value];
+    const key = usesCredit(choice) && usesCredit(input.value) ? choice : input.value;
+    const timing = state.pairing_values[key][el("scenario").value].timing;
+    const estimate = state.funding_plans[el("no-reserve").checked && timing ? timing.backup_profile : key][el("scenario").value];
     input.labels[0].querySelector("small").textContent = money(estimate.cost_cents) + " plan fee";
   }
   const plan = state.funding_plans[choice][el("scenario").value];
@@ -550,26 +621,45 @@ for (const [ticket, part] of [["reserve-ticket", "reserve-part"], ["direct-ticke
 }
 
 el("day-gap").onclick = () => {
+  openBillTab("dates-tab");
   const schedule = el("schedule");
   schedule.open = true;
   schedule.querySelector("summary").focus();
   schedule.scrollIntoView({ block: "nearest" });
 };
+el("plan-jump").onclick = () => openBillTab("fees-tab");
 el("configure").onclick = () => {
-  for (const input of el("profile").querySelectorAll("input")) input.checked = input.value === (usesCredit(profile) ? "credit line" : profile);
-  for (const radio of document.querySelectorAll(".cash-choice input")) radio.checked = radio.value === (profile === "road cash" ? profile : "credit line");
+  const normal = displayedPlan.backup_for || profile;
+  for (const input of el("profile").querySelectorAll("input")) input.checked = input.value === (usesCredit(normal) ? "credit line" : normal);
+  for (const radio of document.querySelectorAll(".cash-choice input")) radio.checked = radio.value === (normal === "road cash" ? normal : "credit line");
   el("scenario").value = scenario;
+  el("no-reserve").checked = Boolean(displayedPlan.backup_for);
   previewSettings();
   el("settings").showModal();
 };
-el("scenario").onchange = el("profile").onchange = previewSettings;
-document.querySelector(".cash-choice").onchange = previewSettings;
-el("apply").onclick = () => {
-  scenario = el("scenario").value;
-  profile = cashPriority(state, el("profile").querySelector(":checked").value, scenario);
+function usePlan(nextProfile, nextScenario) {
+  profile = nextProfile;
+  scenario = nextScenario;
   sessionStorage.setItem("funding-profile", profile);
   sessionStorage.setItem("fuel-scenario", scenario);
   render();
+}
+
+el("policy-rows").onclick = event => {
+  const button = event.target.closest("button");
+  if (!button || pending || state.review || state.receipt || state.manual_payment) return;
+  usePlan(profile, button.value);
+  el("policy-rows").querySelector('[aria-pressed="true"]').focus({ preventScroll: true });
+};
+el("switch-timing").onclick = () => {
+  if (pending || state.review || state.receipt || state.manual_payment) return;
+  usePlan(el("switch-timing").value, scenario);
+  el("action-title").focus();
+};
+el("scenario").onchange = el("profile").onchange = el("no-reserve").onchange = previewSettings;
+document.querySelector(".cash-choice").onchange = previewSettings;
+el("apply").onclick = () => {
+  usePlan(draftProfile(), el("scenario").value);
   el("settings").close();
 };
 let recordRequest;
@@ -616,8 +706,11 @@ el("statement").onclick = async () => {
       "Fuel bill: " + money(plan.bill_cents), "Received by fuel company from reserve: " + money(received),
       "Outside payment recorded by driver: " + money(entry.cents), "Source: " + profiles[entry.profile].source];
     if (entry.reference) lines.push("Payment reference: " + entry.reference);
-    lines.push("Remaining bill balance: " + money(plan.bill_cents - received - entry.cents),
-      "", "Estimated plan fees: " + money(plan.cost_cents), "Estimated savings: " + money(plan.savings_cents));
+    lines.push("Remaining bill balance: " + money(plan.bill_cents - received - entry.cents), "", "Estimated plan fees: " + money(plan.cost_cents));
+    if (plan.backup_for) {
+      const normal = latest.funding_plans[plan.backup_for][entry.scenario];
+      lines.push("Extra fees for paying without the reserve: " + money(plan.cost_cents - normal.cost_cents));
+    } else lines.push("Estimated savings: " + money(plan.savings_cents));
     saveFile(plan.load + "-bill-statement.txt", lines.join("\r\n") + "\r\n", "text/plain;charset=utf-8");
     feedback.textContent = "Bill statement downloaded.";
   } catch (error) {
@@ -643,6 +736,7 @@ el("new-demo").onclick = el("reset").onclick = () => run("Starting over…", asy
   scenario = "oil stress";
   sessionStorage.removeItem("funding-profile");
   sessionStorage.removeItem("fuel-scenario");
+  openBillTab("fees-tab");
   sessionStorage.removeItem("trip-start");
   tripStart.value = "";
   el("payment").close();

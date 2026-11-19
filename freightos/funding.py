@@ -4,6 +4,7 @@ from functools import cache
 from freightos.capture import ROOT
 from freightos.fuel_markets import fuel_levels
 from hedging.invoice_policy import invoice_policy, reserve_limit
+from hedging.payment_timing import reserve_deadline
 from hedging.quick_pay import capacity_boundary, price_calendar
 
 DATA = ROOT / "artifacts/quick_pay"
@@ -11,6 +12,7 @@ LOAD = "FOS-2048"
 PROFILES = ("quick pay", "credit line", "cash on hand")
 ROAD_CASH = "road cash"
 ROAD_FEE_ALLOWANCE = 100
+BACKUPS = {"quick pay": "invoice backup", "credit line": "bank backup", ROAD_CASH: "road cash backup"}
 
 
 def funding_plan(sample, evidence, scenario, profile):
@@ -130,5 +132,20 @@ def demo_plans():
             plan["cash_policy"] = {"version": 1, "fee_allowance_cents": allowance,
                                    "reserve_limit_cents": policy["peak_reserve_cents"]}
             plans[profile][key] = plan
+    for profile, backup in BACKUPS.items():
+        plans[backup] = {}
+        for key, original in plans[profile].items():
+            case = reserve_limit(original["calendar"], 0)
+            plan = priced_plan(case, backup, key, original["gemini"], original["input_sha256"])
+            plan["backup_for"] = profile
+            plans[backup][key] = plan
     edges = {profile: {key: pairing_value(plan) for key, plan in choices.items()} for profile, choices in plans.items()}
+    for profile, backup in BACKUPS.items():
+        for key, plan in plans[profile].items():
+            deadline = reserve_deadline(plan["calendar"], plan["invoice_elections"], plan["funding"], "reserve redemption")
+            if deadline:
+                edges[profile][key]["timing"] = {
+                    **deadline, "backup_profile": backup,
+                    "extra_fee_cents": plans[backup][key]["cost_cents"] - plan["cost_cents"],
+                }
     return plans, edges, levels, policies
