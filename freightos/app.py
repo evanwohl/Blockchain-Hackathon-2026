@@ -12,8 +12,9 @@ from uuid import uuid4
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, devnet, reserve_return
+from freightos.surcharge import standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
-from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, public_fuel_comparison, refill_cost
+from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
 from hedging.quick_pay import price_calendar
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
@@ -106,7 +107,45 @@ class LoadSettlement:
         self.record_version = uuid4().hex
         self.quote_balances = None
         self.returns = {}
-        self.plans, self.edges, self.levels, self.policies = demo_plans()
+        plans, edges, self.levels, policies = demo_plans()
+        self.plans, self.edges, self.policies = plans.copy(), edges.copy(), policies.copy()
+        self.surcharge_profile = None
+        self.applied_quote = None
+
+    def clear_surcharge(self):
+        for group in (self.plans, self.edges, self.policies):
+            group.pop(self.surcharge_profile, None)
+        self.surcharge_profile = self.applied_quote = None
+        self.quote_balances = None
+
+    def quote_surcharge(self, data):
+        if self.fork.pending_review() or self.manual_payment or LOAD in self.fork.receipts:
+            raise ValueError("The fuel bill is locked to its payment plan")
+        if data.get("version") != self.record_version:
+            raise ValueError("This bill changed. Reopen the surcharge check.")
+        scenario = data.get("scenario")
+        base = self.plans["quick pay"].get(scenario)
+        if not base:
+            raise ValueError("Select a fuel estimate")
+        wallet = self.fork.balance(self.fork.cash)
+        cap = self.fork.available_after_deposit(wallet // 10000) // 10000
+        cap = min(cap, base["calendar"]["funding"][0]["net_capacity_cents"])
+        cents, day = data.get("cents"), data.get("day")
+        plans, policy = surcharge_plans(cents, day, cap)
+        plan = plans[scenario]
+        due = base["calendar"]["bills"][0]["day"]
+        other_day = due + 1 if day <= due else due
+        other_plans, _ = surcharge_plans(cents, other_day, cap)
+        quote = {**plan["surcharge"], "profile": plan["profile"], "scenario": scenario, "due": due,
+                 "bill_cents": plan["bill_cents"], "cost_cents": plan["cost_cents"],
+                 "reserve_cents": plan["payment_cents"], "comparison_day": other_day,
+                 "comparison_cost_cents": other_plans[scenario]["cost_cents"],
+                 "setup_cents": self.fork.deposit_quote(policy["peak_reserve_cents"]),
+                 "threshold_cents": standard_terms_threshold(cap),
+                 "budget_count": len(plans),
+                 "full_invoices": all(o == "standard" for o in policy["elections"].values()),
+                 "record_version": self.record_version}
+        return {"id": bill.commitment(quote).hex(), **quote}
 
     def setup_quotes(self):
         balances = self.fork.balance(self.fork.cash), self.fork.balance(self.fork.shares)
@@ -161,6 +200,7 @@ class LoadSettlement:
                 "last_return": self.latest_return(),
                 "manual_payment": self.manual_payment,
                 "record_version": self.record_version,
+                "surcharge_profile": self.surcharge_profile,
                 "receipt": self.fork.receipts.get(LOAD),
                 "review": review,
                 "plans": self.plans["quick pay"],
@@ -211,9 +251,26 @@ class LoadSettlement:
                 self.deposit_receipt = None
                 self.manual_payment = None
                 self.returns.clear()
+                self.clear_surcharge()
                 self.quote_balances = None
                 self.record_version = uuid4().hex
                 return {"reset": True}
+            if action == "quote-surcharge":
+                return self.quote_surcharge(data)
+            if action == "apply-surcharge":
+                if self.applied_quote and data.get("id") == self.applied_quote:
+                    return {"profile": self.surcharge_profile}
+                quote = self.quote_surcharge(data)
+                if quote["id"] != data.get("id"):
+                    raise ValueError("Check the surcharge plan again before using it")
+                plans, policy = surcharge_plans(quote["cents"], quote["day"], quote["capacity_cents"])
+                edges = {key: pairing_value(plan) for key, plan in plans.items()}
+                self.clear_surcharge()
+                key = quote["profile"]
+                self.plans[key], self.edges[key], self.policies[key] = plans, edges, policy
+                self.surcharge_profile, self.applied_quote = key, quote["id"]
+                self.record_version = uuid4().hex
+                return {"profile": key}
             if action == "return-quote":
                 return self.return_quote(data)
             if action == "return-reserve":
@@ -449,6 +506,7 @@ class Handler(BaseHTTPRequestHandler):
             "/media/instrument-serif-latin-400-italic.woff2": ("media/instrument-serif-latin-400-italic.woff2", "font/woff2"),
             "/media/barlow-condensed-latin-600-normal.woff2": ("media/barlow-condensed-latin-600-normal.woff2", "font/woff2"),
             "/media/inter-latin-wght-normal.woff2": ("media/inter-latin-wght-normal.woff2", "font/woff2"),
+            "/surcharge.js": ("surcharge.js", "text/javascript"),
             "/next_trip.js": ("next_trip.js", "text/javascript"),
             "/common.js": ("common.js", "text/javascript"),
         }
@@ -477,6 +535,8 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
             if self.path not in (
+                "/api/quote-surcharge",
+                "/api/apply-surcharge",
                 "/api/deposit",
                 "/api/review",
                 "/api/approve",

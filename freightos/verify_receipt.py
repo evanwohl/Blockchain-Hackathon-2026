@@ -101,7 +101,12 @@ def replay(receipt):
             if hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != checksum:
                 raise ValueError("Funding source snapshot differs")
         sample = json.loads((DATA / "sample_calendar.json").read_bytes())
-        if "cash_policy" in decision or "late_freight" in decision:
+        if "surcharge" in decision:
+            from freightos.surcharge import surcharge_plans
+
+            terms = decision["surcharge"]
+            plan = surcharge_plans(terms["cents"], terms["day"], terms["capacity_cents"])[0][decision["scenario"]]
+        elif "cash_policy" in decision or "late_freight" in decision:
             policy = decision.get("cash_policy") or decision["late_freight"]
             version = policy.get("version", 1)
             policies = demo_plans() if version == 2 else demo_plans(version)

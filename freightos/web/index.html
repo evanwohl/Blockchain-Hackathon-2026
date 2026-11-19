@@ -86,6 +86,7 @@
         <tbody id="sources"></tbody>
         <tfoot><tr><th scope="row">Total</th><td id="for-fuel"></td><td id="plan-cost"></td></tr></tfoot>
       </table>
+      <button type="button" class="delay-launch" id="open-surcharge" aria-haspopup="dialog" hidden>Check a customer fuel surcharge <span aria-hidden="true">↗</span></button>
       <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p><dl class="pair-fees facts" id="pair-fees"></dl><p id="pair-limit"></p><p id="terms"></p></details>
     </section>
     <div class="schedule-column" id="dates-panel">
@@ -123,6 +124,25 @@
     </details>
     </div>
   </div>
+  <dialog id="surcharge" aria-labelledby="surcharge-title"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Customer terms · FOS-2048</p><button class="close" type="button" data-dismiss aria-label="Close surcharge check">×</button></div>
+    <h2 id="surcharge-title">When does the fuel money arrive?</h2>
+    <div class="surcharge-work"><div>
+    <p id="surcharge-help">Use a fuel surcharge the customer agreed to pay on top of the freight invoice. Leave out anything already included in the freight rate.</p>
+    <form id="surcharge-form" aria-describedby="surcharge-help">
+      <div class="surcharge-fields">
+        <label>Agreed surcharge<span class="expense-input"><span aria-hidden="true">$</span><input id="surcharge-amount" type="number" inputmode="decimal" step=".01" min=".01" max="10000000000" value="180" required></span></label>
+        <label>Trip day it clears<span class="expense-input"><input id="surcharge-day" type="number" inputmode="numeric" step="1" min="1" max="365" value="5" required></span></label>
+      </div><button type="submit" class="secondary" id="check-surcharge">Check plan</button>
+    </form>
+    <p id="surcharge-status" role="status"></p></div>
+    <section id="surcharge-before" aria-labelledby="surcharge-before-title"><h3 id="surcharge-before-title">Without a surcharge</h3><dl class="facts" id="surcharge-base"></dl></section>
+    <section id="surcharge-result" aria-labelledby="surcharge-outcome" hidden>
+      <h3 id="surcharge-outcome" tabindex="-1"></h3><dl class="facts" id="surcharge-facts"></dl>
+      <p id="surcharge-boundary"></p>
+      <button class="primary" id="apply-surcharge" type="button">Use this plan</button>
+    </section></div>
+  </div></dialog>
   <dialog id="next-trip" aria-labelledby="expense-heading"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Trip planning · FOS-2048</p><button class="close" type="button" aria-label="Close next-trip check" data-dismiss>×</button></div>
     <h2 id="expense-heading">Cash for the next trip</h2>
@@ -186,6 +206,7 @@
       <label><input type="radio" name="funding" value="quick pay" checked><span>I can get invoices paid early</span><small></small></label>
       <label><input type="radio" name="funding" value="credit line"><span>I also have bank credit</span><small></small></label>
       <label><input type="radio" name="funding" value="cash on hand"><span>I have cash for the bill</span><small></small></label>
+      <label id="custom-funding" hidden><input type="radio" name="funding" disabled><span>Use my fuel surcharge</span><small></small></label>
     </fieldset>
     <p id="access-help"></p>
     <label for="scenario">Fuel budget</label><select id="scenario"><option value="oil stress">Allow for higher fuel prices</option><option value="fuel budget">Original fuel estimate</option></select>

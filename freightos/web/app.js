@@ -1,5 +1,6 @@
 import { cashPriority, downloadReceipt, el, facts, money, oilOptions, request, saveFile, tokenUnits, usesCredit } from "./common.js";
 import { bindWallet, openWalletReturn, walletState } from "./wallet.js";
+import { bindSurcharge } from "./surcharge.js";
 import { renderNextTrip } from "./next_trip.js";
 import { openBillTab } from "./bill_tabs.js";
 
@@ -46,12 +47,19 @@ function regularProfile(plan) {
   return normal.late_freight?.regular_profile || normal.profile;
 }
 
+function outsideSource(plan) {
+  if (!plan.surcharge) return profiles[plan.profile].source;
+  const customer = plan.surcharge.for_fuel_cents;
+  if (!customer) return "Early invoice pay";
+  return customer === plan.other_funds_cents ? "Customer fuel surcharge" : "Customer surcharge and early invoice pay";
+}
+
 function scheduleEvents(plan) {
   const bill = plan.calendar.bills[0];
   return [
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true, outgoing: true },
     ...plan.invoice_elections.map(item => ({
-      day: item.day, label: item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
+      day: item.day, label: item.invoice === "fuel surcharge" ? "Customer fuel surcharge" : item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
       note: item.option === "standard" ? (plan.refill_policy && item.invoice === "primary load" ? "Late freight estimate" : "Scheduled payment") : "Early payment after a "
         + money(plan.calendar.invoices.find(i => i.id === item.invoice).face_cents - item.receipt_cents) + " discount", amount: item.receipt_cents
     })),
@@ -134,6 +142,17 @@ el("trip-form").onsubmit = event => {
 
 function explainChoice(plan) {
   const primary = plan.calendar.invoices.find(invoice => invoice.id === "primary load");
+  if (plan.surcharge) {
+    const s = plan.surcharge;
+    const terms = plan.invoice_elections.filter(i => i.invoice !== "fuel surcharge");
+    const early = terms.find(i => i.option !== "standard");
+    const title = s.for_fuel_cents ? "Put the surcharge toward fuel" : "Cover fuel before the surcharge clears";
+    const timing = s.for_fuel_cents ? "Use " + money(s.for_fuel_cents) + " from your customer for fuel on " + dayLabel(plan.calendar.bills[0].day)
+      + "." : "Your customer’s " + money(s.cents) + " arrives on " + dayLabel(s.day) + ", after fuel is due.";
+    const invoice = early ? " Take early pay on the " + (early.invoice === "backhaul" ? "return load" : "main load")
+      + " for " + money(early.receipt_cents) + "." : " Collect both freight invoices in full.";
+    return [title, timing + invoice];
+  }
   if (plan.backup_for) {
     if (regularProfile(plan) === "quick pay") {
       const early = plan.invoice_elections.find(item => item.invoice === primary.id);
@@ -198,7 +217,7 @@ function drawTicket(id, { x, y, depth, amount, source, load }) {
 function drawFunding(plan) {
   const reserveDepth = 48 * plan.payment_cents / plan.bill_cents;
   drawTicket("direct-ticket", { x: 38, y: plan.payment_cents ? 175 : 127, depth: 48 - reserveDepth,
-    amount: plan.other_funds_cents, source: profiles[plan.profile].source, load: plan.load });
+    amount: plan.other_funds_cents, source: outsideSource(plan), load: plan.load });
   drawTicket("reserve-ticket", { x: 13, y: 93, depth: reserveDepth, amount: plan.payment_cents,
     source: "Fuel reserve", load: plan.load });
 }
@@ -246,7 +265,11 @@ function renderPlan(plan) {
   const main = plan.calendar.invoices.find(i => i.id === "primary load");
   const mainPaid = plan.invoice_elections.find(i => i.invoice === main.id);
   const laterFee = mainPaid.day > plan.calendar.bills[0].day ? main.face_cents - mainPaid.receipt_cents : 0;
-  sources.push([profile.source, plan.other_funds_cents, plan.cost_cents - (reserve?.cost_cents || 0) - laterFee]);
+  const customer = plan.surcharge?.for_fuel_cents || 0;
+  if (customer) sources.push(["Customer fuel surcharge", customer, 0]);
+  const otherCost = plan.cost_cents - (reserve?.cost_cents || 0) - laterFee;
+  if (!plan.surcharge || plan.other_funds_cents > customer || otherCost)
+    sources.push([plan.surcharge ? "Early invoice pay" : profile.source, plan.other_funds_cents - customer, otherCost]);
   if (laterFee) sources.push(["Earlier freight payment after fuel is due", 0, laterFee]);
   el("sources").replaceChildren(...sources.map(([name, amount, cost]) => {
     const row = document.createElement("tr");
@@ -279,7 +302,7 @@ function renderFuelPolicy(plan) {
   const edge = state.pairing_values[plan.profile][plan.scenario];
   const options = usesCredit(regularProfile(plan)) ? "Bank credit and return-invoice options" : "Return-invoice options";
   facts(el("pair-fees"), [
-    ["Main invoice and existing cash", money(edge.base_cents)],
+    [plan.surcharge ? "Main invoice, cash and surcharge" : "Main invoice and existing cash", money(edge.base_cents)],
     ["Add only the fuel reserve", money(edge.reserve_only_cents)],
     ["Add only outside funding", money(edge.outside_only_cents)],
     ["Allow both", money(edge.joint_cents)]
@@ -289,7 +312,7 @@ function renderFuelPolicy(plan) {
     ? options + " can work with the reserve to save " + money(edge.pairing_savings_cents) + " versus the cheaper group alone. With "
       + money(limit.minimum_useful_capacity_cents) + " available in the reserve, estimated costs are " + money(limit.cost_at_threshold_cents)
       + ". One cent less brings costs to " + money(limit.cost_one_cent_below_cents) + "."
-    : plan.backup_for ? "This backup leaves the fuel reserve out. The costs shown are for paying directly." : "Your available cash already covers the bill. Combining sources adds no cost savings.";
+    : plan.surcharge ? "Each comparison uses the same agreed surcharge and receipt date." : plan.backup_for ? "This backup leaves the fuel reserve out. The costs shown are for paying directly." : "Your available cash already covers the bill. Combining sources adds no cost savings.";
   const g = plan.gemini;
   const market = state.market_levels[g.stress_level];
   el("quote-evidence").textContent = "Recorded " + market.expiry.slice(0, 10) + " expiry. "
@@ -459,7 +482,7 @@ function render() {
   el("switch-invoice").disabled = busy || plan.profile === el("switch-invoice").value;
   el("switch-refill").disabled = busy || plan.profile === el("switch-refill").value;
   el("policy-rows").inert = el("next-trip").inert = busy;
-  const separate = profiles[profile].source.toLowerCase();
+  const separate = outsideSource(plan).toLowerCase();
   el("reserve-ticket").classList.toggle("settled", Boolean(receipt));
   el("direct-ticket").classList.toggle("settled", Boolean(entry));
   const delivered = receipt ? receipt.vendor_received_usdc_raw / 10000 : 0;
@@ -473,6 +496,8 @@ function render() {
   el("original").hidden = balance === plan.bill_cents;
   el("bill-status").textContent = entry ? "Paid" : receipt ? "Partly paid" : "Unpaid";
   el("bill-status").dataset.stage = entry ? "paid" : receipt ? "partial" : "open";
+  el("open-surcharge").hidden = Boolean(review || receipt || entry) || !(profile === "quick pay" || plan.surcharge);
+  el("open-surcharge").disabled = busy;
   el("configure").disabled = busy || Boolean(review || receipt || entry);
   el("open-payment").disabled = el("save-record").disabled = busy;
   el("reserve-receipt").hidden = !receipt;
@@ -543,10 +568,17 @@ async function sync(restore = false) {
   for (const [key, choices] of Object.entries(state.funding_plans)) {
     if (profiles[key]) continue;
     const plan = choices["oil stress"];
+    if (plan.surcharge) {
+      profiles[key] = { fallback: "Same surcharge without the fuel reserve", terms: "The surcharge is a separate agreed payment from the customer." };
+      continue;
+    }
     const base = regularProfile(plan);
     profiles[key] = plan.backup_for && base === "quick pay" ? profiles["invoice backup"] : profiles[base];
     if (!plan.backup_for && usesCredit(base)) profiles[key] = { ...profiles[base], fallback: "Bank and earlier freight payment without the reserve" };
   }
+  const custom = el("custom-funding").querySelector("input");
+  custom.disabled = el("custom-funding").hidden = !state.surcharge_profile;
+  custom.value = state.surcharge_profile || "";
   oilOptions(el("scenario"), state.plans);
   if (previousApproval && state.receipt?.approval === previousApproval) el("status").textContent = "";
   const locked = (state.receipt || state.review)?.decision || state.manual_payment;
@@ -561,7 +593,7 @@ async function sync(restore = false) {
       sessionStorage.setItem("fuel-scenario", scenario);
     }
   }
-  if (choice.has("plan") || ["next-trip", "late-freight"].includes(choice.get("view"))) history.replaceState(null, "", location.pathname + location.search);
+  if (choice.has("plan") || ["next-trip", "late-freight", "surcharge"].includes(choice.get("view"))) history.replaceState(null, "", location.pathname + location.search);
   if (locked) {
     scenario = locked.scenario;
     profile = locked.profile;
@@ -593,6 +625,7 @@ async function sync(restore = false) {
     openBillTab("dates-tab");
     el("open-invoice-delay").click();
   }
+  if (choice.get("view") === "surcharge" && !el("open-surcharge").hidden) el("open-surcharge").click();
   if (choice.get("view") === "next-trip" && !el("expense-note").hidden) el("expense-note").click();
   if (restore && (state.review || reopenPayment) && !el("payment").open) el("payment").showModal();
   reopenPayment = false;
@@ -615,6 +648,7 @@ async function run(label, action, feedback = el("status")) {
 }
 
 function showRetry() {
+  el("surcharge").close();
   el("wallet-dialog").close();
   el("record").close();
   clearTimeout(expiryTimer);
@@ -692,6 +726,11 @@ el("check-public").onclick = async () => {
 el("download").onclick = () => downloadReceipt(state.load, state.receipt);
 function draftProfile() {
   const funding = el("profile").querySelector(":checked").value;
+  if (funding === state.surcharge_profile) {
+    for (const id of ["no-reserve-field", "late-freight-field", "later-refill-field"]) el(id).hidden = true;
+    document.querySelector(".cash-choice").hidden = true;
+    return funding;
+  }
   const omit = el("no-reserve").checked && funding !== "cash on hand";
   el("no-reserve-field").hidden = funding === "cash on hand";
   el("late-freight-field").hidden = funding === "cash on hand";
@@ -708,7 +747,7 @@ function draftProfile() {
 
 function previewSettings() {
   const choice = draftProfile();
-  for (const input of el("profile").querySelectorAll("input")) {
+  for (const input of el("profile").querySelectorAll("input:enabled")) {
     const fuel = el("scenario").value;
     const primary = input.value === "credit line" ? document.querySelector(".cash-choice input:checked").value : input.value;
     const delay = state.pairing_values[primary][fuel].invoice_delay;
@@ -801,6 +840,11 @@ el("apply").onclick = () => {
   usePlan(draftProfile(), el("scenario").value);
   el("settings").close();
 };
+bindSurcharge(() => ({ state, plan: displayedPlan }), dayLabel, async (key, fuel) => {
+  await sync();
+  if (!state.review && !state.receipt && !state.manual_payment && state.surcharge_profile === key) usePlan(key, fuel);
+  openBillTab("fees-tab");
+}, sync);
 let recordRequest;
 
 function openRecord(plan) {
@@ -810,7 +854,7 @@ function openRecord(plan) {
   el("record-title").textContent = undo ? "Recorded outside payment" : "Record your payment";
   el("record-help").textContent = undo ? "You marked this amount as paid outside FreightOS. Undoing the entry reopens that balance."
     : "Confirm you already paid the fuel vendor outside FreightOS. This updates the bill record only.";
-  const rows = [[undo ? "Recorded by you" : "Paid by you outside FreightOS", money(plan.other_funds_cents)], ["Source", profiles[profile].source], ["Load", plan.load]];
+  const rows = [[undo ? "Recorded by you" : "Paid by you outside FreightOS", money(plan.other_funds_cents)], ["Source", outsideSource(plan)], ["Load", plan.load]];
   if (state.manual_payment?.reference) rows.push(["Reference", state.manual_payment.reference]);
   facts(el("record-facts"), rows);
   el("reference-field").hidden = undo;
@@ -843,7 +887,9 @@ el("statement").onclick = async () => {
     const received = (latest.receipt?.vendor_received_usdc_raw || 0) / 10000;
     const lines = ["FreightOS · Demo bill statement", "Load " + plan.load, "",
       "Fuel bill: " + money(plan.bill_cents), "Received by fuel company from reserve: " + money(received),
-      "Outside payment recorded by driver: " + money(entry.cents), "Source: " + profiles[entry.profile].source];
+      "Outside payment recorded by driver: " + money(entry.cents), "Source: " + outsideSource(plan)];
+    if (plan.surcharge) lines.push("Customer surcharge promised: " + money(plan.surcharge.cents) + " on trip day " + plan.surcharge.day,
+      "Customer surcharge allocated to fuel: " + money(plan.surcharge.for_fuel_cents));
     if (entry.reference) lines.push("Payment reference: " + entry.reference);
     lines.push("Remaining bill balance: " + money(plan.bill_cents - received - entry.cents), "", "Estimated plan cost: " + money(plan.cost_cents));
     if (plan.backup_for) {
