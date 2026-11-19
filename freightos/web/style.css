@@ -757,3 +757,12 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .stop-choice input { width: 1.1rem; height: 1.1rem; accent-color: #40592b; }
 #stop-later .expense-input { max-width: 9rem; margin-top: .35rem; }
 #stop-adjustment { margin: .6rem 0; }
+
+#stop-pricing { margin-top: .65rem; border-block: 1px solid #c7cbbf; }
+#stop-pricing summary { padding: .7rem 0; cursor: pointer; font-weight: 600; }
+#stop-pricing label > span:first-child { font-weight: 400; }
+@media (min-width: 761px) and (min-height: 640px) {
+  .stop-context:not(:has(details[open])) { position: sticky; top: 1.25rem; }
+}
+#pump-help { margin: .4rem 0; font-size: .84rem; }
+#pump-limit { margin: .5rem 0 .9rem; font-weight: 600; }

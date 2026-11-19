@@ -3,7 +3,9 @@
 import gzip
 import json
 from datetime import datetime, timezone
+from fractions import Fraction
 from functools import cache
+from math import ceil
 
 from freightos import devnet, fuel_update, public_offer
 from hedging.quick_pay import integer
@@ -24,15 +26,29 @@ def amounts(fuel_cents, road_cents):
     integer(road_cents, "cash for the road")
 
 
-def fuel_holdback(gallons, market):
-    if not integer(gallons, "gallons for later"):
+def check_fuel_inputs(gallons, pump_mills, oil_rise):
+    if not integer(gallons, "gallons for later", 100_000):
         raise ValueError("Enter at least one gallon for the next stop")
+    if pump_mills is not None and not integer(pump_mills, "diesel price", 999_999):
+        raise ValueError("Enter a positive diesel price")
+    if type(oil_rise) is not bool:
+        raise ValueError("Invalid oil scenario")
+
+
+def fuel_holdback(gallons, market, *, pump_mills=None, oil_rise=False):
+    check_fuel_inputs(gallons, pump_mills, oil_rise)
     trip_gallons = int(market["gallons"])
     if trip_gallons <= 0 or market["marked_cents"] <= 0:
         raise ValueError("A positive trip estimate is required to price future gallons")
-    cents = (market["marked_cents"] * gallons + trip_gallons - 1) // trip_gallons
-    return {"gallons": gallons, "cost_cents": cents, "trip_gallons": trip_gallons, "trip_cents": market["marked_cents"],
-            "oil_close": market["close"], "event": market["close_ticker"], "checked_at": market["checked_at"]}
+    per_gallon = Fraction(market["marked_cents"], trip_gallons) if pump_mills is None else Fraction(pump_mills, 10)
+    base = ceil(gallons * per_gallon)
+    rise = max(0, Fraction(market["threshold"]) - Fraction(market["close"])) if oil_rise else 0
+    added_per_gallon = rise * Fraction(market["cents_per_oil_dollar"]) / trip_gallons
+    cents = ceil(gallons * (per_gallon + added_per_gallon))
+    return {"gallons": gallons, "cost_cents": cents, "base_cents": base, "extra_cents": cents - base,
+            "trip_gallons": trip_gallons, "trip_cents": market["marked_cents"], "pump_mills": pump_mills,
+            "oil_rise": oil_rise, "threshold": market["threshold"], "oil_close": market["close"],
+            "event": market["close_ticker"], "scenario_event": market["target_ticker"], "checked_at": market["checked_at"]}
 
 
 def preview(first, second, fuel_cents, road_cents, rpc, *, holdback=None):
@@ -73,7 +89,8 @@ def preview(first, second, fuel_cents, road_cents, rpc, *, holdback=None):
         split = check_split(plan, budget, upper, road, rpc)
         deficit = needed - split["retained_raw"]
         if deficit <= 0:
-            return {**result, **split, "budget_limit_cents": upper // scale}
+            return {**result, **split, "budget_limit_cents": upper // scale, "shortfall_raw": fuel - upper,
+                    "covered_pump_mills": (split["retained_raw"] // scale) * 10 // holdback["gallons"]}
         upper -= ((deficit + scale - 1) // scale) * scale
         if upper <= 0:
             break

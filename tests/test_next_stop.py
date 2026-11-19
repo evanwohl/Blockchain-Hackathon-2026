@@ -129,3 +129,33 @@ def test_no_first_fill_when_cash_and_future_fuel_exceed_the_available_balance(pr
 def test_gallon_input_is_a_positive_whole_count(gallons):
     with pytest.raises(ValueError):
         next_stop.fuel_holdback(gallons, next_stop.fuel_update.saved())
+
+
+@pytest.mark.parametrize(("price", "stress", "base", "total"), [
+    (3999, False, 1200, 1200), (3999, True, 1200, 1249),
+    (None, False, 1010, 1010), (None, True, 1010, 1058),
+])
+def test_later_budget_anchors_diesel_then_applies_only_the_incremental_oil_move(price, stress, base, total):
+    held = next_stop.fuel_holdback(3, next_stop.fuel_update.saved(), pump_mills=price, oil_rise=stress)
+    assert (held["base_cents"], held["cost_cents"], held["extra_cents"]) == (base, total, total - base)
+
+
+def test_oil_already_above_threshold_keeps_the_posted_diesel_price():
+    market = {**next_stop.fuel_update.saved(), "close": "93.55"}
+    held = next_stop.fuel_holdback(3, market, pump_mills=3999, oil_rise=True)
+    assert held["base_cents"] == held["cost_cents"] == 1200
+
+
+def test_pump_sign_limit_is_the_largest_thousandth_affordable_on_verified_remaining_proceeds():
+    result = next_stop.saved(True)
+    mills = result["covered_pump_mills"]
+    assert mills == 3366
+    gallons = result["holdback"]["gallons"]
+    remaining_cents = result["retained_raw"] // result["raw_units_per_cent"]
+    assert mills * gallons <= remaining_cents * 10 < (mills + 1) * gallons
+
+
+@pytest.mark.parametrize(("price", "stress"), [(0, False), (False, False), (3.999, False), (1_000_000, False), (3999, 1)])
+def test_invalid_pump_price_or_scenario_is_rejected(price, stress):
+    with pytest.raises(ValueError):
+        next_stop.check_fuel_inputs(3, price, stress)
