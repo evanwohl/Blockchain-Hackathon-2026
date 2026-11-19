@@ -19,13 +19,13 @@ def commitment(decision):
     ).digest()
 
 
-def receipt_address(payer, load):
-    return Pubkey.create_with_seed(payer, load_seed(load), PROGRAM)
+def receipt_address(payer, load, program=PROGRAM):
+    return Pubkey.create_with_seed(payer, load_seed(load), program)
 
 
-def authorize(payer, vendor, load, amount, cap, digest, creation_rent):
+def authorize(payer, vendor, load, amount, cap, digest, creation_rent, *, program=PROGRAM):
     seed = load_seed(load)
-    receipt = receipt_address(payer, load)
+    receipt = receipt_address(payer, load, program)
     staging = Pubkey.create_with_seed(payer, seed, TOKEN)
     ixs = []
     if creation_rent is not None:
@@ -38,14 +38,14 @@ def authorize(payer, vendor, load, amount, cap, digest, creation_rent):
                     seed=seed,
                     lamports=creation_rent,
                     space=RECEIPT_SIZE,
-                    owner=PROGRAM,
+                    owner=program,
                 )
             )
         )
     data = b"\x00" + seed.encode() + struct.pack("<QQ", amount, cap) + digest
     ixs.append(
         Instruction(
-            PROGRAM,
+            program,
             data,
             [
                 AccountMeta(payer, True, False),
@@ -58,9 +58,9 @@ def authorize(payer, vendor, load, amount, cap, digest, creation_rent):
     return ixs
 
 
-def attest(payer, receipt, digest):
+def attest(payer, receipt, digest, *, program=PROGRAM):
     return Instruction(
-        PROGRAM,
+        program,
         b"\x01" + digest[:16],
         [
             AccountMeta(payer, True, False),

@@ -21,9 +21,10 @@ def associated(owner, mint):
     ]
 
 
-def vault_instruction(route, owner, token_account, shares, amount, *, deposit=False):
+def vault_instruction(route, owner, token_account, shares, amount, *, deposit=False, venue=(PROGRAM, VAULT, USDC)):
     keys = [Pubkey.from_string(s) for s in route]
-    if keys[1] != VAULT or keys[6] != USDC or keys[13] != PROGRAM:
+    program, vault, usdc = venue
+    if keys[1] != vault or keys[6] != usdc or keys[13] != program:
         raise ValueError("Unsupported vault")
     keys[0], keys[5], keys[7] = owner, token_account, shares
     if deposit:
@@ -43,7 +44,7 @@ def vault_instruction(route, owner, token_account, shares, amount, *, deposit=Fa
     writable.update(range(offset, offset + reserves))
     metas = [AccountMeta(key, i == 0, i in writable) for i, key in enumerate(keys)]
     discriminator = hashlib.sha256(("global:" + name).encode()).digest()[:8]
-    return Instruction(PROGRAM, discriminator + struct.pack("<Q", amount), metas)
+    return Instruction(program, discriminator + struct.pack("<Q", amount), metas)
 
 
 def load_seed(load_id):
@@ -53,14 +54,15 @@ def load_seed(load_id):
 
 
 def payment_instructions(
-    route, owner, recipient_usdc, load_id, exact_usdc, max_shares, rent
+    route, owner, recipient_usdc, load_id, exact_usdc, max_shares, rent, *, venue=(PROGRAM, VAULT, USDC)
 ):
+    usdc = venue[2]
     if not load_id or not 0 < exact_usdc < 2**64:
         raise ValueError("A load ID and positive USDC amount are required")
     seed = load_seed(load_id)
     staging = Pubkey.create_with_seed(owner, seed, TOKEN)
     mint = Pubkey.from_string(route[8])
-    if recipient_usdc in (staging, associated(owner, USDC)):
+    if recipient_usdc in (staging, associated(owner, usdc)):
         raise ValueError("Expected a distinct payee token account")
     create = create_account_with_seed(
         CreateAccountWithSeedParams(
@@ -76,17 +78,17 @@ def payment_instructions(
     initialize = Instruction(
         TOKEN,
         b"\x12" + bytes(owner),
-        [AccountMeta(staging, False, True), AccountMeta(USDC, False, False)],
+        [AccountMeta(staging, False, True), AccountMeta(usdc, False, False)],
     )
     redeem = vault_instruction(
-        route, owner, staging, associated(owner, mint), max_shares
+        route, owner, staging, associated(owner, mint), max_shares, venue=venue
     )
     pay = Instruction(
         TOKEN,
         b"\x0c" + struct.pack("<QB", exact_usdc, 6),
         [
             AccountMeta(staging, False, True),
-            AccountMeta(USDC, False, False),
+            AccountMeta(usdc, False, False),
             AccountMeta(recipient_usdc, False, True),
             AccountMeta(owner, True, False),
         ],

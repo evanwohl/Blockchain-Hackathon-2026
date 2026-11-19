@@ -570,3 +570,35 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 #policy-rows button small { font-size: .72rem; color: var(--muted); font-weight: 450; }
 #policy-rows button[aria-pressed="true"] { border-left-color: #506535; }
 #policy-rows button:hover:enabled { background: #d8e2bc; }
+
+.overview-links { display: flex; flex-wrap: wrap; gap: .2rem 1.5rem; }
+.public-bill-link, .receipt-fallback { font-size: .86rem; }
+.public-ledger { max-width: 80rem; margin: auto; padding: 1.6rem var(--inset) 3rem; }
+.ledger-back { display: inline-block; padding-block: .55rem; text-underline-offset: .25em; }
+.public-spread { display: grid; grid-template-columns: 1fr 1fr; margin-top: 1.2rem; border: 1px solid #454a40; }
+.public-cover, .public-slip { padding: clamp(1.5rem, 4vw, 3.6rem); }
+.public-cover { background: #22271f; color: #f5f4e9; }
+.public-cover .panel-label, .public-cover a { color: #d7e7a5; }
+.public-cover h1 { margin: 1.75rem 0; font: 600 clamp(3.6rem, 7vw, 7rem)/.92 var(--display); letter-spacing: -.035em; }
+.public-cover h1 em { font-family: "Instrument Serif", Georgia, serif; font-weight: 400; }
+.public-cover p:not(.panel-label) { max-width: 40ch; line-height: 1.55; }
+.receipt-cost { margin-top: 1.6rem; padding-top: .8rem; border-top: 1px solid #626b57; }
+.receipt-cost dl { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: .7rem 0; }
+.receipt-cost dt, .receipt-cost p:last-child { font-size: .88rem; }
+.receipt-cost dd { margin: .2rem 0; font: 600 2.2rem/1 var(--display); }
+.public-cover .ledger-back { margin-top: 1rem; }
+.public-slip { background: #f3f1e9; color: #24291f; }
+.public-slip h2 { margin: 1rem 0 .2rem; font: 600 1.55rem var(--display); }
+.public-amount { display: block; font: 600 clamp(3.5rem, 6vw, 6rem)/1 var(--display); letter-spacing: -.035em; }
+.public-amount small { font-size: .36em; letter-spacing: 0; }
+.public-slip p { line-height: 1.45; }
+.payment-stops { list-style: none; margin: 1.5rem 0; padding: 0; }
+.payment-stops li { border-top: 1px solid #afb5a2; padding: .65rem 0; }
+.payment-stops a { font-weight: 650; text-underline-offset: .2em; }
+.payment-stops p, .public-status { font-size: .88rem; }
+.payment-stops p { margin: .25rem 0 0; }
+@media (max-width: 720px) {
+  .public-spread { grid-template-columns: 1fr; }
+  .public-cover h1 { margin-block: 1rem; }
+  .public-cover h1 br { display: none; }
+}
