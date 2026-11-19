@@ -18,7 +18,7 @@ def delay_bound(row, expected_key, latest_key):
     return latest
 
 
-def price_calendar(case, *, minimize_source=None, fee_limit_cents=None):
+def price_calendar(case, *, minimize_source=None, fee_limit_cents=None, maximize_discount_on=None):
     """Prices a single USD payment rail. Each step settles receipts before its bills."""
     opening = integer(case["opening_cash_cents"], "opening cash")
     floor = integer(case["reserve_floor_cents"], "cash reserve")
@@ -50,6 +50,7 @@ def price_calendar(case, *, minimize_source=None, fee_limit_cents=None):
         volume.append(principal)
         return len(columns) - 1
 
+    variable_discount = None
     choices = []
     grouped_elections = {}
     for invoice in invoices:
@@ -64,6 +65,13 @@ def price_calendar(case, *, minimize_source=None, fee_limit_cents=None):
             fee = (
                 face * integer(p["fee_bps"], "discount basis points", 10000) + 9999
             ) // 10000
+            fee += integer(p.get("fixed_fee_cents", 0), "fixed invoice fee", face)
+            if fee > face:
+                raise ValueError("Invoice fees exceed the payment")
+            if invoice["id"] == maximize_discount_on:
+                if len(options) != 1 or fee or minimize_source is not None:
+                    raise ValueError("Use one undiscounted receipt to price an offer")
+                variable_discount = column(face, cost=1, flows={day: -1})
             j = column(1, fee, flows={day: face - fee})
             group.append(j)
             by_name[p["name"]] = j
@@ -135,6 +143,17 @@ def price_calendar(case, *, minimize_source=None, fee_limit_cents=None):
             raise ArithmeticError("Integer cash-flow reconstruction failed")
         return answer
 
+    if maximize_discount_on is not None:
+        if variable_discount is None:
+            raise ValueError("Unknown receipt for the discount")
+        limit = integer(fee_limit_cents, "fee limit")
+        constraints.append(({j: c for j, c in enumerate(costs) if c}, 0, limit))
+        objective = [0] * len(columns)
+        objective[variable_discount] = -1
+        answer = optimize(objective)
+        if answer is None:
+            return {"status": "unfunded"}
+        return {"status": "funded", "max_discount_cents": answer[variable_discount]}
     if minimize_source is not None:
         if minimize_source not in {s["id"] for s in sources}:
             raise ValueError("Unknown funding source to minimize")

@@ -12,7 +12,7 @@ from uuid import uuid4
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, devnet, reserve_return
-from freightos.surcharge import standard_terms_threshold, surcharge_plans
+from freightos.surcharge import offer_decision, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
 from hedging.quick_pay import price_calendar
@@ -131,20 +131,32 @@ class LoadSettlement:
         cap = self.fork.available_after_deposit(wallet // 10000) // 10000
         cap = min(cap, base["calendar"]["funding"][0]["net_capacity_cents"])
         cents, day = data.get("cents"), data.get("day")
-        plans, policy = surcharge_plans(cents, day, cap)
-        plan = plans[scenario]
         due = base["calendar"]["bills"][0]["day"]
-        other_day = due + 1 if day <= due else due
-        other_plans, _ = surcharge_plans(cents, other_day, cap)
+        offer = None
+        if "regular_day" in data or "fee_cents" in data:
+            regular = data.get("regular_day")
+            if regular is None:
+                raise ValueError("Enter the regular payment day")
+            plans, policy, offer = offer_decision(cents, day, regular, data.get("fee_cents"), cap, scenario)
+            other_day = regular if offer["take_offer"] else day
+            other_cost = offer["wait_cost_cents"] if offer["take_offer"] else offer["early_cost_cents"]
+        else:
+            plans, policy = surcharge_plans(cents, day, cap)
+            other_day = due + 1 if day <= due else due
+            other_plans, _ = surcharge_plans(cents, other_day, cap)
+            other_cost = other_plans[scenario]["cost_cents"]
+        plan = plans[scenario]
         quote = {**plan["surcharge"], "profile": plan["profile"], "scenario": scenario, "due": due,
                  "bill_cents": plan["bill_cents"], "cost_cents": plan["cost_cents"],
                  "reserve_cents": plan["payment_cents"], "comparison_day": other_day,
-                 "comparison_cost_cents": other_plans[scenario]["cost_cents"],
+                 "comparison_cost_cents": other_cost,
                  "setup_cents": self.fork.deposit_quote(policy["peak_reserve_cents"]),
                  "threshold_cents": standard_terms_threshold(cap),
                  "budget_count": len(plans),
                  "full_invoices": all(o == "standard" for o in policy["elections"].values()),
                  "record_version": self.record_version}
+        if offer is not None:
+            quote["offer"] = offer
         return {"id": bill.commitment(quote).hex(), **quote}
 
     def setup_quotes(self):
@@ -263,7 +275,8 @@ class LoadSettlement:
                 quote = self.quote_surcharge(data)
                 if quote["id"] != data.get("id"):
                     raise ValueError("Check the surcharge plan again before using it")
-                plans, policy = surcharge_plans(quote["cents"], quote["day"], quote["capacity_cents"])
+                plans, policy = surcharge_plans(quote["cents"], quote["day"], quote["capacity_cents"],
+                                                quote.get("fee_cents", 0), quote.get("regular_day"))
                 edges = {key: pairing_value(plan) for key, plan in plans.items()}
                 self.clear_surcharge()
                 key = quote["profile"]

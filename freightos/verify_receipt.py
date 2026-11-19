@@ -105,7 +105,9 @@ def replay(receipt):
             from freightos.surcharge import surcharge_plans
 
             terms = decision["surcharge"]
-            plan = surcharge_plans(terms["cents"], terms["day"], terms["capacity_cents"])[0][decision["scenario"]]
+            plans, _ = surcharge_plans(terms["cents"], terms["day"], terms["capacity_cents"],
+                                       terms.get("fee_cents", 0), terms.get("regular_day"))
+            plan = plans[decision["scenario"]]
         elif "cash_policy" in decision or "late_freight" in decision:
             policy = decision.get("cash_policy") or decision["late_freight"]
             version = policy.get("version", 1)

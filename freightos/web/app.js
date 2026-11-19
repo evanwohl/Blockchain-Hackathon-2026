@@ -60,7 +60,9 @@ function scheduleEvents(plan) {
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true, outgoing: true },
     ...plan.invoice_elections.map(item => ({
       day: item.day, label: item.invoice === "fuel surcharge" ? "Customer fuel surcharge" : item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
-      note: item.option === "standard" ? (plan.refill_policy && item.invoice === "primary load" ? "Late freight estimate" : "Scheduled payment") : "Early payment after a "
+      note: item.invoice === "fuel surcharge" && plan.surcharge?.regular_day
+        ? "Early customer payment after a " + money(plan.surcharge.fee_cents) + " fee"
+        : item.option === "standard" ? (plan.refill_policy && item.invoice === "primary load" ? "Late freight estimate" : "Scheduled payment") : "Early payment after a "
         + money(plan.calendar.invoices.find(i => i.id === item.invoice).face_cents - item.receipt_cents) + " discount", amount: item.receipt_cents
     })),
     ...plan.funding.flatMap(item => {
@@ -151,7 +153,8 @@ function explainChoice(plan) {
       + "." : "Your customer’s " + money(s.cents) + " arrives on " + dayLabel(s.day) + ", after fuel is due.";
     const invoice = early ? " Take early pay on the " + (early.invoice === "backhaul" ? "return load" : "main load")
       + " for " + money(early.receipt_cents) + "." : " Collect both freight invoices in full.";
-    return [title, timing + invoice];
+    const offer = s.regular_day ? " Arrange " + dayLabel(s.day) + " payment with the customer for the agreed " + money(s.fee_cents) + " fee." : "";
+    return [title, timing + invoice + offer];
   }
   if (plan.backup_for) {
     if (regularProfile(plan) === "quick pay") {
@@ -266,8 +269,9 @@ function renderPlan(plan) {
   const mainPaid = plan.invoice_elections.find(i => i.invoice === main.id);
   const laterFee = mainPaid.day > plan.calendar.bills[0].day ? main.face_cents - mainPaid.receipt_cents : 0;
   const customer = plan.surcharge?.for_fuel_cents || 0;
-  if (customer) sources.push(["Customer fuel surcharge", customer, 0]);
-  const otherCost = plan.cost_cents - (reserve?.cost_cents || 0) - laterFee;
+  const offerFee = plan.surcharge?.fee_cents || 0;
+  if (customer || offerFee) sources.push(["Customer fuel surcharge", customer, offerFee]);
+  const otherCost = plan.cost_cents - (reserve?.cost_cents || 0) - laterFee - offerFee;
   if (!plan.surcharge || plan.other_funds_cents > customer || otherCost)
     sources.push([plan.surcharge ? "Early invoice pay" : profile.source, plan.other_funds_cents - customer, otherCost]);
   if (laterFee) sources.push(["Earlier freight payment after fuel is due", 0, laterFee]);
@@ -593,7 +597,7 @@ async function sync(restore = false) {
       sessionStorage.setItem("fuel-scenario", scenario);
     }
   }
-  if (choice.has("plan") || ["next-trip", "late-freight", "surcharge"].includes(choice.get("view"))) history.replaceState(null, "", location.pathname + location.search);
+  if (choice.has("plan") || ["next-trip", "late-freight", "surcharge", "surcharge-offer"].includes(choice.get("view"))) history.replaceState(null, "", location.pathname + location.search);
   if (locked) {
     scenario = locked.scenario;
     profile = locked.profile;
@@ -625,7 +629,8 @@ async function sync(restore = false) {
     openBillTab("dates-tab");
     el("open-invoice-delay").click();
   }
-  if (choice.get("view") === "surcharge" && !el("open-surcharge").hidden) el("open-surcharge").click();
+  if (["surcharge", "surcharge-offer"].includes(choice.get("view")) && !el("open-surcharge").hidden)
+    openSurcharge(choice.get("view") === "surcharge-offer");
   if (choice.get("view") === "next-trip" && !el("expense-note").hidden) el("expense-note").click();
   if (restore && (state.review || reopenPayment) && !el("payment").open) el("payment").showModal();
   reopenPayment = false;
@@ -840,7 +845,7 @@ el("apply").onclick = () => {
   usePlan(draftProfile(), el("scenario").value);
   el("settings").close();
 };
-bindSurcharge(() => ({ state, plan: displayedPlan }), dayLabel, async (key, fuel) => {
+const openSurcharge = bindSurcharge(() => ({ state, plan: displayedPlan }), dayLabel, async (key, fuel) => {
   await sync();
   if (!state.review && !state.receipt && !state.manual_payment && state.surcharge_profile === key) usePlan(key, fuel);
   openBillTab("fees-tab");
@@ -888,8 +893,11 @@ el("statement").onclick = async () => {
     const lines = ["FreightOS · Demo bill statement", "Load " + plan.load, "",
       "Fuel bill: " + money(plan.bill_cents), "Received by fuel company from reserve: " + money(received),
       "Outside payment recorded by driver: " + money(entry.cents), "Source: " + outsideSource(plan)];
-    if (plan.surcharge) lines.push("Customer surcharge promised: " + money(plan.surcharge.cents) + " on trip day " + plan.surcharge.day,
+    if (plan.surcharge) lines.push("Customer surcharge face amount: " + money(plan.surcharge.cents),
+      "Expected customer proceeds: " + money(plan.surcharge.cents - (plan.surcharge.fee_cents || 0)) + " on trip day " + plan.surcharge.day,
       "Customer surcharge allocated to fuel: " + money(plan.surcharge.for_fuel_cents));
+    if (plan.surcharge?.regular_day) lines.push("Customer early-payment fee: " + money(plan.surcharge.fee_cents),
+      "Regular customer payment due on trip day " + plan.surcharge.regular_day);
     if (entry.reference) lines.push("Payment reference: " + entry.reference);
     lines.push("Remaining bill balance: " + money(plan.bill_cents - received - entry.cents), "", "Estimated plan cost: " + money(plan.cost_cents));
     if (plan.backup_for) {

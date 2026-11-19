@@ -6,7 +6,7 @@ from hedging.quick_pay import integer, price_calendar
 RESERVE = "reserve redemption"
 
 
-def _invoice_choices(plans):
+def invoice_choices(plans):
     if not plans:
         raise ValueError("At least one fuel budget is required")
     invoices = next(iter(plans.values()))["calendar"]["invoices"]
@@ -43,12 +43,12 @@ def _minimum_capacity(cases, plans, allowance):
     return minimum
 
 
-def invoice_policy(plans, *, fee_allowance_cents=None):
+def invoice_policy(plans, *, fee_allowance_cents=None, comparison_costs=None):
     """Choose common invoice terms before fuel is known and size draws after each outcome."""
     if fee_allowance_cents is not None:
         integer(fee_allowance_cents, "fee allowance")
     best = None
-    for invoices in _invoice_choices(plans):
+    for invoices in invoice_choices(plans):
         cases = {k: {**p["calendar"], "invoices": invoices} for k, p in plans.items()}
         if fee_allowance_cents is not None:
             minimum = _minimum_capacity(cases, plans, fee_allowance_cents)
@@ -69,6 +69,9 @@ def invoice_policy(plans, *, fee_allowance_cents=None):
         elections = {i["id"]: i["options"][0]["name"] for i in invoices}
         rank = (regret, max(row["cost_cents"] for row in results.values()), capacity,
                 sum(option != "standard" for option in elections.values()))
+        if comparison_costs is not None:
+            worst_difference = max(row["cost_cents"] - comparison_costs[key] for key, row in results.items())
+            rank = (worst_difference, *rank)
         if fee_allowance_cents is not None:
             rank = (capacity, *rank)
         if best is None or rank < best[0]:
