@@ -3,18 +3,31 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>FreightOS · Carrier trial</title>
+  <link rel="preload" href="/media/barlow-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css"><script type="module" src="/trial.js"></script>
 </head>
 <body>
-<header><div class="bar"><a class="brand" href="/">Freight<span>OS</span></a><nav aria-label="Main navigation"><a href="/">Fuel bill</a><a aria-current="page" href="/trial">Carrier trial</a></nav><span class="network">Demo · Test funds</span></div></header>
+<header class="mast"><div class="bar">
+  <a class="brand" href="/" aria-label="FreightOS home"><i class="logomark" aria-hidden="true"></i>FreightOS</a>
+  <nav aria-label="Main navigation"><a href="/">Fuel desk</a><a aria-current="page" href="/trial">Carrier trial</a></nav>
+  <span class="network"><i aria-hidden="true"></i>Test funds</span>
+</div></header>
 <main>
-  <div class="loadline">Funding comparison <span>Synthetic carrier data</span></div>
-  <h1>When does a reserve help?</h1>
-  <p class="intro">Each plan faces the same fuel bill, financing offers and payment deadline.</p>
+  <div class="cover trial-cover">
+    <div class="cover-type"><div class="folio">Field study <span>/</span> Synthetic carrier data</div>
+      <h1>Carrier trial</h1>
+      <p>Compare funding choices across the same bills, offers and deadlines.</p>
+    </div>
+    <div class="study-total"><h2 id="trial-total">Modeled savings across all loads</h2><strong class="hero-value" id="total">—</strong></div>
+  </div>
   <div class="workspace">
-    <section class="outlook" aria-labelledby="trial-total"><h2 class="label" id="trial-total">Total modeled financing savings</h2><strong class="hero-value" id="total">—</strong><p class="comparison" id="context"></p></section>
+    <section class="outlook matrix-panel" aria-labelledby="map-title">
+      <h2 id="map-title">Load index</h2><p id="context"></p>
+      <div id="load-map" role="group" aria-label="Choose a load"></div>
+      <div class="legend"><span><i class="used"></i>Used reserve</span><span><i></i>No draw</span></div>
+    </section>
     <section class="panel action" aria-labelledby="load-title">
-      <div class="actionhead"><strong id="load-title">Look inside one load</strong></div>
+      <div class="actionhead"><strong id="load-title">Load detail</strong></div>
       <div class="inside"><label for="case">Sample load</label><select id="case" disabled></select>
         <dl id="case-facts"></dl><p id="outcome" role="status"></p>
         <button id="receipt" class="secondary" hidden>Download signed receipt</button>
@@ -30,5 +43,5 @@
     </div></section>
   </div>
   <p role="status" id="status"></p><button class="plain" id="retry" hidden>Try again</button>
-  <footer>All savings are estimates for synthetic loads. Signed receipts record test payments on a local Solana fork.</footer>
+  <footer><span class="footer-mark" aria-hidden="true">F/OS</span>All savings are estimates for synthetic loads. Signed receipts record test payments on a local Solana fork.</footer>
 </main></body></html>

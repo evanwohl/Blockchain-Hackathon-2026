@@ -3,26 +3,39 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>FreightOS · Fuel bill</title>
+  <link rel="preload" href="/media/barlow-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head>
 <body>
-<header><div class="bar"><a class="brand" href="/">Freight<span>OS</span></a><nav aria-label="Main navigation"><a aria-current="page" href="/">Fuel bill</a><a href="/trial">Carrier trial</a></nav><span class="network">Demo · Test funds</span></div></header>
+<header class="mast"><div class="bar">
+  <a class="brand" href="/" aria-label="FreightOS home"><i class="logomark" aria-hidden="true"></i>FreightOS</a>
+  <nav aria-label="Main navigation"><a aria-current="page" href="/">Fuel desk</a><a href="/trial">Carrier trial</a></nav>
+  <span class="network"><i aria-hidden="true"></i>Test funds</span>
+</div></header>
 <main>
-  <div class="loadline">Load FOS-2048 <span>Fuel bill due on day 5</span></div>
-  <h1>Pay your fuel bill</h1>
-  <p class="intro">Your $3,000 freight invoice pays on day 28. See what it costs to cover fuel before then.</p>
+  <div class="cover">
+    <div class="cover-type"><div class="folio">Load manifest <span>/</span> FOS-2048</div>
+      <h1>Fuel settlement</h1>
+      <p>Your fuel is due on day 5. Your $3,000 freight invoice pays on day 28.</p>
+    </div>
+    <div class="cover-photo"><img src="/media/linehaul.webp" alt="" width="1500" height="500"></div>
+  </div>
+  <div class="controls">
+    <label>Fuel scenario<select id="scenario" disabled><option value="oil stress">Higher oil price</option><option value="fuel budget">Original estimate</option></select></label>
+    <label>Funding access<select id="profile" disabled><option value="quick pay">Invoice quick pay</option><option value="credit line">Bank credit line</option><option value="cash on hand">Cash on hand</option></select></label>
+  </div>
   <div class="workspace">
     <section class="outlook" aria-labelledby="savings-title">
-      <h2 class="label" id="savings-title">Estimated financing savings on this load</h2>
+      <h2 class="label" id="savings-title">Estimated fee savings</h2>
       <strong class="hero-value" id="saved">—</strong>
       <dl class="compare">
-        <div><dt>This plan costs</dt><dd id="plan-cost">—</dd></div>
-        <div><dt id="alternative">Alternative cost</dt><dd id="other-cost">—</dd></div>
+        <div><dt>This plan</dt><dd id="plan-cost">—</dd><i class="cost-track" aria-hidden="true"><b id="plan-bar"></b></i></div>
+        <div><dt id="alternative">Alternative cost</dt><dd id="other-cost">—</dd><i class="cost-track" aria-hidden="true"><b id="other-bar"></b></i></div>
       </dl>
       <a class="jump" href="#title">View payment plan</a>
     </section>
     <section class="panel action" aria-labelledby="title">
-      <div class="actionhead"><strong>Reserve payment</strong><ol id="steps" aria-label="Payment progress"><li>Fund</li><li>Review</li><li>Pay</li></ol></div>
+      <div class="actionhead"><strong>Payment order</strong><ol id="steps" aria-label="Payment progress"><li>Fund</li><li>Review</li><li>Pay</li></ol></div>
       <div class="inside">
         <h2 id="title" tabindex="-1">Loading your plan</h2><p id="instruction"></p>
         <dl id="facts"></dl>
@@ -38,17 +51,13 @@
     </section>
     <section class="panel breakdown" aria-labelledby="funding-title">
       <div class="inside">
-        <div class="section-title"><h2 id="funding-title">How to cover the bill</h2><strong id="bill">—</strong></div>
+        <div class="section-title"><h2 id="funding-title">Bill breakdown</h2><strong id="bill">—</strong></div>
         <div class="split" aria-hidden="true"><i id="bar"></i></div>
         <dl><div><dt>From your reserve</dt><dd id="amount">—</dd></div><div><dt id="other-label">Other funds</dt><dd id="other">—</dd></div></dl>
-        <div class="controls">
-          <label>Fuel budget<select id="scenario" disabled><option value="oil stress">Higher oil price</option><option value="fuel budget">Original estimate</option></select></label>
-          <label>Available funding<select id="profile" disabled><option value="quick pay">Invoice quick pay</option><option value="credit line">Bank credit line</option><option value="cash on hand">Cash on hand</option></select></label>
-        </div>
         <details><summary>Where the costs come from</summary><dl id="fees"></dl><p id="terms"></p></details>
         <details><summary>How Gemini changes the fuel budget</summary><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">View recorded oil contracts</a></details>
       </div>
     </section>
   </div>
-  <footer>Sample carrier. Payments use test USDC on a local Solana fork. The fuel vendor in this example accepts USDC.</footer>
+  <footer><span class="footer-mark" aria-hidden="true">F/OS</span>Demo settlement · Test USDC on a local Solana fork. The sample vendor accepts USDC.</footer>
 </main></body></html>

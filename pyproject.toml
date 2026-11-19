@@ -20,7 +20,7 @@ dev = ["pytest>=8"]
 include = ["hedging", "freightos"]
 
 [tool.setuptools.package-data]
-freightos = ["web/*.html", "web/*.css", "web/*.js", "artifacts/*/*.json", "artifacts/*/*.gz", "artifacts/*/*.so"]
+freightos = ["web/*.html", "web/*.css", "web/*.js", "web/media/*", "artifacts/*/*.json", "artifacts/*/*.gz", "artifacts/*/*.so"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

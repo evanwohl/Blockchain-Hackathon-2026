@@ -189,6 +189,9 @@ class Handler(BaseHTTPRequestHandler):
             "/trial.js": ("trial.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
             "/app.js": ("app.js", "text/javascript"),
+            "/media/linehaul.webp": ("media/linehaul.webp", "image/webp"),
+            "/media/barlow-condensed-latin-700-normal.woff2": ("media/barlow-condensed-latin-700-normal.woff2", "font/woff2"),
+            "/media/inter-latin-wght-normal.woff2": ("media/inter-latin-wght-normal.woff2", "font/woff2"),
             "/common.js": ("common.js", "text/javascript"),
         }
         if self.path not in assets:

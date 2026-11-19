@@ -16,6 +16,9 @@ function renderPlan(plan) {
   el("plan-cost").textContent = money(plan.cost_cents);
   el("alternative").textContent = profile.fallback;
   el("other-cost").textContent = money(plan.alternative_cost_cents);
+  const highestCost = Math.max(plan.cost_cents, plan.alternative_cost_cents, 1);
+  el("plan-bar").style.width = (100 * plan.cost_cents / highestCost) + "%";
+  el("other-bar").style.width = (100 * plan.alternative_cost_cents / highestCost) + "%";
   el("bill").textContent = money(plan.bill_cents);
   el("amount").textContent = money(plan.payment_cents);
   el("other").textContent = money(plan.other_funds_cents);
@@ -61,8 +64,8 @@ function paymentView(plan) {
   };
   const amount = tokenUnits(state.wallet_usdc_raw);
   return {
-    stage: 0, title: "Set up your test reserve", button: "Deposit " + amount + " test USDC",
-    description: "Move the demo wallet’s test funds into a Kamino lending reserve. USDC is a digital dollar. You’ll review the vendor payment next.",
+    stage: 0, title: "Fund your reserve", button: "Deposit " + amount + " test USDC",
+    description: "Set aside test USDC (digital dollars) in Kamino. Review the vendor before paying.",
     rows: [["Available in demo wallet", amount + " USDC"]]
   };
 }
