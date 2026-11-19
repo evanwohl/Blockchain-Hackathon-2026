@@ -49,3 +49,31 @@ def test_user_budget_and_pump_sign_change_the_actual_comparison():
 def test_invalid_trip_amounts(field, value):
     with pytest.raises(ValueError):
         tc.validate({**tc.EXAMPLE, field: value})
+
+
+@pytest.mark.parametrize("limit", [0, 2, 8, 15, 24, 25])
+def test_minimum_premium_under_reserve_limit_matches_exhaustive_search(limit):
+    offers = [{"price": 37, "depth": 12}, {"price": 9, "depth": 19}]
+    gaps = [2, 11, 24]
+    costs = [sum(tc.cost(a, offers[0])) + sum(tc.cost(b, offers[1]))
+             for a, b in product(range(13), range(20)) if max(2, 11 - a, 24 - a - b) <= limit]
+    result = tc.portfolio(offers, gaps, fuel_cash=limit)
+    if costs:
+        assert result["upfront_cents"] == min(costs)
+        assert result["residual_cents"] <= limit
+    else:
+        assert result is None
+
+
+def test_separate_market_cash_and_road_cash_reconcile_to_the_recorded_reserve():
+    result = tc.analyze(tc.recorded(), tc.EXAMPLE, reserve={"available_cents": 3002, "road_cents": 2500, "slot": 1})
+    reserve = result["reserve"]
+    assert reserve["before_shortfall_cents"] == 1830
+    assert reserve["fuel_cash_cents"] == reserve["plan"]["residual_cents"] == 502
+    assert reserve["plan"]["upfront_cents"] == 198 < result["combined"]["upfront_cents"]
+    assert reserve["plan"]["cash_cents"] == 700
+
+
+def test_road_cash_alone_can_exhaust_the_reserve():
+    result = tc.analyze(tc.recorded(), tc.EXAMPLE, reserve={"available_cents": 3002, "road_cents": 3100, "slot": 1})
+    assert result["reserve"]["plan"] is None and result["reserve"]["before_shortfall_cents"] == 2430

@@ -51,25 +51,31 @@ def fuel_holdback(gallons, market, *, pump_mills=None, oil_rise=False):
             "event": market["close_ticker"], "scenario_event": market["target_ticker"], "checked_at": market["checked_at"]}
 
 
-def preview(first, second, fuel_cents, road_cents, rpc, *, holdback=None):
-    amounts(fuel_cents, road_cents)
-    plan = payment()
+def reserve_budget(first, second, rpc):
     scale = second["decision"]["raw_units_per_cent"]
     original = first["shares_minted_raw"] - first["shares_burned_raw"]
     offer = second["shares_minted_raw"] - second["shares_burned_raw"]
-    if (first["share_account"] != second["share_account"] or second["share_account"] != str(plan.shares)
+    if (first["share_account"] != second["share_account"] or second["share_account"] != str(payment().shares)
             or scale != first["decision"]["raw_units_per_cent"] or first["receipt"] == second["receipt"]
             or first["slot"] >= second["steps"]["prepare"]["slot"]
             or first["shares_after_raw"] != original or second["shares_before_setup_raw"] != original
             or min(original, offer) < 0 or second["shares_after_raw"] != original + offer):
         raise ValueError("The two public reserve balances do not reconcile")
-    budget = devnet.redemption_quote(plan, second["steps"]["settle"]["slot"], original + offer, scale,
+    budget = devnet.redemption_quote(payment(), second["steps"]["settle"]["slot"], original + offer, scale,
                                      "all", None, rpc)
+    return {**budget, "first_shares_raw": original, "offer_shares_raw": offer}
+
+
+def preview(first, second, fuel_cents, road_cents, rpc, *, holdback=None):
+    amounts(fuel_cents, road_cents)
+    plan = payment()
+    budget = reserve_budget(first, second, rpc)
+    scale = budget["raw_units_per_cent"]
     fuel = fuel_cents * scale
     road = road_cents * scale
     available = budget["return_raw"]
     result = {"fuel_cents": fuel_cents, "road_cents": road_cents, "raw_units_per_cent": scale,
-              "first_shares_raw": original, "offer_shares_raw": offer, "eligible_shares_raw": budget["eligible_shares_raw"],
+              "first_shares_raw": budget["first_shares_raw"], "offer_shares_raw": budget["offer_shares_raw"], "eligible_shares_raw": budget["eligible_shares_raw"],
               "wallet_after_settlement_raw": second["wallet_after_settlement_raw"],
               "available_raw": available, "slot": budget["slot"], "vendor_raw": 0, "wallet_increase_raw": 0,
               "shortfall_raw": max(0, fuel + road - available)}

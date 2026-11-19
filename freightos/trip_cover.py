@@ -86,10 +86,19 @@ def cost(lots, offer):
     return (lots * p + 99) // 100, (lots * 7 * p * (100 - p) + 999999) // 1000000
 
 
-def portfolio(offers, gaps):
+def portfolio(offers, gaps, *, fuel_cash=None):
     gap = gaps[-1]
     empty = {"cash_cents": gap, "upfront_cents": 0, "residual_cents": gap, "legs": []}
     n = len(offers)
+    if fuel_cash is not None:
+        if gap <= fuel_cash:
+            return empty
+        paid = 0
+        for i, need in enumerate(gaps):
+            if need > paid + fuel_cash:
+                return None
+            if i < n:
+                paid += offers[i]["depth"]
     if not n or not gap:
         return empty
     # Variables are hundredths of a contract, premium cents, fee cents, and unhedged cash cents.
@@ -108,6 +117,9 @@ def portfolio(offers, gaps):
         bounds.append(-need)
     caps = [min(o["depth"], gap) for o in offers] + [gap] * (2*n + 1)
     objective = [0]*n + [1]*(2*n + 1)
+    if fuel_cash is not None:
+        caps[-1] = min(gap, fuel_cash)
+        objective[-1] = 0
     constraints = LinearConstraint(rows, -np.inf, bounds)
     sol = milp(objective, integrality=np.ones(3*n + 1), bounds=Bounds(0, caps), constraints=constraints,
                options={"mip_rel_gap": 0, "time_limit": 3})
@@ -127,12 +139,13 @@ def portfolio(offers, gaps):
         residual = max(residual, gaps[i+1] - prefix)
     upfront = sum(leg["premium_cents"] + leg["fee_cents"] for leg in legs)
     total = residual + upfront
-    if abs(total - sol.fun) > .001:
+    measured = total if fuel_cash is None else upfront
+    if abs(measured - sol.fun) > .001 or (fuel_cash is not None and residual > fuel_cash):
         raise ValueError("Rounded position does not reconcile with the optimum")
-    return {"cash_cents": total, "upfront_cents": upfront, "residual_cents": residual, "legs": legs} if total < gap else empty
+    return {"cash_cents": total, "upfront_cents": upfront, "residual_cents": residual, "legs": legs} if fuel_cash is not None or total < gap else empty
 
 
-def analyze(snapshot, trip):
+def analyze(snapshot, trip, *, reserve=None):
     validate(trip)
     market = snapshot["market"]
     fuel = fuel_update.compare(market)
@@ -149,9 +162,16 @@ def analyze(snapshot, trip):
     gaps = [gap(Fraction(o["strike"])) for o in offers] + [gap(ceiling)]
     combined = portfolio(offers, gaps)
     single = min((portfolio([o], [g, gaps[-1]])["cash_cents"] for o, g in zip(offers, gaps)), default=gaps[-1])
-    return {"trip": trip, "checked_at": snapshot["checked_at"], "expiry": fuel["expiry"], "anchor": str(fuel["close"]),
+    result = {"trip": trip, "checked_at": snapshot["checked_at"], "expiry": fuel["expiry"], "anchor": str(fuel["close"]),
             "ceiling": str(ceiling), "pump_bill_cents": ceil(base), "cash_only_cents": gaps[-1], "best_single_cents": single,
             "offers": len(offers), "contracts_checked": len(rows), "combined": combined}
+    if reserve is not None:
+        available, road = reserve["available_cents"], reserve["road_cents"]
+        fuel_cash = max(0, available - road)
+        affordable = portfolio(offers, gaps, fuel_cash=fuel_cash) if available >= road else None
+        result["reserve"] = {**reserve, "fuel_cash_cents": fuel_cash, "before_shortfall_cents": max(0, road + gaps[-1] - available),
+                             "plan": affordable}
+    return result
 
 
 @cache

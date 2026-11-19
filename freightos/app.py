@@ -672,12 +672,24 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/trip-cover":
                 trip = {key: data.get(key) for key in trip_cover.EXAMPLE}
                 trip_cover.validate(trip)
+                road = data.get("road_cents")
+                if road is not None:
+                    integer(road, "road cash", 100_000_000)
                 source = data.get("source", "live")
                 if source not in ("live", "recorded"):
                     raise ValueError("Unknown market source")
                 try:
                     snapshot = self.server.trip_books.read() if source == "live" else trip_cover.recorded()
-                    self.respond(200, {**trip_cover.analyze(snapshot, trip), "source": source})
+                    reserve = None
+                    if road is not None:
+                        if source == "live":
+                            budget = next_stop.reserve_budget(self.server.public_payment.read(), self.server.public_offer.read(), devnet.request)
+                            raw = budget["return_raw"]
+                        else:
+                            budget = next_stop.saved()
+                            raw = budget["available_raw"]
+                        reserve = {"available_cents": raw // budget["raw_units_per_cent"], "road_cents": road, "slot": budget["slot"]}
+                    self.respond(200, {**trip_cover.analyze(snapshot, trip, reserve=reserve), "source": source})
                 except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError):
                     self.respond(503, {"error": "Could not verify the market comparison for this trip."})
                 return
