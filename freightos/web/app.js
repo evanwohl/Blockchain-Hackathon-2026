@@ -17,8 +17,10 @@ function renderCalendar(plan) {
   const bill = plan.calendar.bills[0];
   const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
   el("load-id").textContent = plan.load;
-  el("bill-due").textContent = "Due day " + bill.day + " · " + (plan.scenario === "oil stress" ? "Higher fuel estimate" : "Original fuel estimate");
-  el("invoice-value").textContent = money(primary.receipt_cents) + " · Day " + primary.day;
+  el("bill-due").textContent = "Due day " + bill.day;
+  el("bill-scenario").textContent = plan.scenario === "oil stress" ? "Higher fuel estimate" : "Original fuel estimate";
+  el("invoice-value").textContent = money(primary.receipt_cents);
+  el("invoice-day").textContent = "Day " + primary.day;
   const events = [
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true },
     ...plan.invoice_elections.map(item => ({
@@ -62,7 +64,10 @@ function renderPlan(plan) {
   const highestCost = Math.max(plan.cost_cents, plan.alternative_cost_cents, 1);
   el("plan-bar").style.width = (100 * plan.cost_cents / highestCost) + "%";
   el("other-bar").style.width = (100 * plan.alternative_cost_cents / highestCost) + "%";
-  el("bill").textContent = money(plan.bill_cents);
+  const [dollars, cents] = money(plan.bill_cents).split(".");
+  const fraction = document.createElement("small");
+  fraction.textContent = "." + cents;
+  el("bill").replaceChildren(dollars, fraction);
   el("amount").textContent = money(plan.payment_cents);
   el("other").textContent = money(plan.other_funds_cents);
   el("other-label").textContent = profile.source;
@@ -87,7 +92,7 @@ function paymentView(plan) {
   const { receipt, review } = state;
   if (receipt) return {
     stage: 2, title: "Reserve payment delivered", button: "Start another demo",
-    description: "The approved vendor received the reserve portion. This load’s reserve payment is recorded as settled.",
+    description: "This receipt records the reserve portion sent to the approved fuel vendor.",
     rows: [["Sent to the fuel vendor", tokenUnits(receipt.vendor_received_usdc_raw) + " USDC"], ["Covered separately in the plan", money(plan.other_funds_cents)]]
   };
   if (!plan.payment_cents) return {
@@ -124,6 +129,8 @@ function render() {
   el("open-payment").disabled = busy;
   el("open-label").textContent = receipt ? "View receipt" : review ? "Return to review" : plan.payment_cents ? "Open payment plan" : "View cash plan";
   el("fund-caption").textContent = receipt ? "Reserve payment delivered · Test funds" : review ? "Awaiting your approval · Test funds" : "Estimated financing cost " + money(plan.cost_cents);
+  el("receipt-head").hidden = !receipt;
+  el("receipt-load").textContent = receipt ? plan.load : "";
   el("reset").hidden = !receipt;
   el("reset").disabled = busy;
   el("verify").textContent = pending === "Verifying…" ? pending : "Verify payment";
@@ -202,7 +209,7 @@ function showRetry(error) {
   el("open-payment").disabled = false;
   el("open-label").textContent = "Reconnect to payment";
   el("primary").hidden = false;
-  el("reset").hidden = true;
+  el("receipt-head").hidden = el("reset").hidden = true;
   el("cancel").hidden = el("challenge").hidden = el("verify").hidden = el("download").hidden = true;
 }
 
