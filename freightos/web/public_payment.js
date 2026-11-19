@@ -78,3 +78,41 @@ for (const portion of ["road", "all"]) {
   button.onclick = () => preview(portion);
 }
 receipt(false);
+
+let loadingFuel = false;
+async function fuelComparison() {
+  if (loadingFuel || !el("public-fuel-result").hidden) return;
+  loadingFuel = true;
+  el("fuel-retry").hidden = true;
+  el("public-fuel-status").textContent = "Checking the fuel evidence…";
+  try {
+    const data = await request("/api/public-payment/fuel");
+    el("fuel-basis").textContent = "The fuel bill was " + money(data.approved_cents) + ". Early invoice pay covered "
+      + money(data.outside_cents) + ", leaving " + money(data.approved_reserve_cents) + " for the reserve.";
+    el("fuel-terms").textContent = "Testing $" + data.strike + " oil for " + data.gallons + " gallons on a "
+      + money(data.original_cents) + " base budget. Local diesel prices can differ.";
+    el("reference-rows").replaceChildren(...[
+      ["$" + data.band_floor + " band edge (approved)", data.approved_cents, data.approved_reserve_cents],
+      ["$" + Number(data.settlement).toFixed(5) + " Gemini settlement", data.estimate_cents, data.reserve_cents]
+    ].map(([label, bill, reserve]) => {
+      const row = document.createElement("tr");
+      const heading = document.createElement("th");
+      heading.scope = "row";
+      heading.textContent = label;
+      row.append(heading);
+      row.insertCell().textContent = money(bill);
+      row.insertCell().textContent = money(reserve);
+      return row;
+    }));
+    el("try-settlement").href = "/bill#" + new URLSearchParams({ plan: data.profile, fuel: data.scenario });
+    el("public-fuel-status").textContent = "Recorded market inputs match the hashes in the signed bill.";
+    el("public-fuel-result").hidden = false;
+  } catch {
+    el("public-fuel-status").textContent = "Could not check the fuel inputs against the bill.";
+    el("fuel-retry").hidden = false;
+  } finally {
+    loadingFuel = false;
+  }
+}
+el("public-fuel").ontoggle = () => { if (el("public-fuel").open) fuelComparison(); };
+el("fuel-retry").onclick = fuelComparison;

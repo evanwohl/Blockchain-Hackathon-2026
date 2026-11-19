@@ -13,7 +13,7 @@ from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, devnet, reserve_return
 from freightos.live import reserve_observation
-from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, refill_cost
+from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, public_fuel_comparison, refill_cost
 from hedging.quick_pay import price_calendar
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
@@ -391,6 +391,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/evidence/reserve-yield":
             self.reply(200, "application/json", (DATA / "vault_metrics.json").read_bytes())
+            return
+        if self.path == "/evidence/gemini-settlements":
+            self.reply(200, "application/json", (DATA / "gemini_settlements.json").read_bytes())
+            return
+        if self.path == "/api/public-payment/fuel":
+            try:
+                receipt = devnet.verify(json.loads(devnet.SAMPLE.read_bytes()))
+                self.respond(200, public_fuel_comparison(receipt["decision"], self.server.settlement.plans))
+            except (OSError, ValueError, KeyError, TypeError):
+                self.respond(503, {"error": "The fuel calculation could not be checked against the signed bill."})
             return
         if self.path == "/evidence/gemini":
             self.reply(

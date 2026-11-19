@@ -271,7 +271,8 @@ function renderPlan(plan) {
   const selected = plan.scenario !== "fuel budget" ? "This plan includes the higher estimate." : "This plan uses the original estimate.";
   el("signal").textContent = "The original estimate for " + g.gallons + " gallons is " + money(budget)
     + ". At the $" + g.stress_level + " oil price in the recorded Gemini contract, this model adds "
-    + money(low) + " to " + money(high) + ". " + selected;
+    + (g.settled_reference ? money(high) + " using Gemini’s reported settlement of $" + Number(g.settled_reference).toFixed(5)
+      + " per barrel." : money(low) + " to " + money(high) + ". " + selected);
 }
 
 function renderFuelPolicy(plan) {
@@ -313,7 +314,8 @@ function renderFuelPolicy(plan) {
     button.disabled = locked;
     button.textContent = money(choice.bill_cents);
     const subtitle = document.createElement("small");
-    subtitle.textContent = key === "fuel budget" ? "Original estimate" : "$" + choice.gemini.stress_level + " oil per barrel";
+    subtitle.textContent = key === "fuel budget" ? "Original estimate" : "$" + choice.gemini.stress_level
+      + (choice.gemini.settled_reference ? " oil · reported reference" : " oil · price band");
     button.append(subtitle);
     button.setAttribute("aria-pressed", String(key === plan.scenario));
     header.append(button);

@@ -40,7 +40,8 @@ function displayQuote() {
   el("mechanism-fuel").textContent = "Start with " + money(original) + " for " + plan.gemini.gallons
     + " gallons. " + (scenario === "fuel budget"
       ? "This plan uses the original bill. Higher oil prices from recorded Gemini contracts are also tested when sizing the reserve."
-      : "Testing oil at $" + plan.gemini.stress_level + " a barrel adds " + money(plan.bill_cents - original) + " to the fuel budget. That threshold comes from a recorded Gemini oil contract.");
+      : "Testing oil at $" + plan.gemini.stress_level + " a barrel adds " + money(plan.bill_cents - original) + " to the fuel budget. " + (plan.gemini.settled_reference
+        ? "This estimate uses the reported prior settlement." : "That threshold comes from a recorded Gemini oil contract."));
   if (profile === "quick pay") {
     const invoice = plan.calendar.invoices.find(i => i.id === "backhaul");
     const early = plan.invoice_elections.find(i => i.invoice === invoice.id);

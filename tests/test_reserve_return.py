@@ -17,11 +17,11 @@ def test_return_surplus_before_payment_protects_every_fuel_budget():
     app.act("deposit", {})
     data = quote(app, "road cash")
     q = app.act("return-quote", data)
-    assert q["remaining_value_raw"] >= q["protected_cents"] * 10000 == 464_000_000
+    assert q["remaining_value_raw"] >= q["protected_cents"] * 10000 == 464_510_000
     next_release = reserve_return.withdraw(app.fork, q["return_shares_raw"] + 1)
     left = reserve_return.withdraw(app.fork, q["shares_before_raw"] - q["return_shares_raw"] - 1)
     assert (reserve_return.simulated_cash(app.fork, [next_release, left])
-            - reserve_return.simulated_cash(app.fork, [next_release])) < 464_000_000
+            - reserve_return.simulated_cash(app.fork, [next_release])) < 464_510_000
     review = app.act("review", {"profile": "road cash", "scenario": "oil stress"})
     with pytest.raises(ValueError, match="pending"):
         app.act("return-reserve", data)
@@ -30,12 +30,12 @@ def test_return_surplus_before_payment_protects_every_fuel_budget():
         results = list(pool.map(lambda _: app.act("return-reserve", data), range(2)))
     assert results[0] == results[1]
     proof = replay(results[0])
-    assert proof["returned_usdc_raw"] == 135_997_990
-    assert proof["protected_value_usdc_raw"] == 464_000_000
+    assert proof["returned_usdc_raw"] == 135_487_990
+    assert proof["protected_value_usdc_raw"] == 464_510_000
     assert app.state()["setup_cents"]["road cash"] == 0
     review = app.act("review", {"profile": "road cash", "scenario": "wti-93"})
     paid = app.act("approve", {"approval": review["id"]})
-    assert replay(paid)["vendor_received_usdc_raw"] == 464_000_000
+    assert replay(paid)["vendor_received_usdc_raw"] == 464_510_000
 
 
 def test_return_unused_money_after_vendor_payment_and_receipt_replay():
@@ -77,7 +77,7 @@ def test_quotes_fail_independently_and_tiny_balances_remain_explicit(monkeypatch
         app.act("return-reserve", proposed)
     normal = app.fork.deposit_quote
     def constrained(target):
-        if target == 59900:
+        if target == 59951:
             raise VaultExecutionError("Insufficient proceeds")
         return normal(target)
     monkeypatch.setattr(app.fork, "deposit_quote", constrained)
@@ -108,23 +108,23 @@ def test_sample_verification_uses_only_bundled_signed_loads():
 def test_next_trip_releases_only_the_shortfall_and_preserves_each_fuel_budget():
     app = LoadSettlement()
     version = app.record_version
-    app.act("deposit", {"profile": "credit line", "max_cents": 59901, "version": version})
+    app.act("deposit", {"profile": "credit line", "max_cents": 59952, "version": version})
     check = app.state()["next_trip"]
     flex = next(row for row in check["options"] if row["profile"] == "later reserve refill")
-    assert (flex["capacity_cents"], flex["returnable_cents"], check["return_yield_bps"]) == (99, 2900, 25)
+    assert (flex["capacity_cents"], flex["returnable_cents"], check["return_yield_bps"]) == (48, 2951, 25)
     body = {"profile": flex["profile"], "version": version, "extra_wallet_cents": 2000 - flex["capacity_cents"]}
     proposal = app.act("return-quote", body)
     fewer = reserve_return.withdraw(app.fork, proposal["return_shares_raw"] - 1)
     assert reserve_return.simulated_cash(app.fork, [fewer]) < 20_000_000
-    assert app.state()["wallet_usdc_raw"] == 990000
+    assert app.state()["wallet_usdc_raw"] == 480000
     with pytest.raises(ValueError, match="cannot cover"):
-        app.act("return-quote", {**body, "extra_wallet_cents": 2901})
+        app.act("return-quote", {**body, "extra_wallet_cents": 2952})
     with pytest.raises(ValueError, match="Review"):
         app.act("return-reserve", {**body, "extra_wallet_cents": 1900, "id": proposal["id"]})
     receipt = app.act("return-reserve", {**body, "id": proposal["id"]})
     assert app.act("return-reserve", {**body, "id": proposal["id"]}) == receipt
     proof = replay(receipt)
-    assert proof["returned_usdc_raw"] == 19_010_000 and proof["wallet_usdc_raw"] == 20_000_000
+    assert proof["returned_usdc_raw"] == 19_520_000 and proof["wallet_usdc_raw"] == 20_000_000
     assert proof["protected_value_usdc_raw"] >= 570_000_000
     state = app.state()
     assert state["last_return"]["id"] == proposal["id"] and state["next_trip"]["options"][0]["capacity_cents"] == 2000

@@ -87,7 +87,7 @@ def test_guarded_reserve_setup_keeps_wallet_cash_and_can_top_up():
     app.act("deposit", topup)
     approval = app.act("review", {"scenario": "wti-93", "profile": "credit line"})
     paid = app.act("approve", {"approval": approval["id"]})
-    assert replay(paid)["vendor_received_usdc_raw"] == 599_000_000
+    assert replay(paid)["vendor_received_usdc_raw"] == 599_510_000
 
 
 def test_public_observation_checks_custody_identity_and_uses_one_confirmed_slot():
@@ -153,18 +153,18 @@ def test_road_cash_approval_and_old_credit_payment_both_replay():
 
     app = LoadSettlement()
     state = app.state()
-    assert state["setup_cents"]["credit line"] == 59901
-    assert state["setup_cents"]["road cash"] == 46401
+    assert state["setup_cents"]["credit line"] == 59952
+    assert state["setup_cents"]["road cash"] == 46452
     data = {"profile": "road cash", "scenario": "oil stress", "version": state["record_version"]}
-    app.act("deposit", {**data, "max_cents": 46401})
-    assert app.state()["wallet_usdc_raw"] == 135_990_000
+    app.act("deposit", {**data, "max_cents": 46452})
+    assert app.state()["wallet_usdc_raw"] == 135_480_000
     review = app.act("review", data)
     assert review["decision"]["cash_policy"]["fee_allowance_cents"] == 100
     receipt = app.act("approve", {"approval": review["id"]})
     verified = replay(receipt)
-    assert verified["vendor_received_usdc_raw"] == 464_000_000
-    assert verified["wallet_usdc_raw"] == 135_990_000
-    assert app.act("record-payment", data)["cents"] == 28100
+    assert verified["vendor_received_usdc_raw"] == 464_510_000
+    assert verified["wallet_usdc_raw"] == 135_480_000
+    assert app.act("record-payment", data)["cents"] == 28049
 
     app = LoadSettlement()
     app.act("deposit", {})
@@ -174,3 +174,61 @@ def test_road_cash_approval_and_old_credit_payment_both_replay():
     review = app.fork.review(LOAD, old["payment_cents"] * 10000, old)
     receipt = app.act("approve", {"approval": review["id"]})
     assert replay(receipt)["vendor_received_usdc_raw"] == 599_990_000
+
+
+def test_reported_price_sizes_the_practice_payment_and_matches_the_public_comparison():
+    import json
+    from freightos import devnet
+    from freightos.funding import SETTLED_FUEL, public_fuel_comparison
+
+    app = LoadSettlement()
+    proof = devnet.verify(json.loads(devnet.SAMPLE.read_bytes()))
+    comparison = public_fuel_comparison(proof["decision"], app.plans)
+    assert (comparison["original_cents"], comparison["approved_cents"], comparison["estimate_cents"]) == (70000, 74500, 74051)
+    plan = app.plans["quick pay"][SETTLED_FUEL]
+    assert plan["gemini"]["settled_reference"] == "81.89884615384616"
+    assert plan["gemini"]["extra_fuel_cents_interval"] == [4051, 4051]
+    assert plan["cost_cents"] == 1344 and plan["other_funds_cents"] == 19000
+    with pytest.raises(ValueError, match="approved payment"):
+        public_fuel_comparison({**proof["decision"], "reserve_cents": 55051}, app.plans)
+    app.act("deposit", {"profile": "quick pay", "version": app.record_version, "max_cents": 57001})
+    approval = app.act("review", {"profile": "quick pay", "scenario": SETTLED_FUEL})
+    assert replay(app.act("approve", {"approval": approval["id"]}))["vendor_received_usdc_raw"] == 550510000
+
+
+@pytest.mark.parametrize("profile", ["credit line", "road cash late freight"])
+def test_five_budget_policy_still_replays_its_original_amount(profile):
+    from freightos.funding import LOAD
+    app = LoadSettlement()
+    previous = demo_plans(1)[0][profile]["oil stress"]
+    assert previous["payment_cents"] != app.plans[profile]["oil stress"]["payment_cents"]
+    app.act("deposit", {})
+    review = app.fork.review(LOAD, previous["payment_cents"] * 10000, previous)
+    assert replay(app.act("approve", {"approval": review["id"]}))["vendor_received_usdc_raw"] == previous["payment_cents"] * 10000
+
+
+@pytest.mark.parametrize("error", ["disagree", "future", "digest", "index"])
+def test_reported_settlement_rejects_inconsistent_evidence(tmp_path, monkeypatch, error):
+    import hashlib
+    import json
+    from freightos import fuel_markets
+    from freightos.funding import DATA
+
+    evidence = json.loads((DATA / "case_report.json").read_bytes())
+    market = evidence["gemini"]
+    obj = json.loads((DATA / "gemini_settlements.json").read_bytes())
+    event = next(e for e in obj["data"] if e["ticker"] == market["prior_event"])
+    if error == "disagree":
+        event["contracts"][0]["settlementValue"] = "81.125"
+    elif error == "future":
+        event["contracts"][0]["resolvedAt"] = "2099-11-18T22:00:00Z"
+    elif error == "index":
+        event["sourceDetails"]["index"] = "other"
+    raw = json.dumps(obj).encode()
+    path = tmp_path / "artifacts/quick_pay/gemini_settlements.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(raw)
+    monkeypatch.setattr(fuel_markets, "ROOT", tmp_path)
+    digest = "wrong" if error == "digest" else hashlib.sha256(raw).hexdigest()
+    with pytest.raises(ValueError):
+        fuel_markets.settled_reference(digest, market["prior_event"], market["index"], evidence["as_of"], "81", "82")

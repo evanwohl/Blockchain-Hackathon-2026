@@ -166,7 +166,7 @@ def test_next_trip_limits_match_repricing_with_one_extra_bill():
     app = LoadSettlement()
     state = app.state()
     comparison = state["next_trip"]
-    assert comparison["budgets"] == 5
+    assert comparison["budgets"] == 6
     assert [row["capacity_cents"] for row in comparison["options"]] == [2999, 236650, 289000]
     for option in comparison["options"]:
         profile = option["profile"]

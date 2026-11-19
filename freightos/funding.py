@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_CEILING
 from functools import cache
 
 from freightos.capture import ROOT
-from freightos.fuel_markets import fuel_levels
+from freightos.fuel_markets import fuel_levels, settlement_budget
 from hedging.invoice_policy import invoice_policy, reserve_limit
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline, spendable_on
 from hedging.quick_pay import capacity_boundary, price_calendar
@@ -18,6 +18,7 @@ BACKUPS = {"quick pay": "invoice backup", "credit line": "bank backup", ROAD_CAS
 DELAY_DAYS = 7
 LATE_PLANS = {profile: profile + " late freight" for profile in BACKUPS}
 BACKUPS.update({late: late + " backup" for late in LATE_PLANS.values()})
+SETTLED_FUEL = "reported settlement"
 REFILL_LATER = "later reserve refill"
 BACKUPS[REFILL_LATER] = "later reserve refill backup"
 
@@ -28,6 +29,9 @@ def funding_plan(sample, evidence, scenario, profile):
     base_cents = bill["cents"] - g["extra_fuel_cents_interval"][1]
     if scenario == "fuel budget":
         amount = base_cents
+    elif scenario == SETTLED_FUEL:
+        g = settlement_budget(evidence)
+        amount = base_cents + g["extra_fuel_cents_interval"][1]
     elif scenario == "oil stress":
         amount = bill["cents"]
     elif isinstance(scenario, str) and scenario.startswith("wti-") and scenario[4:] in fuel_levels(evidence):
@@ -90,6 +94,26 @@ def priced_plan(case, profile, scenario, gemini, input_digest, elections=None):
         "input_sha256": input_digest,
         "calendar": case,
     }
+
+
+def public_fuel_comparison(decision, plans):
+    approved = plans[decision["profile"]][decision["scenario"]]
+    exact = plans[decision["profile"]][SETTLED_FUEL]
+    terms = {"load": approved["load"], "bill_cents": approved["bill_cents"], "reserve_cents": approved["payment_cents"],
+             "outside_cents": approved["other_funds_cents"], "fees_cents": approved["cost_cents"],
+             "comparison_fees_cents": approved["alternative_cost_cents"], "input_sha256": approved["input_sha256"]}
+    if any(decision[key] != value for key, value in terms.items()):
+        raise ValueError("The reconstructed plan differs from the approved payment")
+    for path in ("artifacts/quick_pay/sample_calendar.json", "artifacts/gemini_ladder/active.json",
+                 "artifacts/quick_pay/gemini_settlements.json"):
+        if hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != decision["input_sha256"][path]:
+            raise ValueError("Fuel evidence differs from the signed input hashes")
+    g = exact["gemini"]
+    return {"original_cents": plans[decision["profile"]]["fuel budget"]["bill_cents"],
+            "approved_cents": approved["bill_cents"], "estimate_cents": exact["bill_cents"],
+            "reserve_cents": exact["payment_cents"], "outside_cents": exact["other_funds_cents"],
+            "approved_reserve_cents": approved["payment_cents"], "scenario": SETTLED_FUEL, "profile": decision["profile"],
+            "settlement": g["settled_reference"], "band_floor": g["lower_inclusive"], "strike": g["stress_level"], "gallons": g["gallons"]}
 
 
 def pairing_value(plan):
@@ -157,7 +181,9 @@ def refill_cost(evidence, days):
 
 
 @cache
-def demo_plans():
+def demo_plans(policy_version=2):
+    if type(policy_version) is not int or policy_version not in (1, 2):
+        raise ValueError("Unknown fuel policy version")
     evidence = json.loads((DATA / "case_report.json").read_bytes())
     sample = json.loads((DATA / "sample_calendar.json").read_bytes())
     levels = fuel_levels(evidence)
@@ -165,6 +191,8 @@ def demo_plans():
     if levels[anchor]["extra_fuel_cents_interval"] != evidence["gemini"]["extra_fuel_cents_interval"]:
         raise ValueError("Gemini threshold does not reproduce the original fuel budget")
     scenarios = ["fuel budget", "oil stress", *("wti-" + level for level in levels if level != anchor)]
+    if policy_version == 2:
+        scenarios.append(SETTLED_FUEL)
     plans = {profile: {scenario: funding_plan(sample, evidence, scenario, profile) for scenario in scenarios}
              for profile in PROFILES}
     policies = {"quick pay": invoice_policy(plans["quick pay"])}
@@ -178,7 +206,7 @@ def demo_plans():
         for key, p in credit.items():
             case = reserve_limit(p["calendar"], policy["peak_reserve_cents"])
             plan = priced_plan(case, profile, key, p["gemini"], p["input_sha256"], policy["elections"])
-            plan["cash_policy"] = {"version": 1, "fee_allowance_cents": allowance,
+            plan["cash_policy"] = {"version": policy_version, "fee_allowance_cents": allowance,
                                    "reserve_limit_cents": policy["peak_reserve_cents"]}
             plans[profile][key] = plan
     refill = refill_cost(evidence, DELAY_DAYS)
@@ -197,6 +225,8 @@ def demo_plans():
         for key, p in delayed.items():
             plan = priced_plan(p["calendar"], late, key, p["gemini"], p["input_sha256"], policy["elections"])
             plans[late][key] = {**plan, "late_freight": {"regular_profile": regular, "days": DELAY_DAYS}}
+            if policy_version == 2:
+                plans[late][key]["late_freight"]["version"] = policy_version
             if late == REFILL_LATER:
                 plans[late][key]["refill_policy"] = {"version": 1, **refill}
     for profile, backup in BACKUPS.items():
