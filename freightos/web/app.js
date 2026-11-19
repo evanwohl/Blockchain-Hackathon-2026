@@ -1,5 +1,7 @@
 import { downloadReceipt, el, facts, money, request, tokenUnits } from "./common.js";
 
+const roundedDollars = cents => money(cents).replace(/\.00$/, "");
+
 const profiles = {
   "quick pay": { source: "Early pay for your return load", comparison: "invoice quick pay", fallback: "If you get the main invoice paid early", terms: "In this example, getting paid in one day costs 5% of the invoice." },
   "credit line": { source: "Bank credit line", comparison: "using bank credit alone", fallback: "If you borrow the whole amount", terms: "The sample credit line offers $800 at 1% for the term." },
@@ -12,7 +14,7 @@ let clockTimer;
 let currentStep;
 let displayedPlan;
 let reopenPayment = false;
-el("schedule").open = window.matchMedia("(min-width: 1160px)").matches;
+el("schedule").open = window.matchMedia("(min-width: 761px)").matches;
 
 let profile = sessionStorage.getItem("funding-profile") || "quick pay";
 let scenario = sessionStorage.getItem("fuel-scenario") || "oil stress";
@@ -25,15 +27,7 @@ function renderCalendar(plan) {
   el("method").textContent = "FreightOS checks which money will arrive by day " + bill.day + ". It chooses the lowest-cost way to cover the fuel bill while keeping the cash you need on hand.";
   el("invoice-day").textContent = "Day " + primary.day;
   const gap = primary.day - bill.day;
-  el("day-gap").textContent = gap ? "View " + Math.abs(gap) + "-day gap" : "View same-day schedule";
-  el("day-gap").parentElement.style.setProperty("--intervals", Math.max(1, Math.abs(gap)));
-  const lines = [];
-  for (let lane = 0; lane <= 14; lane++) {
-    const t = lane / 14;
-    lines.push(`M 0 ${52 + t * 8} C 110 ${52 + t * 8}, 146 ${3 + t * 39}, 254 ${5 + t * 43}
-      S 446 ${78 - t * 7}, 516 ${59 - t * 19} S 598 ${28 + t * 4}, 640 ${28 + t * 4}`);
-  }
-  el("road-lines").setAttribute("d", lines.join(" "));
+  el("day-gap").textContent = gap ? Math.abs(gap) + "-day gap" : "Same-day schedule";
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
     : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
   const events = [
@@ -79,17 +73,59 @@ function explainChoice(plan) {
   }
   const backhaul = plan.calendar.invoices.find(invoice => invoice.id === "backhaul");
   const election = plan.invoice_elections.find(item => item.invoice === backhaul.id);
-  const dollars = cents => money(cents).replace(/\.00$/, "");
-  return ["Get paid early on the return load", "Ask for early pay on the " + dollars(backhaul.face_cents)
-    + " return load. You get " + dollars(election.receipt_cents) + " after the fee. You can collect the full "
-    + dollars(primary.face_cents) + " for the main load on day " + plan.invoice_elections.find(item => item.invoice === primary.id).day + "."];
+  return ["Get paid early on the return load", "Ask for early pay on the " + roundedDollars(backhaul.face_cents)
+    + " return load. You get " + roundedDollars(election.receipt_cents) + " after the fee. You can collect the full "
+    + roundedDollars(primary.face_cents) + " for the main load on day " + plan.invoice_elections.find(item => item.invoice === primary.id).day + "."];
+}
+
+function drawTicket(id, { x, y, depth, amount, source, load }) {
+  const ticket = el(id);
+  ticket.style.display = amount ? "" : "none";
+  if (!amount) return;
+  ticket.setAttribute("transform", `translate(${x} ${y})`);
+  ticket.querySelector(".face").setAttribute("transform", "matrix(.92 -.22 .66 .36 0 0)");
+  const right = 354 * .92, rise = -354 * .22;
+  const offset = 145 * .66, drop = 145 * .36;
+  ticket.querySelector(".slip-side").setAttribute("d",
+    `M0 0l${offset} ${drop}v${depth}l${-offset} ${-drop}Z`);
+  ticket.querySelector(".slip-front").setAttribute("d",
+    `M${offset} ${drop}l${right} ${rise}v${depth}l${-right} ${-rise}Z`);
+  const edges = [];
+  for (let z = 1; z < depth; z += 2.2) {
+    edges.push(`M0 ${z}l${offset} ${drop}l${right} ${rise}`);
+  }
+  ticket.querySelector(".slip-edges").setAttribute("d", edges.join(" "));
+  ticket.querySelector(".ticket-value").textContent = roundedDollars(amount);
+  ticket.querySelector(".ticket-source").textContent = source;
+  ticket.querySelector(".ticket-load").textContent = load;
+}
+
+function drawFunding(plan) {
+  const reserveDepth = 48 * plan.payment_cents / plan.bill_cents;
+  drawTicket("direct-ticket", { x: 38, y: plan.payment_cents ? 175 : 127, depth: 48 - reserveDepth,
+    amount: plan.other_funds_cents, source: profiles[plan.profile].source, load: plan.load });
+  drawTicket("reserve-ticket", { x: 13, y: 93, depth: reserveDepth, amount: plan.payment_cents,
+    source: "Fuel reserve", load: plan.load });
+}
+
+function renderSource(id, label, amount, explanation) {
+  const row = el(id);
+  row.hidden = !amount;
+  row.querySelector("summary span").textContent = label;
+  row.querySelector("summary strong").textContent = money(amount);
+  row.querySelector("p").textContent = explanation;
 }
 
 function renderPlan(plan) {
   const profile = profiles[plan.profile];
   renderCalendar(plan);
+  drawFunding(plan);
   el("saved").textContent = money(plan.savings_cents);
-  el("plan-cost").textContent = money(plan.cost_cents);
+  el("plan-cost").textContent = el("chosen-cost").textContent = money(plan.cost_cents);
+  const scale = Math.max(1, plan.cost_cents, plan.alternative_cost_cents);
+  for (const [id, cost] of [["chosen-cost", plan.cost_cents], ["other-cost", plan.alternative_cost_cents]]) {
+    el(id).parentElement.style.setProperty("--share", (100 * cost / scale) + "%");
+  }
   el("alternative").textContent = profile.fallback;
   el("other-cost").textContent = money(plan.alternative_cost_cents);
   el("bill").textContent = el("for-fuel").textContent = money(plan.bill_cents);
@@ -182,18 +218,18 @@ function render() {
   el("new-demo").hidden = !entry;
   el("reserve-receipt").disabled = el("new-demo").disabled = busy;
   el("return-bill").hidden = !receipt;
-  el("action-title").textContent = entry ? "This bill is paid" : recordable ? "Pay " + money(balance) + " directly" : review ? "Check your payment" : "Pay " + money(plan.payment_cents) + " through FreightOS";
+  el("action-title").textContent = entry ? "This bill is paid" : recordable ? "Pay " + roundedDollars(balance) + " directly" : review ? "Check your payment" : "Send " + roundedDollars(plan.payment_cents) + " to the fuel company";
   el("open-label").textContent = entry ? "View your payment entry" : recordable ? "I already paid this" : review ? "Return to approval" : state.deposit ? "Review payment" : "Set aside money for fuel";
   el("payment-scope").textContent = entry ? "Your payment record covers the full bill."
     : recordable ? "Use " + separate + " to pay the fuel company yourself. Once you’ve paid, enter it here."
     : state.deposit ? "Check the recipient and amount before approving the reserve payment."
-    : "Set aside the full $" + tokenUnits(state.wallet_usdc_raw) + " demo balance for fuel. On the next screen, you can approve the amount going to the fuel company.";
+    : "Set aside your $" + tokenUnits(state.wallet_usdc_raw) + " in demo funds. You’ll approve the transfer before it goes out. Pay the other " + roundedDollars(plan.other_funds_cents) + " separately.";
   el("plan-jump").textContent = plan.savings_cents ? "See how this saves " + money(plan.savings_cents) : "See why this plan costs " + money(plan.cost_cents);
-  const rows = [];
-  if (plan.payment_cents) rows.push([receipt ? "Received by fuel company" : "FreightOS pays after you approve", money(receipt ? delivered : plan.payment_cents)]);
-  const outsideLabel = { "quick pay": "You pay from your return load", "credit line": "You pay using bank credit", "cash on hand": "You pay with cash" };
-  rows.push([entry ? "Recorded by you" : outsideLabel[profile], money(plan.other_funds_cents)]);
-  facts(el("payment-log"), rows);
+  renderSource("reserve-part", receipt ? "Received by fuel company" : "Through FreightOS",
+    receipt ? delivered : plan.payment_cents, receipt ? "This amount reached the fuel company in demo dollars. Open the receipt to check the payment."
+      : "This is the part FreightOS sends from your fuel reserve when you approve the payment.");
+  renderSource("direct-part", entry ? "Recorded by you" : "You pay separately", plan.other_funds_cents,
+    entry ? "You marked this amount as paid outside FreightOS." : "Use " + separate + " to cover this part directly with the fuel company.");
   el("receipt-head").hidden = !receipt;
   el("receipt-load").textContent = receipt ? plan.load : "";
   el("reset").hidden = !receipt;
@@ -345,6 +381,14 @@ function previewSettings() {
   el("access-help").textContent = profiles[choice].terms;
   el("draft-bill").textContent = money(plan.bill_cents);
   el("draft-cost").textContent = money(plan.cost_cents);
+}
+
+for (const [ticket, part] of [["reserve-ticket", "reserve-part"], ["direct-ticket", "direct-part"]]) {
+  el(ticket).onclick = () => {
+    const source = el(part);
+    source.open = !source.open;
+    source.querySelector("summary").focus({ preventScroll: true });
+  };
 }
 
 el("day-gap").onclick = () => {
