@@ -117,3 +117,7 @@ For Rust changes, see the build instructions in `README.md` and `settlement_prog
 ## Shipping changes
 
 Keep this guide current when a change affects the demo, numbers, integrations, or teammate tasks. Ship verified product changes on a scoped feature branch, merge into main and verify the remote main commit. In a mixed research worktree, build and test the tracked release in isolation and leave unrelated work in place. Exercise the installed wheel from outside the checkout so packaged data and browser assets resolve as they will for teammates.
+
+## Checking the paid bill against Gemini
+
+On `/public-offer#fuel-update`, the saved Nov 19 Gemini close of $83.16552 puts the modeled 210-gallon trip at $706.34. The driver had paid $745, including $175 from the customer. The $38.66 difference measures room in the fuel budget. The vendor receipt stays fixed. Refresh from Gemini reads the two WTI events that were already listed inside the original Nov 20 expiry window. It uses the most recent verified settlement in that window and reports the $90 threshold’s YES ask separately when available. The oil-to-diesel conversion is a sample assumption. The raw saved event responses are at `/evidence/offer-fuel-update`. The update reads public data and requires no wallet.

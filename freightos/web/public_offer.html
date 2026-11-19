@@ -27,6 +27,7 @@
           <a id="try-reserve-limit" class="ledger-back" href="/bill">Try an $8 offer with the planned reserve →</a>
         </details>
       </div>
+      <a class="ledger-back" href="#fuel-update">Check the budget against the next oil close ↓</a><br>
       <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer">Try a different fee or payment date →</a>
     </section>
     <section class="public-slip offer-slip" aria-labelledby="slip-title">
@@ -42,6 +43,23 @@
     </section>
   </div>
   <p class="offer-footnote">FreightOS funded both demo wallets with test tokens. The payment and customer fee settled on devnet. Trip dates, dollar amounts and estimated savings use sample contract terms.</p>
+  <section id="fuel-update" class="reserve-proof" aria-labelledby="fuel-update-title">
+    <div class="reserve-balance">
+      <p class="panel-label">After payment · Fuel budget</p>
+      <h2 id="fuel-update-title">Did the budget cover the oil move?</h2>
+      <p>Compare the paid bill with what the same trip would cost using Gemini’s next reported oil close.</p>
+      <div class="preview-outcome" id="fuel-margin" hidden><span id="margin-label"></span><strong id="margin-value"></strong></div>
+    </div>
+    <div class="reserve-quote">
+      <h3>Trip estimate</h3><dl class="facts" id="fuel-update-facts"></dl>
+      <p id="fuel-at"></p><button class="secondary" id="refresh-fuel">Refresh from Gemini</button>
+      <p id="fuel-status" role="status">Opening the saved market check…</p>
+      <details><summary>How the estimate works</summary>
+        <p id="fuel-method"></p><p id="fuel-quote"></p>
+        <a id="fuel-event" hidden target="_blank" rel="noopener">View Gemini’s oil close ↗</a>
+      </details>
+    </div>
+  </section>
   <a class="ledger-back" href="/public-payment">Explore the original reserve payment and remaining vault shares →</a>
 </main>
 </body>

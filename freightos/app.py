@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, public_offer, reserve_return
+from freightos import bill, devnet, fuel_update, public_offer, reserve_return
 from freightos.surcharge import larger_offer_budget, offer_decision, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -495,6 +495,17 @@ class Handler(BaseHTTPRequestHandler):
                 (ROOT / "artifacts/gemini_ladder/active.json").read_bytes(),
             )
             return
+        if self.path == "/evidence/offer-fuel-update":
+            self.reply(200, "application/json", gzip.decompress(fuel_update.SNAPSHOT.read_bytes()), static=True)
+            return
+        if self.path in ("/api/public-offer/fuel", "/api/public-offer/fuel/refresh"):
+            try:
+                refresh = self.path.endswith("/refresh")
+                fuel = self.server.offer_fuel.read() if refresh else fuel_update.saved()
+                self.respond(200, {**fuel, "source": "gemini-api" if refresh else "saved"})
+            except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):
+                self.respond(503, {"error": "The Gemini fuel update is unavailable."})
+            return
         if self.path == "/evidence/public-offer":
             self.reply(200, "application/json", public_offer.SAMPLE.read_bytes(), static=True)
             return
@@ -613,6 +624,7 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
+    server.offer_fuel = PublicCheck(fuel_update.live)
     server.public_reserve = PublicCheck(reserve_observation)
     offer_run = json.loads(public_offer.SAMPLE.read_bytes())
     server.public_offer = PublicCheck(lambda: public_offer.verify(offer_run, devnet.request))

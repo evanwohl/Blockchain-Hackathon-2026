@@ -70,3 +70,47 @@ async function check(live) {
 }
 verify.onclick = () => check(true);
 check(false);
+
+const refreshFuel = el("refresh-fuel");
+const utcDate = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" });
+const utc = date => utcDate.format(new Date(date)) + " UTC";
+
+function renderFuel(fuel) {
+  el("margin-label").textContent = fuel.headroom_cents >= 0 ? "Room in the paid budget" : "Estimated amount over budget";
+  el("margin-value").textContent = money(Math.abs(fuel.headroom_cents));
+  el("fuel-margin").hidden = false;
+  facts(el("fuel-update-facts"), [
+    ["Bill already paid", money(fuel.paid_cents)],
+    ["Updated fuel estimate", money(fuel.marked_cents)],
+    ["Customer contribution", money(fuel.customer_cents)],
+    ["Reserve needed at this estimate", money(fuel.reserve_needed_cents)]
+  ]);
+  el("fuel-at").textContent = (fuel.source === "saved" ? "Saved check" : "Checked with Gemini") + " · " + utc(fuel.checked_at);
+  const closeDate = fuel.close_at ? " on " + utc(fuel.close_at) : " at approval";
+  el("fuel-method").textContent = "For this " + fuel.gallons + "-gallon trip, the model adjusts the original " + money(fuel.base_cents)
+    + " estimate by " + money(fuel.cents_per_oil_dollar) + " for each $1 change in a barrel of oil. Gemini reported $" + Number(fuel.close).toFixed(5) + closeDate
+    + ". At $" + fuel.first_uncovered_oil + " a barrel, the modeled bill first exceeds the paid amount. Actual diesel prices can differ.";
+  const condition = fuel.target_outcome ? "Settled " + fuel.target_outcome.toUpperCase() : fuel.yes_ask != null
+    ? "YES was offered at $" + Number(fuel.yes_ask).toFixed(2) + " per contract" : "No current YES offer was verified";
+  el("fuel-quote").textContent = condition + " at the check for the $" + fuel.threshold + " oil threshold expiring " + utc(fuel.expiry)
+    + ". FreightOS used this market as a reference. The demo bought no contracts.";
+  const link = el("fuel-event");
+  link.href = "https://api.gemini.com/v1/prediction-markets/events/" + encodeURIComponent(fuel.close_ticker);
+  link.hidden = false;
+}
+
+async function checkFuel(live) {
+  refreshFuel.disabled = true;
+  if (live) el("fuel-status").textContent = "Checking the oil markets from this trip…";
+  try {
+    renderFuel(await request("/api/public-offer/fuel" + (live ? "/refresh" : "")));
+    el("fuel-status").textContent = "The fuel company’s payment is final. This check updates the trip estimate.";
+  } catch {
+    el("fuel-status").textContent = el("fuel-margin").hidden ? "Fuel estimate unavailable. Try refreshing."
+      : "Gemini could not be checked. Showing the last successful estimate.";
+  } finally {
+    refreshFuel.disabled = false;
+  }
+}
+refreshFuel.onclick = () => checkFuel(true);
+checkFuel(false);
