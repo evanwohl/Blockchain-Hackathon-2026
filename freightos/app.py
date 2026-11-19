@@ -2,6 +2,7 @@ import argparse
 import gzip
 import hashlib
 import json
+from contextlib import suppress
 from functools import cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -11,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, fuel_update, public_offer, reserve_return
+from freightos import bill, devnet, fuel_update, next_stop, public_offer, reserve_return
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -494,8 +495,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.wfile.write(body)
+        with suppress(BrokenPipeError, ConnectionResetError):
+            self.end_headers()
+            self.wfile.write(body)
 
     def respond(self, status, obj):
         self.reply(status, "application/json", json.dumps(obj, separators=(",", ":")).encode())
@@ -546,6 +548,15 @@ class Handler(BaseHTTPRequestHandler):
                 (ROOT / "artifacts/gemini_ladder/active.json").read_bytes(),
             )
             return
+        if self.path == "/api/next-stop":
+            try:
+                self.respond(200, next_stop.saved())
+            except (OSError, ValueError, KeyError, TypeError):
+                self.respond(503, {"error": "The saved next-stop example is unavailable."})
+            return
+        if self.path == "/evidence/next-stop":
+            self.reply(200, "application/json", gzip.decompress(next_stop.SNAPSHOT.read_bytes()), static=True)
+            return
         if self.path == "/evidence/offer-fuel-update":
             self.reply(200, "application/json", gzip.decompress(fuel_update.SNAPSHOT.read_bytes()), static=True)
             return
@@ -594,6 +605,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
+            "/next_stop.js": ("next_stop.js", "text/javascript"),
             "/public-offer": ("public_offer.html", "text/html; charset=utf-8"),
             "/public_offer.js": ("public_offer.js", "text/javascript"),
             "/public-payment": ("public_payment.html", "text/html; charset=utf-8"),
@@ -638,6 +651,16 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/next-stop":
+                fuel, road = data.get("fuel_cents"), data.get("road_cents")
+                next_stop.amounts(fuel, road)
+                try:
+                    result = next_stop.preview(self.server.public_payment.read(), self.server.public_offer.read(),
+                                               fuel, road, devnet.request)
+                    self.respond(200, next_stop.observed(result))
+                except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+                    self.respond(503, {"error": "Public Solana could not confirm the preview. Try again."})
+                return
             if self.path not in (
                 "/api/quote-surcharge",
                 "/api/apply-surcharge",

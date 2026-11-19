@@ -145,7 +145,8 @@ def verify(run, rpc=None):
                 raise ValueError("Reserve deposit amount or issued shares differ")
         if step == "payment":
             received = token_delta(record, keys, payment.destination, MINT, payment.payee)
-            burned = -token_delta(record, keys, payment.shares, SHARES, payment.payer)
+            pre_shares, post_shares = token_balances(record["meta"], keys, payment.shares, SHARES, payment.payer)
+            burned = pre_shares - post_shares
             if received != payment.amount or not 0 < burned <= min(payment.cap, minted):
                 raise ValueError("Vendor proceeds or redeemed shares differ")
     if slots != sorted(slots):
@@ -155,17 +156,34 @@ def verify(run, rpc=None):
     payment.check_receipt(receipt["value"], 2)
     return {"load": payment.load, "slot": slots[-1], "vendor_received_raw": received, "shares_burned_raw": burned,
             "decision": run["decision"], "deposit_raw": run["deposit_raw"], "shares_minted_raw": minted, "signatures": signatures,
-            "receipt": str(payment.receipt), "share_account": str(payment.shares), "source": "public-rpc" if rpc else "saved-receipt"}
+            "shares_after_raw": post_shares, "receipt": str(payment.receipt), "share_account": str(payment.shares), "source": "public-rpc" if rpc else "saved-receipt"}
 
 
 def reserve_preview(run, proof, portion, rpc):
     if portion not in ("road", "all") or proof["source"] != "public-rpc":
         raise ValueError("A live public payment check is required")
     plan = PublicPayment(run, Pubkey.from_string(run["payer"]))
-    config = {"commitment": "finalized", "minContextSlot": proof["slot"]}
+    scale = proof["decision"]["raw_units_per_cent"]
+    target = 1000 * scale if portion == "road" else None
+    return redemption_quote(plan, proof["slot"], proof["shares_minted_raw"] - proof["shares_burned_raw"],
+                            scale, portion, target, rpc)
+
+
+def simulate_instructions(plan, instructions, slot, rpc):
+    message = Message.new_with_blockhash([set_compute_unit_limit(400000), *instructions], plan.payer, Hash.default())
+    wire = base64.b64encode(bytes(Transaction.new_unsigned(message))).decode()
+    response = rpc("simulateTransaction", [wire, {"commitment": "finalized", "minContextSlot": slot, "encoding": "base64",
+                                                  "replaceRecentBlockhash": True, "sigVerify": False}])
+    if response["value"]["err"] is not None or response["context"]["slot"] < slot:
+        raise ValueError("Public reserve simulation unavailable")
+    return response["context"]["slot"], message.account_keys, response["value"]
+
+
+def redemption_quote(plan, since_slot, remaining_shares, scale, portion, target, rpc):
+    config = {"commitment": "finalized", "minContextSlot": since_slot}
     account = rpc("getAccountInfo", [str(plan.shares), {**config, "encoding": "jsonParsed"}])
     slot = account["context"]["slot"]
-    if slot < proof["slot"]:
+    if slot < since_slot:
         raise ValueError("Share balance predates payment")
     shares = 0
     if account["value"] is not None:
@@ -175,9 +193,7 @@ def reserve_preview(run, proof, portion, rpc):
                 or info["owner"] != str(plan.payer) or info["mint"] != str(SHARES) or info["tokenAmount"]["decimals"] != 6):
             raise ValueError("Unexpected public share account")
         shares = int(info["tokenAmount"]["amount"])
-    cap = min(shares, proof["shares_minted_raw"] - proof["shares_burned_raw"])
-    scale = proof["decision"]["raw_units_per_cent"]
-    target = 1000 * scale if portion == "road" else None
+    cap = min(shares, remaining_shares)
     result = {"portion": portion, "slot": slot, "share_account": str(plan.shares), "wallet_shares_raw": shares,
               "eligible_shares_raw": cap, "shares_used_raw": 0, "return_raw": 0, "target_raw": target,
               "raw_units_per_cent": scale, "source": "public-rpc"}
@@ -187,18 +203,11 @@ def reserve_preview(run, proof, portion, rpc):
     def simulate(units):
         nonlocal slot
         withdrawal = vault_instruction(plan.route, plan.payer, plan.cash, plan.shares, units, venue=VENUE)
-        message = Message.new_with_blockhash([set_compute_unit_limit(400000), withdrawal], plan.payer, Hash.default())
-        wire = base64.b64encode(bytes(Transaction.new_unsigned(message))).decode()
-        response = rpc("simulateTransaction", [wire, {**config, "minContextSlot": slot, "encoding": "base64",
-                                                       "replaceRecentBlockhash": True, "sigVerify": False}])
-        value = response["value"]
-        if value["err"] is not None or response["context"]["slot"] < slot:
-            raise ValueError("Public reserve simulation unavailable")
-        before, after = token_balances(value, message.account_keys, plan.shares, SHARES, plan.payer)
-        cash_before, cash_after = token_balances(value, message.account_keys, plan.cash, MINT, plan.payer)
+        slot, keys, value = simulate_instructions(plan, [withdrawal], slot, rpc)
+        before, after = token_balances(value, keys, plan.shares, SHARES, plan.payer)
+        cash_before, cash_after = token_balances(value, keys, plan.cash, MINT, plan.payer)
         if before != shares or before - after != units or cash_after <= cash_before:
             raise ValueError("Share balance or withdrawal proceeds changed")
-        slot = response["context"]["slot"]
         return {**result, "slot": slot, "shares_used_raw": units, "return_raw": cash_after - cash_before,
                 "network_fee_lamports": value["fee"]}
 
