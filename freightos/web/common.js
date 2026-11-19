@@ -44,3 +44,13 @@ export function saveFile(name, content, type) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+export function oilOptions(select, plans) {
+  if (select.querySelector("optgroup")) return;
+  const group = document.createElement("optgroup");
+  group.label = "Other recorded Gemini oil levels";
+  for (const [key, plan] of Object.entries(plans)) {
+    if (key.startsWith("wti-")) group.append(new Option("Oil at $" + plan.gemini.stress_level + " a barrel", key));
+  }
+  if (group.children.length) select.append(group);
+}

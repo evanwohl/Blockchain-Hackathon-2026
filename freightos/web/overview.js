@@ -1,4 +1,4 @@
-import { el, money, request } from "./common.js";
+import { el, money, oilOptions, request } from "./common.js";
 
 let state;
 
@@ -36,6 +36,7 @@ async function load() {
   el("quote-status").textContent = "Loading plan prices…";
   try {
     state = await request("/api/state");
+    oilOptions(el("quote-scenario"), state.plans);
     displayQuote();
     el("quote-inputs").disabled = false;
     el("quote-result").hidden = false;
@@ -47,3 +48,10 @@ async function load() {
 el("quote-inputs").onchange = displayQuote;
 el("quote-retry").onclick = load;
 load();
+
+request("/api/trial").then(report => {
+  const edge = report.composition_savings;
+  el("trial-proof-title").textContent = money(edge.total_cents) + " in lower fees";
+  el("trial-proof-copy").textContent = "With the same reserve available to both strategies, FreightOS cost less on "
+    + edge.positive_cases + " of " + report.cases + " simulated loads. The other " + edge.ties + " tied.";
+}).catch(() => {});

@@ -175,6 +175,25 @@ def price_calendar(case):
     }
 
 
+def capacity_boundary(case, source, high, above, below, benchmark):
+    low = 0
+    target = benchmark.get("cost_cents")
+    while high - low > 1:
+        capacity = (low + high) // 2
+        funding = [{**row, "net_capacity_cents": capacity} if row["id"] == source else row
+                   for row in case["funding"]]
+        trial = price_calendar({**case, "funding": funding})
+        if trial["status"] == "funded" and (target is None or trial["cost_cents"] < target):
+            high, above = capacity, trial
+        else:
+            low, below = capacity, trial
+    return {
+        "minimum_useful_capacity_cents": high,
+        "cost_at_threshold_cents": above["cost_cents"],
+        "cost_one_cent_below_cents": below.get("cost_cents"),
+    }
+
+
 def explain_calendar(case):
     decision = price_calendar(case)
     alternatives = []
@@ -193,25 +212,8 @@ def explain_calendar(case):
             "additional_cost_cents": extra,
         }
         if extra != 0:
-            offer = next(s for s in case["funding"] if s["id"] == source)
-            low, high = 0, draw["net_proceeds_cents"]
-            below, above = alternative, decision
-            while high - low > 1:
-                capacity = (low + high) // 2
-                new_offer = {**offer, "net_capacity_cents": capacity}
-                trial = price_calendar({**case, "funding": [*remaining, new_offer]})
-                if trial["status"] == "funded" and (
-                    alternative["status"] != "funded"
-                    or trial["cost_cents"] < alternative["cost_cents"]
-                ):
-                    high, above = capacity, trial
-                else:
-                    low, below = capacity, trial
-            result.update(
-                minimum_useful_capacity_cents=high,
-                cost_at_threshold_cents=above["cost_cents"],
-                cost_one_cent_below_cents=below.get("cost_cents"),
-            )
+            result.update(capacity_boundary(case, source, draw["net_proceeds_cents"], decision, alternative, alternative))
+
         alternatives.append(result)
     return {**decision, "alternatives": alternatives}
 

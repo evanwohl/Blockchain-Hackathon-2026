@@ -16,7 +16,8 @@
     <header class="bill-heading"><div class="document-id"><h1>Sample loads</h1><span class="load-ref">Simulation</span></div></header>
     <section class="trial-summary" aria-labelledby="savings-title">
       <div><h2 id="savings-title">Estimated fees saved</h2><strong class="display" id="total">—</strong></div>
-      <div class="sample-comparison"><p>Across <b id="trial-count">all</b> sample loads, compared with the cheapest way each carrier could cover fuel without a reserve.</p>
+      <div class="sample-comparison"><label class="baseline-label" for="baseline">Compare FreightOS with</label>
+        <select id="baseline" disabled><option value="conventional">A carrier without a reserve</option><option value="composition">A carrier with the same reserve</option></select><p id="baseline-description"></p>
         <div class="sample-key"><span><i></i>Used reserve</span><strong id="reserve-count">—</strong></div>
         <div class="sample-key"><span><i></i>Paid without reserve</span><strong id="outside-count">—</strong></div>
       </div>
@@ -26,7 +27,7 @@
     <section class="matrix-panel" aria-labelledby="map-title">
       <h2 id="map-title">Load index</h2><p id="context"></p>
       <div class="case-filter"><label for="case-search">Find a load<input type="search" id="case-search" placeholder="Load ID, e.g. 004"></label>
-        <label for="case-filter">Payment method<select id="case-filter"><option value="all">All loads</option><option value="reserve">Used reserve</option><option value="outside">Without reserve</option></select></label>
+        <label for="case-filter">Show<select id="case-filter"><option value="all">All loads</option><option value="reserve">Used reserve</option><option value="outside">Without reserve</option><option value="savings">Largest savings first</option></select></label>
       </div><p id="match-count" role="status"></p><button class="secondary" id="clear-filters" hidden>Clear filters</button>
       <div id="load-map" role="group" aria-label="Choose a load"></div>
       <div class="legend"><span><i class="used"></i>Used reserve</span><span><i></i>No reserve payment</span></div>
@@ -43,7 +44,7 @@
     <section class="stats" aria-labelledby="trial-stats"><div class="inside">
       <h2 id="trial-stats">Across all loads</h2><dl id="stats" class="facts"></dl>
       <details><summary>How the plans compare</summary><p>Without a fuel reserve, a driver can use cash, borrow from a bank, or get some or all of an invoice paid early. The simpler reserve strategy chooses between that plan and using the reserve with invoice quick pay. FreightOS can also combine the reserve with credit.</p><p id="composition"></p></details>
-      <details><summary>What if the money arrives late?</summary><p id="adverse"></p></details>
+      <details id="stress-test"><summary>What if the reserve costs more or arrives late?</summary><p id="adverse"></p><p id="stress-mix"></p><button class="secondary" id="stress-retry" hidden>Retry the stress test</button></details>
       <details><summary>Assumptions and evidence</summary><p id="assumptions"></p><a href="/evidence/carrier-trial">Open the full trial data</a></details>
     </div></section>
   </div>

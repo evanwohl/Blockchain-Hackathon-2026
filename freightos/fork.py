@@ -123,6 +123,39 @@ class ReserveFork:
                 "wallet_usdc_raw": self.balance(self.cash),
             }
 
+    def available_after_deposit(self, cents):
+        shares = self.balance(self.shares)
+        if not cents:
+            return self.redemption_value(shares) if shares else 0
+        amount = cents * 10000
+        deposit = vault_instruction(self.route, self.owner, self.cash, self.shares, amount, deposit=True)
+        instructions = [set_compute_unit_limit(1_400_000), deposit]
+        minted = self.vm.simulate_transaction(self.tx(instructions))
+        if isinstance(minted, FailedTransactionMetadata):
+            raise VaultExecutionError("Could not quote the reserve deposit")
+        shares = int.from_bytes(dict(minted.post_accounts())[self.shares].data[64:72], "little")
+        redeem = vault_instruction(self.route, self.owner, self.cash, self.shares, shares)
+        result = self.vm.simulate_transaction(self.tx([*instructions, redeem]))
+        if isinstance(result, FailedTransactionMetadata):
+            raise VaultExecutionError("Could not confirm spendable reserve funds")
+        cash = int.from_bytes(dict(result.post_accounts())[self.cash].data[64:72], "little")
+        return cash - self.balance(self.cash) + amount
+
+    def deposit_quote(self, target_cents):
+        target = target_cents * 10000
+        if not target or self.available_after_deposit(0) >= target:
+            return 0
+        low, high = 0, self.balance(self.cash) // 10000
+        if self.available_after_deposit(high) < target:
+            raise VaultExecutionError("Wallet and reserve cannot cover this fuel plan")
+        while high - low > 1:
+            mid = (high + low) // 2
+            if self.available_after_deposit(mid) >= target:
+                high = mid
+            else:
+                low = mid
+        return high
+
     def redemption_value(self, shares):
         ix = vault_instruction(self.route, self.owner, self.cash, self.shares, shares)
         check = self.vm.simulate_transaction(

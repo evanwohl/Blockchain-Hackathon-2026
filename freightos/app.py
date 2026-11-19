@@ -5,12 +5,15 @@ import json
 from functools import cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
+from time import monotonic
 from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from hedging.quick_pay import price_calendar
+from freightos.fuel_markets import fuel_levels
+from hedging.invoice_policy import invoice_policy
+from hedging.quick_pay import capacity_boundary, price_calendar
 
 LOAD = "FOS-2048"
 ASSETS = Path(__file__).with_name("web")
@@ -23,18 +26,53 @@ def trial_data():
     report = json.loads((DATA / "carrier_trial.json").read_bytes())
     cases = {row["load"]: row for row in report.pop("rows")}
     report["loads"] = [
-        {"load": load, "used_reserve": bool(row["fork_receipt"])}
+        {"load": load, "used_reserve": bool(row["fork_receipt"]),
+         "conventional_savings_cents": row["conventional_savings_cents"],
+         "composition_savings_cents": row["composition_savings_cents"]}
         for load, row in cases.items()
     ]
     return report, cases
 
 
+@cache
+def stressed_trial():
+    _, cases = trial_data()
+    comparisons = {"conventional": [], "composition": []}
+    for row in cases.values():
+        case = row["case"]
+        reserve = case["funding"][0]
+        delayed = {**reserve, "available_day": reserve["available_day"] + 1,
+                   "fixed_cost_cents": reserve["fixed_cost_cents"] + 500,
+                   "term_cost_bps": reserve["term_cost_bps"] + 50}
+        conventional = row["conventional"]["cost_cents"]
+        simple_reserve = price_calendar({**case, "funding": [delayed]})
+        simple = min(conventional, simple_reserve["cost_cents"]) if simple_reserve["status"] == "funded" else conventional
+        joint = row["adverse_plan"]["cost_cents"]
+        comparisons["conventional"].append(conventional - joint)
+        comparisons["composition"].append(simple - joint)
+    counts = {}
+    for name, values in comparisons.items():
+        if min(values) < 0:
+            raise ValueError("Expanded funding menu has higher modeled cost")
+        k = (len(values) + 9) // 10
+        counts[name] = {"savings_cents": sum(values), "positive_cases": sum(x > 0 for x in values),
+                        "replaced_cases": k, "worst_mix_cents": sum(sorted(values)[:-k]) + k * min(values)}
+    return counts
+
+
 def funding_plan(sample, evidence, scenario, profile):
-    if scenario not in ("fuel budget", "oil stress"):
-        raise ValueError("Unknown fuel scenario")
+    g = evidence["gemini"]
     bill = sample["bills"][0]
-    extra = evidence["gemini"]["extra_fuel_cents_interval"][1]
-    amount = bill["cents"] if scenario == "oil stress" else bill["cents"] - extra
+    base_cents = bill["cents"] - g["extra_fuel_cents_interval"][1]
+    if scenario == "fuel budget":
+        amount = base_cents
+    elif scenario == "oil stress":
+        amount = bill["cents"]
+    elif isinstance(scenario, str) and scenario.startswith("wti-") and scenario[4:] in fuel_levels(evidence):
+        g = {**g, **fuel_levels(evidence)[scenario[4:]]}
+        amount = base_cents + g["extra_fuel_cents_interval"][1]
+    else:
+        raise ValueError("Unknown fuel scenario")
     if profile not in PROFILES:
         raise ValueError("Unknown funding option")
     reserve = {**sample["funding"][0], "net_capacity_cents": 59999}
@@ -74,10 +112,48 @@ def funding_plan(sample, evidence, scenario, profile):
         "savings_cents": fallback["cost_cents"] - decision["cost_cents"],
         "funding": decision["funding"],
         "invoice_elections": decision["payments"],
-        "gemini": evidence["gemini"],
+        "gemini": g,
         "input_sha256": evidence["input_sha256"],
         "calendar": {**case, "funding": [reserve, *alternatives]},
     }
+
+
+def pairing_value(plan):
+    case = plan["calendar"]
+    reserve = next(source for source in case["funding"] if source["id"] == "reserve redemption")
+    standard_return = [
+        {**invoice, "options": [o for o in invoice["options"] if o["name"] == "standard"]}
+        if invoice["id"] == "backhaul" else invoice for invoice in case["invoices"]
+    ]
+    restricted = {**case, "invoices": standard_return}
+    base = price_calendar({**restricted, "funding": []})["cost_cents"]
+    reserve_only = price_calendar({**restricted, "funding": [reserve]})["cost_cents"]
+    outside = plan["alternative_cost_cents"]
+    best = min(reserve_only, outside)
+    gain = best - plan["cost_cents"]
+    boundary = None
+    if gain > 0:
+        boundary = capacity_boundary(case, reserve["id"], plan["payment_cents"],
+                                     {"cost_cents": plan["cost_cents"]}, {"cost_cents": outside},
+                                     {"cost_cents": best})
+    return {"base_cents": base, "reserve_only_cents": reserve_only, "outside_only_cents": outside,
+            "joint_cents": plan["cost_cents"], "pairing_savings_cents": gain, "boundary": boundary}
+
+
+@cache
+def demo_plans():
+    evidence = json.loads((DATA / "case_report.json").read_bytes())
+    sample = json.loads((DATA / "sample_calendar.json").read_bytes())
+    levels = fuel_levels(evidence)
+    anchor = evidence["gemini"]["stress_level"]
+    if levels[anchor]["extra_fuel_cents_interval"] != evidence["gemini"]["extra_fuel_cents_interval"]:
+        raise ValueError("Gemini threshold does not reproduce the original fuel budget")
+    scenarios = ["fuel budget", "oil stress", *("wti-" + level for level in levels if level != anchor)]
+    plans = {profile: {scenario: funding_plan(sample, evidence, scenario, profile) for scenario in scenarios}
+             for profile in PROFILES}
+    edges = {profile: {key: pairing_value(plan) for key, plan in choices.items()} for profile, choices in plans.items()}
+    policies = {profile: invoice_policy(choices) for profile, choices in plans.items() if profile != "cash on hand"}
+    return plans, edges, levels, policies
 
 
 class LoadSettlement:
@@ -87,15 +163,21 @@ class LoadSettlement:
         self.deposit_receipt = None
         self.manual_payment = None
         self.record_version = uuid4().hex
-        self.evidence = json.loads((DATA / "case_report.json").read_bytes())
-        self.sample = json.loads((DATA / "sample_calendar.json").read_bytes())
-        self.plans = {
-            profile: {
-                scenario: funding_plan(self.sample, self.evidence, scenario, profile)
-                for scenario in ("fuel budget", "oil stress")
-            }
-            for profile in PROFILES
-        }
+        self.quote_balances = None
+        self.plans, self.edges, self.levels, self.policies = demo_plans()
+
+    def setup_quotes(self):
+        balances = self.fork.balance(self.fork.cash), self.fork.balance(self.fork.shares)
+        if balances != self.quote_balances:
+            quotes = {}
+            for profile, plans in self.plans.items():
+                target = max(p["payment_cents"] for p in plans.values())
+                if self.policies.get(profile):
+                    target = max(target, self.policies[profile]["peak_reserve_cents"])
+                quotes[profile] = self.fork.deposit_quote(target)
+            self.quotes = quotes
+            self.quote_balances = balances
+        return self.quotes
 
     def state(self):
         with self.lock:
@@ -104,6 +186,7 @@ class LoadSettlement:
                 "slot": self.fork.slot,
                 "reserve_shares_raw": self.fork.balance(self.fork.shares),
                 "wallet_usdc_raw": self.fork.balance(self.fork.cash),
+                "setup_cents": {} if self.manual_payment or LOAD in self.fork.receipts else self.setup_quotes(),
                 "deposit": self.deposit_receipt,
                 "manual_payment": self.manual_payment,
                 "record_version": self.record_version,
@@ -111,6 +194,9 @@ class LoadSettlement:
                 "review": self.fork.pending_review(),
                 "plans": self.plans["quick pay"],
                 "funding_plans": self.plans,
+                "pairing_values": self.edges,
+                "market_levels": self.levels,
+                "invoice_policies": self.policies,
             }
 
     def act(self, action, data):
@@ -158,6 +244,21 @@ class LoadSettlement:
             if action == "check-vendor":
                 return self.fork.check_vendor(data.get("approval"))
             if action == "deposit":
+                if data:
+                    profile = data.get("profile")
+                    cap = data.get("max_cents")
+                    if profile not in PROFILES or type(cap) is not int or cap < 0 or data.get("version") != self.record_version:
+                        raise ValueError("Review the current reserve amount")
+                    if LOAD in self.fork.receipts:
+                        raise ValueError("This load is already settled")
+                    amount = self.setup_quotes()[profile]
+                    if amount > cap:
+                        raise ValueError("Reserve setup exceeds the approved amount")
+                    if amount:
+                        if self.fork.pending_review():
+                            raise ValueError("Finish or cancel the pending payment review")
+                        self.deposit_receipt = self.fork.deposit(amount * 10000)
+                    return self.deposit_receipt or {"deposited": False}
                 if not self.deposit_receipt:
                     self.deposit_receipt = self.fork.deposit()
                 return self.deposit_receipt
@@ -181,6 +282,26 @@ class LoadSettlement:
                     raise ValueError("Settle the bill before verifying")
                 return replay(self.fork.receipts[LOAD])
             raise ValueError("Unknown action")
+
+
+class PublicReserve:
+    def __init__(self):
+        self.lock = Lock()
+        self.valid_until = 0
+        self.observation = None
+
+    def read(self):
+        from freightos.live import reserve_observation
+
+        if not self.lock.acquire(blocking=False):
+            raise ValueError("Public reserve check is in progress")
+        try:
+            if monotonic() >= self.valid_until or self.observation is None:
+                self.observation = reserve_observation()
+                self.valid_until = monotonic() + 30
+            return self.observation
+        finally:
+            self.lock.release()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -218,6 +339,9 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(status, "application/json", json.dumps(obj, separators=(",", ":")).encode())
 
     def do_GET(self):
+        if self.path == "/api/trial/stress":
+            self.respond(200, stressed_trial())
+            return
         if self.path == "/api/trial":
             self.respond(200, trial_data()[0])
             return
@@ -239,6 +363,12 @@ class Handler(BaseHTTPRequestHandler):
                 "application/json",
                 (ROOT / "artifacts/gemini_ladder/active.json").read_bytes(),
             )
+            return
+        if self.path == "/api/reserve-observation":
+            try:
+                self.respond(200, self.server.public_reserve.read())
+            except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+                self.respond(503, {"error": "Public reserve data is unavailable. You can retry the check."})
             return
         if self.path == "/api/state":
             self.respond(200, self.server.settlement.state())
@@ -312,6 +442,7 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
+    server.public_reserve = PublicReserve()
     print(
         f"FreightOS at http://127.0.0.1:{server.server_port} (local fork, test funds)",
         flush=True,
