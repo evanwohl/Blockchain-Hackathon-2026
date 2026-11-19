@@ -585,6 +585,7 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .receipt-cost { margin-top: 1.6rem; padding-top: .8rem; border-top: 1px solid #626b57; }
 .receipt-cost dl { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: .7rem 0; }
 .receipt-cost dt, .receipt-cost p:last-child { font-size: .88rem; }
+.receipt-cost dt { color: #dbe0d0; }
 .receipt-cost dd { margin: .2rem 0; font: 600 2.2rem/1 var(--display); }
 .public-cover .ledger-back { margin-top: 1rem; }
 .public-slip { background: #f3f1e9; color: #24291f; }
