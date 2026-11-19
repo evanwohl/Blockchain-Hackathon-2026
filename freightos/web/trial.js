@@ -57,6 +57,7 @@ function showDetails() {
 
 async function load() {
   const report = await request("/api/trial");
+  el("trial-count").textContent = report.cases;
   const savings = report.conventional_savings;
   const payments = report.execution_counts["signed and replayed on fork"];
   el("total").textContent = money(savings.total_cents);

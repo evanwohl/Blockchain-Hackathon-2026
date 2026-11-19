@@ -1,17 +1,60 @@
 import { downloadReceipt, el, facts, money, request, tokenUnits } from "./common.js";
 
 const profiles = {
-  "quick pay": { source: "Early payment on your backhaul invoice", fallback: "Quick pay on $3,000 invoice", terms: "Quick pay releases your invoice early for a 5% fee." },
-  "credit line": { source: "From your bank credit line", fallback: "Credit line alone", terms: "The sample credit line offers $800 at 1% for the term." },
-  "cash on hand": { source: "From cash on hand", fallback: "Paying from cash", terms: "Available cash covers the bill by its due date." }
+  "quick pay": { source: "Backhaul quick pay", fallback: "Quick pay on $3,000 invoice", terms: "Quick pay releases your invoice early for a 5% fee." },
+  "credit line": { source: "Bank credit line", fallback: "Credit line alone", terms: "The sample credit line offers $800 at 1% for the term." },
+  "cash on hand": { source: "Available cash", fallback: "Paying from cash", terms: "Available cash covers the bill by its due date." }
 };
 let state;
 let pending = "";
 let expiryTimer;
 let currentStep;
 
+let profile = sessionStorage.getItem("funding-profile") || "quick pay";
+let scenario = sessionStorage.getItem("fuel-scenario") || "oil stress";
+
+function renderCalendar(plan) {
+  const bill = plan.calendar.bills[0];
+  const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
+  el("load-id").textContent = plan.load;
+  el("bill-due").textContent = "Due day " + bill.day + " · " + (plan.scenario === "oil stress" ? "Higher fuel estimate" : "Original fuel estimate");
+  el("invoice-value").textContent = money(primary.receipt_cents) + " · Day " + primary.day;
+  const events = [
+    { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true },
+    ...plan.invoice_elections.map(item => ({
+      day: item.day, label: item.invoice === "backhaul" ? "Backhaul invoice" : "Freight invoice",
+      note: item.option === "standard" ? "Scheduled payment" : "Early payment", amount: item.receipt_cents
+    })),
+    ...plan.funding.map(item => ({
+      day: plan.calendar.funding.find(source => source.id === item.source).available_day,
+      label: item.source === "reserve redemption" ? "Reserve available" : "Bank credit available",
+      note: "Planned funding", amount: item.net_proceeds_cents
+    }))
+  ];
+  el("timeline").replaceChildren(...events.sort((a, b) => a.day - b.day).map(event => {
+    const row = document.createElement("li");
+    const day = document.createElement("span");
+    const pin = document.createElement("i");
+    const label = document.createElement("span");
+    const note = document.createElement("small");
+    const amount = document.createElement("strong");
+    day.className = "day";
+    pin.className = "pin";
+    label.className = "event-label";
+    day.textContent = "Day " + event.day;
+    label.textContent = event.label;
+    note.textContent = event.note;
+    amount.textContent = money(event.amount);
+    if (event.bill) row.dataset.bill = "";
+    label.append(note);
+    row.append(day, pin, label, amount);
+    return row;
+  }));
+}
+
 function renderPlan(plan) {
   const profile = profiles[plan.profile];
+  renderCalendar(plan);
   el("saved").textContent = money(plan.savings_cents);
   el("plan-cost").textContent = money(plan.cost_cents);
   el("alternative").textContent = profile.fallback;
@@ -54,8 +97,8 @@ function paymentView(plan) {
   };
   if (review) return {
     stage: 1, title: "Review your payment", button: "Pay " + money(plan.payment_cents) + " in test USDC",
-    description: "Check the recipient and amount. The review is valid for up to one minute. You can cancel before paying.",
-    rows: [["To", "Fuel vendor · " + review.payee_account.slice(0, 4) + "…" + review.payee_account.slice(-4)], ["Vendor receives", tokenUnits(review.usdc_raw) + " USDC"], ["Maximum reserve shares used", tokenUnits(review.max_shares_raw)], ["Payment network fee", review.network_fee_lamports / 1e9 + " SOL"]]
+    description: "Check the fuel vendor and the amount before sending. This review expires within one minute.",
+    rows: [["To", "Fuel vendor · " + review.payee_account.slice(0, 4) + "…" + review.payee_account.slice(-4)], ["Vendor receives", tokenUnits(review.usdc_raw) + " USDC"], ["Paid separately under this plan", money(plan.other_funds_cents)], ["Network fee", review.network_fee_lamports / 1e9 + " SOL"]]
   };
   if (state.deposit) return {
     stage: 1, title: "Your reserve is ready", button: "Review " + money(plan.payment_cents) + " payment",
@@ -65,20 +108,29 @@ function paymentView(plan) {
   const amount = tokenUnits(state.wallet_usdc_raw);
   return {
     stage: 0, title: "Fund your reserve", button: "Deposit " + amount + " test USDC",
-    description: "Set aside test USDC (digital dollars) in Kamino. Review the vendor before paying.",
+    description: "Move the demo wallet’s digital dollars into your Kamino reserve. You’ll approve the vendor payment separately.",
     rows: [["Available in demo wallet", amount + " USDC"]]
   };
 }
 
 function render() {
   if (!state) return;
-  const plan = state.funding_plans[el("profile").value][el("scenario").value];
+  const plan = state.funding_plans[profile][scenario];
   renderPlan(plan);
   const { review, receipt } = state;
   const view = paymentView(plan);
   const busy = Boolean(pending);
-  el("profile").disabled = el("scenario").disabled = busy || Boolean(review || receipt);
+  el("configure").disabled = busy || Boolean(review || receipt);
+  el("open-payment").disabled = busy;
+  el("open-label").textContent = receipt ? "View receipt" : review ? "Return to review" : plan.payment_cents ? "Open payment plan" : "View cash plan";
+  el("fund-caption").textContent = receipt ? "Reserve payment delivered · Test funds" : review ? "Awaiting your approval · Test funds" : "Estimated financing cost " + money(plan.cost_cents);
+  el("reset").hidden = !receipt;
+  el("reset").disabled = busy;
+  el("verify").textContent = pending === "Verifying…" ? pending : "Verify payment";
+  el("primary").hidden = Boolean(receipt);
+  const changedStep = el("title").textContent !== view.title;
   el("title").textContent = view.title;
+  if (changedStep && el("payment").open) el("title").focus();
   el("instruction").textContent = view.description;
   facts(el("facts"), view.rows);
   el("steps").hidden = view.stage < 0;
@@ -101,13 +153,15 @@ function render() {
   if (el("proof").open) el("details").textContent = JSON.stringify(currentStep, null, 2);
 }
 
-async function sync() {
+async function sync(restore = false) {
   state = await request("/api/state");
   const locked = state.receipt || state.review;
   if (locked) {
-    el("scenario").value = locked.decision.scenario;
-    el("profile").value = locked.decision.profile;
+    scenario = locked.decision.scenario;
+    profile = locked.decision.profile;
   }
+  if (!Object.hasOwn(state.funding_plans, profile)) profile = "quick pay";
+  if (!Object.hasOwn(state.funding_plans[profile], scenario)) scenario = "oil stress";
   clearTimeout(expiryTimer);
   if (state.review) expiryTimer = setTimeout(async () => {
     if (pending) return;
@@ -117,6 +171,7 @@ async function sync() {
     } catch (error) { el("status").textContent = error.message; }
   }, Math.ceil(state.review.expires_in_seconds * 1000) + 100);
   render();
+  if (restore && state.review) el("payment").showModal();
 }
 
 async function run(label, action) {
@@ -143,16 +198,19 @@ function showRetry(error) {
   el("title").textContent = "Reconnect to your payment";
   el("primary").disabled = false;
   el("primary").textContent = "Reload payment";
-  el("profile").disabled = el("scenario").disabled = true;
+  el("configure").disabled = true;
+  el("open-payment").disabled = false;
+  el("open-label").textContent = "Reconnect to payment";
+  el("primary").hidden = false;
+  el("reset").hidden = true;
   el("cancel").hidden = el("challenge").hidden = el("verify").hidden = el("download").hidden = true;
 }
 
 el("primary").onclick = () => {
   if (!state) return location.reload();
-  if (state.receipt) return run("Starting over…", () => request("/api/reset", {}));
   if (!state.deposit) return run("Funding reserve…", () => request("/api/deposit", {}));
   if (state.review) return run("Sending payment…", () => request("/api/approve", { approval: state.review.id }));
-  return run("Preparing review…", () => request("/api/review", { profile: el("profile").value, scenario: el("scenario").value }));
+  return run("Preparing review…", () => request("/api/review", { profile, scenario }));
 };
 el("cancel").onclick = () => run("Cancelling…", () => request("/api/cancel", { approval: state.review.id }));
 el("check").onclick = () => run("Checking recipient…", async () => {
@@ -164,6 +222,40 @@ el("verify").onclick = () => run("Verifying…", async () => {
   el("verified").textContent = proof.verified_signatures + " signatures verified. An independent replay confirmed delivery of " + tokenUnits(proof.vendor_received_usdc_raw) + " USDC.";
 });
 el("download").onclick = () => downloadReceipt(state.load, state.receipt);
-el("scenario").onchange = el("profile").onchange = render;
+function previewSettings() {
+  const choice = el("profile").value;
+  const plan = state.funding_plans[choice][el("scenario").value];
+  el("access-help").textContent = profiles[choice].terms;
+  el("draft-bill").textContent = money(plan.bill_cents);
+  el("draft-cost").textContent = money(plan.cost_cents);
+}
+
+el("configure").onclick = () => {
+  el("profile").value = profile;
+  el("scenario").value = scenario;
+  previewSettings();
+  el("settings").showModal();
+};
+el("scenario").onchange = el("profile").onchange = previewSettings;
+el("apply").onclick = () => {
+  profile = el("profile").value;
+  scenario = el("scenario").value;
+  sessionStorage.setItem("funding-profile", profile);
+  sessionStorage.setItem("fuel-scenario", scenario);
+  render();
+  el("settings").close();
+};
+el("open-payment").onclick = () => el("payment").showModal();
+for (const button of document.querySelectorAll("[data-dismiss]")) {
+  button.onclick = () => button.closest("dialog").close();
+}
+el("reset").onclick = () => run("Starting over…", async () => {
+  await request("/api/reset", {});
+  profile = "quick pay";
+  scenario = "oil stress";
+  sessionStorage.removeItem("funding-profile");
+  sessionStorage.removeItem("fuel-scenario");
+  el("payment").close();
+});
 el("proof").ontoggle = () => { el("details").textContent = el("proof").open ? JSON.stringify(currentStep, null, 2) : ""; };
-sync().catch(showRetry);
+sync(true).catch(showRetry);

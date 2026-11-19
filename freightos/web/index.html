@@ -2,62 +2,59 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FreightOS · Fuel bill</title>
-  <link rel="preload" href="/media/barlow-condensed-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <meta name="theme-color" content="#f6f7f4"><title>Load overview · FreightOS</title>
+  <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head>
 <body>
-<header class="mast"><div class="bar">
-  <a class="brand" href="/" aria-label="FreightOS home"><i class="logomark" aria-hidden="true"></i>FreightOS</a>
-  <nav aria-label="Main navigation"><a aria-current="page" href="/">Fuel desk</a><a href="/trial">Carrier trial</a></nav>
-  <span class="network"><i aria-hidden="true"></i>Test funds</span>
-</div></header>
+<header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><i class="brand-mark" aria-hidden="true"></i>FreightOS</a><nav aria-label="Main navigation"><a href="/" aria-current="page"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M8 15h3"/></svg>Fuel desk</a><a href="/trial"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M6 16v-4m6 4V5m6 11V9"/></svg>Carrier trial</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
 <main>
-  <div class="cover">
-    <div class="cover-type"><div class="folio">Load manifest <span>/</span> FOS-2048</div>
-      <h1>Fuel settlement</h1>
-      <p>Your fuel is due on day 5. Your $3,000 freight invoice pays on day 28.</p>
-    </div>
-    <div class="cover-photo"><img src="/media/linehaul.webp" alt="" width="1500" height="500"></div>
+  <div class="page-heading"><div><p class="eyebrow">Load <span id="load-id">FOS-2048</span></p><h1>Load overview</h1></div>
+    <button class="secondary configure" id="configure" disabled><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h5m5 0h6M4 17h10m5 0h1"/><circle cx="11.5" cy="7" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/></svg>Plan settings</button>
   </div>
-  <div class="controls">
-    <label>Fuel scenario<select id="scenario" disabled><option value="oil stress">Higher oil price</option><option value="fuel budget">Original estimate</option></select></label>
-    <label>Funding access<select id="profile" disabled><option value="quick pay">Invoice quick pay</option><option value="credit line">Bank credit line</option><option value="cash on hand">Cash on hand</option></select></label>
-  </div>
-  <div class="workspace">
-    <section class="outlook" aria-labelledby="savings-title">
-      <h2 class="label" id="savings-title">Estimated fee savings</h2>
-      <strong class="hero-value" id="saved">—</strong>
-      <dl class="compare">
-        <div><dt>This plan</dt><dd id="plan-cost">—</dd><i class="cost-track" aria-hidden="true"><b id="plan-bar"></b></i></div>
-        <div><dt id="alternative">Alternative cost</dt><dd id="other-cost">—</dd><i class="cost-track" aria-hidden="true"><b id="other-bar"></b></i></div>
-      </dl>
-      <a class="jump" href="#title">View payment plan</a>
+  <div class="overview">
+    <section class="bill-card" aria-labelledby="bill-label">
+      <img src="/media/tractor.webp" alt="" width="1700" height="680" fetchpriority="high">
+      <div class="bill-body"><h2 id="bill-label"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15M2 20h14M5 10h8m1 1h1a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0V9l-3-3"/></svg>Fuel bill</h2><strong id="bill" class="display">—</strong><span class="due" id="bill-due">—</span>
+      <div class="bill-foot"><span>Freight invoice</span><strong id="invoice-value">—</strong></div></div>
     </section>
-    <section class="panel action" aria-labelledby="title">
-      <div class="actionhead"><strong>Payment order</strong><ol id="steps" aria-label="Payment progress"><li>Fund</li><li>Review</li><li>Pay</li></ol></div>
-      <div class="inside">
-        <h2 id="title" tabindex="-1">Loading your plan</h2><p id="instruction"></p>
-        <dl id="facts"></dl>
-        <button id="primary" disabled>Loading</button>
-        <button id="cancel" class="plain" hidden>Cancel review</button>
-        <p role="status" id="status"></p>
-        <details id="challenge" hidden><summary>Test the vendor protection</summary><p>Try the reviewed payment with a different recipient.</p><button class="secondary" id="check">Test a different vendor</button><p id="result" role="status"></p></details>
-        <button id="verify" class="secondary" hidden>Verify this payment</button>
-        <p id="verified" role="status"></p>
-        <button id="download" class="plain" hidden>Download signed receipt</button>
-        <details id="proof" hidden><summary>Technical receipt details</summary><pre id="details"></pre></details>
-      </div>
-    </section>
-    <section class="panel breakdown" aria-labelledby="funding-title">
-      <div class="inside">
-        <div class="section-title"><h2 id="funding-title">Bill breakdown</h2><strong id="bill">—</strong></div>
-        <div class="split" aria-hidden="true"><i id="bar"></i></div>
-        <dl><div><dt>From your reserve</dt><dd id="amount">—</dd></div><div><dt id="other-label">Other funds</dt><dd id="other">—</dd></div></dl>
-        <details><summary>Where the costs come from</summary><dl id="fees"></dl><p id="terms"></p></details>
-        <details><summary>How Gemini changes the fuel budget</summary><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">View recorded oil contracts</a></details>
-      </div>
+    <section class="card funding" aria-labelledby="funding-title">
+      <h2 id="funding-title">Funding plan</h2>
+      <dl class="mix"><div><dt><i></i>From your reserve</dt><dd id="amount">—</dd></div><div><dt><i></i><span id="other-label">Other funds</span></dt><dd id="other">—</dd></div></dl>
+      <div class="split" aria-hidden="true"><i id="bar"></i></div>
+      <button id="open-payment" class="primary" disabled><span id="open-label">Loading plan</span><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button>
+      <p class="caption" id="fund-caption" role="status"></p>
     </section>
   </div>
-  <footer><span class="footer-mark" aria-hidden="true">F/OS</span>Demo settlement · Test USDC on a local Solana fork. The sample vendor accepts USDC.</footer>
-</main></body></html>
+  <div class="analysis-grid">
+    <section class="ledger" aria-labelledby="calendar-title"><div class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><h2 id="calendar-title">Load timeline</h2></div><ol id="timeline" aria-label="Planned cash movements"></ol></section>
+    <section class="costs" aria-labelledby="cost-title"><div class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14m-4-4 4 4-4 4M19 16H5m4-4-4 4 4 4"/></svg><h2 id="cost-title">Cost comparison</h2></div>
+      <div class="saving"><strong id="saved">—</strong><span>in estimated fee savings</span></div>
+      <dl class="compare"><div><dt>FreightOS plan</dt><dd id="plan-cost">—</dd><i><b id="plan-bar"></b></i></div><div><dt id="alternative">Alternative</dt><dd id="other-cost">—</dd><i><b id="other-bar"></b></i></div></dl>
+      <details><summary>Fee breakdown</summary><dl id="fees" class="facts"></dl><p id="terms"></p></details>
+      <details><summary>Gemini fuel scenario</summary><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">View recorded oil contracts ↗</a></details>
+    </section>
+  </div>
+  <footer>Test funds on a local Solana fork. This sample fuel vendor accepts USDC.</footer>
+  <dialog id="settings" aria-labelledby="settings-title"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Load assumptions</p><button type="button" class="close" aria-label="Close settings" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <h2 id="settings-title">Plan settings</h2>
+    <label for="profile">Available funding</label><select id="profile"><option value="quick pay">Invoice quick pay</option><option value="credit line">Bank credit line</option><option value="cash on hand">Cash on hand</option></select>
+    <p id="access-help"></p>
+    <label for="scenario">Fuel budget</label><select id="scenario"><option value="oil stress">Higher oil price · Gemini scenario</option><option value="fuel budget">Original fuel estimate</option></select>
+    <dl class="facts draft"><div><dt>Fuel due</dt><dd id="draft-bill">—</dd></div><div><dt>Estimated financing cost</dt><dd id="draft-cost">—</dd></div></dl>
+    <button class="primary" id="apply">Apply to this load</button>
+  </div></dialog>
+  <dialog id="payment" aria-labelledby="title"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Reserve payment · Test funds</p><button type="button" class="close" aria-label="Close payment" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <ol id="steps" aria-label="Payment progress"><li>Fund</li><li>Review</li><li>Receipt</li></ol>
+    <h2 id="title" tabindex="-1">Loading your plan</h2><p id="instruction"></p><dl id="facts" class="facts"></dl>
+    <button id="primary" class="primary" disabled>Loading</button>
+    <button id="cancel" class="plain" hidden>Cancel review</button><p role="status" id="status"></p>
+    <button id="verify" class="primary" hidden>Verify payment</button><p id="verified" role="status"></p>
+    <button id="download" class="plain" hidden>Download signed receipt</button>
+    <button id="reset" class="plain" hidden>Start another demo</button>
+    <details id="challenge" hidden><summary>Test the vendor protection</summary><p>Try the reviewed payment with a different recipient.</p><button class="secondary" id="check">Test a different vendor</button><p id="result" role="status"></p></details>
+    <details id="proof" hidden><summary>Transaction details</summary><pre id="details"></pre></details>
+  </div></dialog></main>
+</body></html>
