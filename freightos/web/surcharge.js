@@ -9,6 +9,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
   const partial = el("allow-partial");
   const regular = el("regular-pay-day");
   const discount = el("customer-fee");
+  const road = el("road-cash");
   const budget = el("reserve-limit");
   const check = el("check-surcharge");
   const apply = el("apply-surcharge");
@@ -23,10 +24,12 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     el("surcharge-before").hidden = false;
     status.textContent = "";
     check.disabled = false;
-    el("offer-sources").open = false;
+    el("offer-sources").open = el("whole-comparison").open = false;
   }
 
   function updateOfferFields() {
+    el("road-cash-field").querySelector("summary").textContent = road.valueAsNumber > 0 && road.validity.valid
+      ? "Keep " + money(Math.round(road.valueAsNumber * 100)) + " for the road" : "Keep cash for tolls and repairs";
     el("reserve-limit-field").querySelector("summary").textContent = budget.value !== "" && budget.validity.valid
       ? "Fuel reserve limit · " + money(Math.round(budget.valueAsNumber * 100)) : "Set a fuel reserve limit";
     partial.disabled = el("partial-field").hidden = !offer.checked;
@@ -63,6 +66,9 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     const fee = presetCents("offer_fee_cents");
     if (fee !== null) discount.value = (fee / 100).toFixed(2);
     const limit = sampleOffer ? presetCents("reserve_limit_cents") : terms ? state.surcharge_limit_cents : null;
+    const floor = sampleOffer ? presetCents("road_cash_cents") : terms ? plan.road_cash_cents : null;
+    road.value = floor == null ? "" : (floor / 100).toFixed(2);
+    el("road-cash-field").open = road.value !== "";
     budget.value = limit == null ? "" : (limit / 100).toFixed(2);
     el("reserve-limit-field").open = budget.value !== "";
     updateOfferFields();
@@ -83,6 +89,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     const { state, plan } = context();
     const body = { version: state.record_version, scenario: plan.scenario,
       cents: Math.round(amount.valueAsNumber * 100), day: day.valueAsNumber };
+    if (road.value !== "") body.road_cash_cents = Math.round(road.valueAsNumber * 100);
     if (budget.value !== "") body.reserve_limit_cents = Math.round(budget.valueAsNumber * 100);
     if (offer.checked) {
       if (partial.checked) body.allow_partial = true;
@@ -97,6 +104,13 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
       const decision = quote.offer;
       const split = decision?.partial;
       el("partial-dates").hidden = !split;
+      const showWhole = split?.setup_difference_cents > 0 && quote.road_cash_cents > 0;
+      el("whole-comparison").hidden = !showWhole;
+      if (showWhole) {
+        el("whole-tradeoff").textContent = (split.baseline_early ? "Taking the full advance" : "Waiting for regular payment")
+          + " leaves " + money(split.wallet_after_cents + split.setup_difference_cents) + " in your wallet and costs "
+          + money(split.baseline_cost_cents - quote.cost_cents) + " more in fees on this bill.";
+      }
       const sources = [
         ["Fuel bill due on " + dayLabel(quote.due), money(quote.bill_cents)],
         ["From the customer for this bill", money(quote.for_fuel_cents)],
@@ -139,10 +153,11 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
         status.textContent = "The customer keeps " + money(quote.fee_cents) + " on the early portion. This plan saves at least "
           + money(Math.min(split.min_savings_cents.full, split.min_savings_cents.waiting))
           + " in fees across the tested fuel estimates compared with either whole-payment option.";
-        const extra = split.setup_difference_cents > 0 ? " Set aside " + money(split.setup_difference_cents)
+        const extra = !showWhole && split.setup_difference_cents > 0 ? " Set aside " + money(split.setup_difference_cents)
           + " more than the better whole-payment plan." : "";
         boundary.textContent = "This is the smallest advance that keeps both freight invoices in full across all "
-          + quote.budget_count + " fuel estimates." + extra + " After setup, " + money(split.wallet_after_cents) + " stays in your wallet.";
+          + quote.budget_count + " fuel estimates." + extra;
+        if (!quote.road_cash_cents) boundary.textContent += " After setup, " + money(split.wallet_after_cents) + " stays in your wallet.";
         apply.textContent = "Use the partial-payment plan";
       } else if (decision) {
         heading.textContent = decision.take_offer ? "Take the early payment" : "Keep the regular payment date";
@@ -177,6 +192,11 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
         status.textContent = difference ? timing + " Clearing on " + dayLabel(cheaperDay) + " saves " + money(difference) + " in estimated fees." : timing;
         apply.textContent = "Use this plan";
       }
+      if (quote.road_cash_cents) {
+        boundary.textContent += quote.wallet_return_cents
+          ? " Review a " + money(quote.wallet_return_cents) + " return from your reserve to reach your road cash target before paying."
+          : " Your wallet keeps " + money(quote.wallet_after_cents) + " after reserve setup.";
+      }
       if (quote.requested_limit_cents > quote.available_reserve_cents)
         boundary.textContent += " Your wallet and vault can cover up to " + money(quote.available_reserve_cents) + " of the requested limit.";
       const comparison = el("surcharge-facts");
@@ -207,6 +227,14 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     }
   }
 
+  el("compare-whole").onclick = () => {
+    if (!checked || apply.disabled) return;
+    partial.checked = false;
+    clear();
+    updateOfferFields();
+    form.requestSubmit();
+  };
+
   el("compare-budget").onclick = event => {
     if (!checked || apply.disabled) return;
     budget.value = (Number(event.currentTarget.value) / 100).toFixed(2);
@@ -220,7 +248,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     if (!checked || apply.disabled) return;
     const body = checked;
     const token = revision;
-    apply.disabled = check.disabled = amount.disabled = day.disabled = budget.disabled = offer.disabled = partial.disabled = regular.disabled = discount.disabled = true;
+    apply.disabled = check.disabled = amount.disabled = day.disabled = road.disabled = budget.disabled = offer.disabled = partial.disabled = regular.disabled = discount.disabled = true;
     status.textContent = "Updating the bill plan…";
     try {
       const result = await request("/api/apply-surcharge", body);
@@ -234,7 +262,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
         await reconcile();
       }
     } finally {
-      apply.disabled = check.disabled = amount.disabled = day.disabled = budget.disabled = offer.disabled = false;
+      apply.disabled = check.disabled = amount.disabled = day.disabled = road.disabled = budget.disabled = offer.disabled = false;
       updateOfferFields();
     }
   };

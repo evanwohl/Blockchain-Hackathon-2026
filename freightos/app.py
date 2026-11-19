@@ -129,7 +129,16 @@ class LoadSettlement:
         if not base:
             raise ValueError("Select a fuel estimate")
         wallet = self.fork.balance(self.fork.cash)
-        cap = self.fork.available_after_deposit(wallet // 10000) // 10000
+        floor = integer(data.get("road_cash_cents", 0), "cash to keep for the road")
+        cash = wallet // 10000
+        return_needed = max(0, floor - cash)
+        if return_needed:
+            withdrawal = reserve_return.return_for_cash(self.fork, return_needed)
+            cash_after_return = (wallet + withdrawal["return_usdc_raw"]) // 10000
+            cap = withdrawal["remaining_value_raw"] // 10000
+        else:
+            cash_after_return = cash
+            cap = self.fork.available_after_deposit(cash - floor) // 10000
         available = min(cap, base["calendar"]["funding"][0]["net_capacity_cents"])
         limit = integer(data["reserve_limit_cents"], "reserve limit") if "reserve_limit_cents" in data else None
         cap = available if limit is None else min(available, limit)
@@ -149,10 +158,13 @@ class LoadSettlement:
                 offer["partial_checked"] = True
                 if option:
                     baseline_setup = self.fork.deposit_quote(policy["peak_reserve_cents"])
+                    baseline_cost = plans[scenario]["cost_cents"]
+                    baseline_early = offer["take_offer"]
                     plans, policy, partial = option
                     setup = self.fork.deposit_quote(policy["peak_reserve_cents"])
                     offer.update(partial={**partial, "setup_difference_cents": setup - baseline_setup,
-                                          "wallet_after_cents": wallet // 10000 - setup},
+                                          "baseline_early": baseline_early, "baseline_cost_cents": baseline_cost,
+                                          "wallet_after_cents": cash_after_return - setup},
                                  take_offer=True, early_cost_cents=plans[scenario]["cost_cents"],
                                  least_saved_cents=partial["min_savings_cents"]["waiting"])
             if cap < available and not offer["take_offer"]:
@@ -185,7 +197,17 @@ class LoadSettlement:
                 else:
                     alternative["extra_setup_cents"] = alternative["setup_cents"] - quote["setup_cents"]
             quote["offer"] = offer
+        if floor:
+            wallet_after = cash_after_return - quote["setup_cents"]
+            if wallet_after < floor or (return_needed and quote["setup_cents"]):
+                raise ValueError("The wallet and reserve cannot cover both the road money and this plan")
+            quote.update(road_cash_cents=floor, wallet_after_cents=wallet_after, wallet_return_cents=return_needed)
         return {"id": bill.commitment(quote).hex(), **quote}
+
+    def check_road_cash(self, plan, deposit_cents=0):
+        floor = plan.get("road_cash_cents", 0)
+        if floor and self.fork.balance(self.fork.cash) // 10000 - deposit_cents < floor:
+            raise ValueError("Return the road money to your wallet before using this plan")
 
     def setup_quotes(self):
         balances = self.fork.balance(self.fork.cash), self.fork.balance(self.fork.shares)
@@ -202,6 +224,11 @@ class LoadSettlement:
                 except VaultExecutionError:
                     quotes[profile] = None
                 by_target[target] = quotes[profile]
+            if self.surcharge_profile:
+                profile = self.surcharge_profile
+                floor = self.plans[profile]["oil stress"].get("road_cash_cents", 0)
+                if quotes[profile] and balances[0] // 10000 - quotes[profile] < floor:
+                    quotes[profile] = None
             self.return_limits = {}
             self.quotes = quotes
             self.quote_balances = balances
@@ -270,11 +297,13 @@ class LoadSettlement:
         if locked and locked["profile"] != profile:
             raise ValueError("Use the funding plan on this bill")
         target = 0 if locked else self.reserve_target(profile)
-        quote = reserve_return.return_quote(self.fork, target, {
+        context = {
             "profile": profile, "load": LOAD, "version": self.record_version,
-            "payment_signature": settled["signature"] if settled else None})
+            "payment_signature": settled["signature"] if settled else None}
         if "extra_wallet_cents" in data:
-            quote = reserve_return.sized_return(self.fork, quote, data["extra_wallet_cents"])
+            quote = reserve_return.return_for_cash(self.fork, data["extra_wallet_cents"], target, context)
+        else:
+            quote = reserve_return.return_quote(self.fork, target, context)
         return {"id": bill.commitment(quote).hex(), **quote}
 
     def reserve_target(self, profile):
@@ -307,6 +336,8 @@ class LoadSettlement:
                 plans, policy = surcharge_plans(quote["cents"], quote["day"], quote["capacity_cents"],
                                                 quote.get("full_fee_cents", quote.get("fee_cents", 0)), quote.get("regular_day"),
                                                 quote.get("advance_cents"))
+                if quote.get("road_cash_cents"):
+                    plans = {key: {**plan, "road_cash_cents": quote["road_cash_cents"]} for key, plan in plans.items()}
                 edges = {key: pairing_value(plan) for key, plan in plans.items()}
                 self.clear_surcharge()
                 key = quote["profile"]
@@ -348,6 +379,7 @@ class LoadSettlement:
                 receipt = self.fork.receipts.get(LOAD)
                 if receipt and receipt["decision"] != plan:
                     raise ValueError("Use the plan on the reserve receipt")
+                self.check_road_cash(plan)
                 if plan["payment_cents"] and not receipt:
                     raise ValueError("Complete the reserve payment first")
                 entry = {"profile": profile, "scenario": scenario, "cents": plan["other_funds_cents"]}
@@ -377,6 +409,7 @@ class LoadSettlement:
                     amount = self.setup_quotes()[profile]
                     if amount is None:
                         raise ValueError("Reserve setup is unavailable for this funding plan")
+                    self.check_road_cash(self.plans[profile]["oil stress"], amount)
                     if amount > cap:
                         raise ValueError("Reserve setup exceeds the approved amount")
                     if amount:
@@ -385,6 +418,8 @@ class LoadSettlement:
                         self.deposit_receipt = self.fork.deposit(amount * 10000)
                     return self.deposit_receipt or {"deposited": False}
                 if not self.deposit_receipt:
+                    if self.surcharge_profile and self.plans[self.surcharge_profile]["oil stress"].get("road_cash_cents"):
+                        raise ValueError("Review the reserve setup for your selected plan")
                     self.deposit_receipt = self.fork.deposit()
                 return self.deposit_receipt
             if action == "review":
@@ -395,6 +430,7 @@ class LoadSettlement:
                 if profile not in self.plans or scenario not in self.plans[profile]:
                     raise ValueError("Unknown payment plan")
                 plan = self.plans[profile][scenario]
+                self.check_road_cash(plan)
                 if not plan["payment_cents"]:
                     if plan.get("backup_for"):
                         raise ValueError("Pay the vendor directly using the selected backup")

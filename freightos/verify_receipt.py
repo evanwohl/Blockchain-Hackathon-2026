@@ -34,6 +34,7 @@ def replay(receipt):
         tx.verify()
         if tx.message.account_keys[0] != payer:
             raise ValueError("Unexpected transaction payer")
+        before_wallet = fork.balance(fork.cash)
         before_vendor = fork.balance(fork.vendor)
         before_shares = fork.balance(fork.shares)
         prior = fork.vm.get_account(account_key)
@@ -109,6 +110,13 @@ def replay(receipt):
                                        terms.get("full_fee_cents", terms.get("fee_cents", 0)), terms.get("regular_day"),
                                        terms.get("advance_cents"))
             plan = plans[decision["scenario"]]
+            if "road_cash_cents" in decision:
+                from hedging.quick_pay import integer
+
+                floor = integer(decision["road_cash_cents"], "road cash")
+                if not floor or min(before_wallet, fork.balance(fork.cash)) < floor * 10000:
+                    raise ValueError("The wallet did not retain the approved road cash")
+                plan = {**plan, "road_cash_cents": floor}
         elif "cash_policy" in decision or "late_freight" in decision:
             policy = decision.get("cash_policy") or decision["late_freight"]
             version = policy.get("version", 1)

@@ -68,7 +68,7 @@ def sized_return(fork, quote, extra_cents):
     wallet = quote["wallet_before_raw"]
     target = (wallet // 10000 + extra_cents) * 10000
     if wallet + quote["return_usdc_raw"] < target:
-        raise ValueError("The available reserve return cannot cover this amount")
+        raise ValueError("Your wallet and fuel reserve together cannot cover the requested amount")
     low, high = 0, quote["return_shares_raw"]
     while high - low > 1:
         mid = (low + high) // 2
@@ -81,10 +81,15 @@ def sized_return(fork, quote, extra_cents):
     left = quote["shares_before_raw"] - high
     remaining = simulated_cash(fork, [release, withdraw(fork, left)], below_minimum_balance=after) - after if left else 0
     if after < target or remaining < quote["protected_cents"] * 10000:
-        raise ValueError("The reserve could not cover both the wallet increase and the fuel plan")
+        raise ValueError("The reserve cannot cover both the wallet increase and the fuel plan")
     split_cost = max(0, fork.redemption_value(quote["shares_before_raw"]) - (after - wallet) - remaining)
     return {**quote, "extra_wallet_cents": extra_cents, "split_cost_raw": split_cost, "return_shares_raw": high,
             "return_usdc_raw": after - wallet, "remaining_value_raw": remaining}
+
+
+def return_for_cash(fork, extra_cents, protected_cents=0, context=None):
+    quote = return_quote(fork, 0, context or {})
+    return sized_return(fork, {**quote, "protected_cents": protected_cents}, extra_cents)
 
 
 def execute(fork, quote):
