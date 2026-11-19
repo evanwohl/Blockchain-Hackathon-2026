@@ -77,9 +77,13 @@
         <tbody id="sources"></tbody>
         <tfoot><tr><th scope="row">Total</th><td id="for-fuel"></td><td id="plan-cost"></td></tr></tfoot>
       </table>
-      <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p><p id="terms"></p></details>
+      <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p><dl class="pair-fees facts" id="pair-fees"></dl><p id="pair-limit"></p><p id="terms"></p></details>
     </section>
     <div class="schedule-column">
+    <section class="fuel-window" aria-labelledby="window-title"><p class="panel-label">Fuel planning</p><h2 id="window-title">If fuel prices change</h2>
+      <p id="policy-copy"></p><details id="policy-detail"><summary>Check the fuel budgets</summary><table class="cost-lines"><caption>Estimated fees for the same invoice choices across fuel budgets</caption>
+      <thead><tr><th scope="col">Fuel budget</th><th scope="col">Reserve draw</th><th scope="col">Est. fees</th></tr></thead><tbody id="policy-rows"></tbody></table><p id="policy-method"></p></details>
+    </section>
     <details class="ledger" id="schedule"><summary class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><span>Payment schedule</span></summary><p id="timing"></p><ol id="timeline" aria-label="Planned cash movements"></ol>
       <details class="calendar-export"><summary>Use my trip dates</summary>
         <form id="trip-form"><label for="trip-start">First day of the trip</label>
@@ -90,7 +94,7 @@
     </details>
   <details class="market-note">
     <summary><span>How we estimate fuel</span><span id="market-assumption"></span></summary>
-    <div><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">See the Gemini oil contracts</a></div>
+    <div><p id="signal"></p><p id="quote-evidence"></p><a href="/evidence/gemini" target="_blank" rel="noopener">See the Gemini oil contracts</a></div>
   </details>
     </div>
   </div>
@@ -105,6 +109,7 @@
   <dialog id="settings" aria-labelledby="settings-title"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Load plan</p><button type="button" class="close" aria-label="Close settings" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
     <h2 id="settings-title">Payment options</h2>
+    <div class="settings-scroll">
     <fieldset class="funding-options" id="profile" aria-describedby="access-help">
       <legend>Which situation fits this sample load?</legend>
       <label><input type="radio" name="funding" value="quick pay" checked><span>I can get invoices paid early</span><small></small></label>
@@ -113,8 +118,16 @@
     </fieldset>
     <p id="access-help"></p>
     <label for="scenario">Fuel budget</label><select id="scenario"><option value="oil stress">Allow for higher fuel prices</option><option value="fuel budget">Original fuel estimate</option></select>
-    <dl class="facts draft"><div><dt>Fuel bill due</dt><dd id="draft-bill">—</dd></div><div><dt>Estimated fees</dt><dd id="draft-cost">—</dd></div></dl>
-    <button class="primary" id="apply">Update plan</button>
+    <fieldset class="cash-choice" hidden>
+        <legend>What matters more on this trip?</legend>
+        <div class="cash-labels" aria-hidden="true"><span></span><span>Fees</span><span>Cash left</span></div>
+        <label><input type="radio" name="cash-priority" value="credit line" checked><span>Lowest fees</span><b></b><strong></strong></label>
+        <label><input type="radio" name="cash-priority" value="road cash"><span>Keep road cash</span><b></b><strong></strong></label>
+        <p class="cash-note"></p>
+      </fieldset>
+    </div>
+    <footer class="settings-confirm"><dl><div><dt>Fuel bill</dt><dd id="draft-bill">—</dd></div><div><dt>Est. fees</dt><dd id="draft-cost">—</dd></div></dl>
+      <button class="primary" id="apply">Update plan</button></footer>
   </div></dialog>
   <dialog id="payment" aria-labelledby="title"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Demo payment <span class="sheet-load" id="receipt-load"></span></p><button type="button" class="close" aria-label="Close payment" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
@@ -129,7 +142,7 @@
     <p id="verified" role="status"></p>
     <button id="reset" class="plain" hidden>Start another demo</button>
     <details id="challenge" hidden><summary>Test the vendor protection</summary><p>Try the reviewed payment with a different recipient.</p><button class="secondary" id="check">Test a different vendor</button><p id="result" role="status"></p></details>
-    <details id="proof" hidden><summary>Transfer details and network fee</summary><p>Demo payments use USDC, a digital dollar. The fuel reserve uses Kamino on a local copy of Solana.</p><p id="network-details" hidden></p><pre id="details"></pre></details>
+    <details id="proof" hidden><summary>Transfer details and network fee</summary><p>Demo payments use USDC, a digital dollar. The fuel reserve uses Kamino on a local copy of Solana.</p><button type="button" class="secondary" id="check-public">Check public vault balance</button><p id="public-result" role="status"></p><a id="public-account" target="_blank" rel="noopener" hidden>See the custody account on Solana Explorer</a><p id="network-details" hidden></p><pre id="details"></pre></details>
   </div></dialog></main>
 <footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Test payments</span><span>All amounts in US dollars. Demo funds only.</span></div></footer>
 </body></html>

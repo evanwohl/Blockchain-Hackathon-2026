@@ -5,7 +5,9 @@ import base64
 import gzip
 import hashlib
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
+from functools import cache
 
 from solders.hash import Hash
 from solders.message import Message
@@ -13,7 +15,7 @@ from solders.pubkey import Pubkey
 from solders.transaction import Transaction
 
 from freightos.capture import FIXTURE, rpc
-from freightos.reserve import TOKEN, USDC, associated, payment_instructions
+from freightos.reserve import PROGRAM, TOKEN, USDC, VAULT, associated, payment_instructions
 
 
 def raw_units(value):
@@ -41,18 +43,37 @@ def token_amount(account, mint, owner):
     return int.from_bytes(data[64:72], "little")
 
 
-def prepare(payer, payee, load, amount, max_shares, request=rpc):
-    if payer == payee:
-        raise ValueError("Vendor and payer must differ")
-    if request("getGenesisHash", []) != "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d":
-        raise ValueError("Expected Solana mainnet")
+@cache
+def recorded_route():
     fixture = (FIXTURE / "accounts.json.gz").read_bytes()
     if (
         hashlib.sha256(fixture).hexdigest()
         != json.loads((FIXTURE / "manifest.json").read_text())["sha256"]
     ):
         raise ValueError("Unexpected route definition")
-    route = json.loads(gzip.decompress(fixture))["withdraw_accounts"]
+    return tuple(json.loads(gzip.decompress(fixture))["withdraw_accounts"])
+
+
+def reserve_observation(request=rpc):
+    if request("getGenesisHash", []) != "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d":
+        raise ValueError("Expected Solana mainnet")
+    route = recorded_route()
+    result = request("getMultipleAccounts", [[str(VAULT), route[3]],
+                     {"encoding": "base64", "commitment": "confirmed"}])
+    vault, custody = result["value"]
+    if not vault or vault["owner"] != str(PROGRAM):
+        raise ValueError("Unexpected vault program")
+    amount = token_amount(custody, USDC, Pubkey.from_string(route[4]))
+    return {"cluster": "mainnet-beta", "slot": result["context"]["slot"], "custody": route[3],
+            "balance_usdc_raw": str(amount), "observed_at": datetime.now(timezone.utc).isoformat()}
+
+
+def prepare(payer, payee, load, amount, max_shares, request=rpc):
+    if payer == payee:
+        raise ValueError("Vendor and payer must differ")
+    if request("getGenesisHash", []) != "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d":
+        raise ValueError("Expected Solana mainnet")
+    route = recorded_route()
     mint = Pubkey.from_string(route[8])
     destination = associated(payee, USDC)
     share_account = associated(payer, mint)

@@ -18,7 +18,7 @@ def delay_bound(row, expected_key, latest_key):
     return latest
 
 
-def price_calendar(case):
+def price_calendar(case, *, minimize_source=None, fee_limit_cents=None):
     """Prices a single USD payment rail. Each step settles receipts before its bills."""
     opening = integer(case["opening_cash_cents"], "opening cash")
     floor = integer(case["reserve_floor_cents"], "cash reserve")
@@ -135,6 +135,23 @@ def price_calendar(case):
             raise ArithmeticError("Integer cash-flow reconstruction failed")
         return answer
 
+    if minimize_source is not None:
+        if minimize_source not in {s["id"] for s in sources}:
+            raise ValueError("Unknown funding source to minimize")
+        limit = integer(fee_limit_cents, "fee limit")
+        constraints.append(({j: c for j, c in enumerate(costs) if c}, 0, limit))
+        objective = [0] * len(columns)
+        for name, x, _, _ in draws:
+            if name == minimize_source:
+                objective[x] = 1
+        minimum = optimize(objective) if columns else []
+        if minimum is None:
+            return {"status": "unfunded"}
+        for j, weight in enumerate(objective):
+            if weight:
+                constraints.append(({j: 1}, minimum[j], minimum[j]))
+    elif fee_limit_cents is not None:
+        raise ValueError("Select a funding source when setting a fee limit")
     answer = optimize(costs) if columns else []
     if answer is None or (not columns and opening - bills_to_date[-1] < floor):
         return {"status": "unfunded"}
@@ -175,6 +192,25 @@ def price_calendar(case):
     }
 
 
+def capacity_boundary(case, source, high, above, below, benchmark):
+    low = 0
+    target = benchmark.get("cost_cents")
+    while high - low > 1:
+        capacity = (low + high) // 2
+        funding = [{**row, "net_capacity_cents": capacity} if row["id"] == source else row
+                   for row in case["funding"]]
+        trial = price_calendar({**case, "funding": funding})
+        if trial["status"] == "funded" and (target is None or trial["cost_cents"] < target):
+            high, above = capacity, trial
+        else:
+            low, below = capacity, trial
+    return {
+        "minimum_useful_capacity_cents": high,
+        "cost_at_threshold_cents": above["cost_cents"],
+        "cost_one_cent_below_cents": below.get("cost_cents"),
+    }
+
+
 def explain_calendar(case):
     decision = price_calendar(case)
     alternatives = []
@@ -193,25 +229,8 @@ def explain_calendar(case):
             "additional_cost_cents": extra,
         }
         if extra != 0:
-            offer = next(s for s in case["funding"] if s["id"] == source)
-            low, high = 0, draw["net_proceeds_cents"]
-            below, above = alternative, decision
-            while high - low > 1:
-                capacity = (low + high) // 2
-                new_offer = {**offer, "net_capacity_cents": capacity}
-                trial = price_calendar({**case, "funding": [*remaining, new_offer]})
-                if trial["status"] == "funded" and (
-                    alternative["status"] != "funded"
-                    or trial["cost_cents"] < alternative["cost_cents"]
-                ):
-                    high, above = capacity, trial
-                else:
-                    low, below = capacity, trial
-            result.update(
-                minimum_useful_capacity_cents=high,
-                cost_at_threshold_cents=above["cost_cents"],
-                cost_one_cent_below_cents=below.get("cost_cents"),
-            )
+            result.update(capacity_boundary(case, source, draw["net_proceeds_cents"], decision, alternative, alternative))
+
         alternatives.append(result)
     return {**decision, "alternatives": alternatives}
 

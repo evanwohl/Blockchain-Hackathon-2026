@@ -3,6 +3,9 @@ import { downloadReceipt, el, facts, money, request } from "./common.js";
 let selection;
 let row;
 let loads = [];
+let report;
+let stressReport;
+let stressLoading = false;
 
 async function showCase() {
   for (const cell of el("load-map").children) {
@@ -10,7 +13,7 @@ async function showCase() {
     cell.setAttribute("aria-pressed", String(selected));
     cell.tabIndex = selected ? 0 : -1;
   }
-  history.replaceState(null, "", "#" + el("case").value);
+  history.replaceState(null, "", "#" + (el("baseline").value === "composition" ? "same-access/" : "") + el("case").value);
   selection?.abort();
   selection = new AbortController();
   const signal = selection.signal;
@@ -27,7 +30,7 @@ async function showCase() {
     facts(el("case-facts"), [
       ["Fuel bill", money(row.case.bills[0].cents)],
       ["Paid from reserve", money(row.reserve_payment_cents)],
-      ["Estimated savings", money(row.conventional.cost_cents - row.decision.cost_cents)],
+      ["Estimated savings", money(row[el("baseline").value + "_savings_cents"])],
       ["Cost with FreightOS", money(row.decision.cost_cents)],
       ["Lowest cost without a fuel reserve", money(row.conventional.cost_cents)],
       ["Cost using the reserve with early invoice pay", money(row.same_access_simple.cost_cents)]
@@ -58,34 +61,71 @@ function showDetails() {
   el("terms").textContent = JSON.stringify({ fuel: row.fuel, calendar: row.case, selected: row.decision, higher_cost_and_later_arrival: row.adverse_plan }, null, 2);
 }
 
-async function load() {
-  const report = await request("/api/trial");
-  el("trial-count").textContent = report.cases;
-  const savings = report.conventional_savings;
-  const used = report.loads.filter(item => item.used_reserve).length;
-  el("reserve-count").textContent = used;
-  el("outside-count").textContent = report.cases - used;
-  const payments = report.execution_counts["signed and replayed on fork"];
+function displayBaseline() {
+  showStress();
+  const same = el("baseline").value === "composition";
+  const savings = report[el("baseline").value + "_savings"];
   el("total").textContent = money(savings.total_cents);
-  el("context").textContent = "Choose one of " + report.cases + " loads to see how much it costs to pay for fuel.";
+  el("baseline-description").textContent = same
+    ? "Both strategies can use the reserve. FreightOS also checks combinations with credit. Fees fell on " + savings.positive_cases + " of " + report.cases + " sample loads."
+    : "Compared with the cheapest available plan without a reserve, fees fell on " + savings.positive_cases + " of " + report.cases + " sample loads.";
   facts(el("stats"), [
     ["Loads with lower financing costs", savings.positive_cases + " of " + report.cases],
     ["Loads with equal costs", savings.ties + " of " + report.cases],
     ["Median saving per load", money(savings.median_cents)],
-    ["Reserve payments signed and replayed", String(payments)]
+    ["Reserve payments signed and replayed", String(report.execution_counts["signed and replayed on fork"])]
   ]);
+}
+
+async function showStress() {
+  if (!report || !el("stress-test").open || stressLoading) return;
+  el("stress-retry").hidden = true;
+  try {
+    if (!stressReport) {
+      stressLoading = true;
+      el("adverse").textContent = "Checking the stressed funding plans…";
+      stressReport = await request("/api/trial/stress");
+    }
+    const result = stressReport[el("baseline").value];
+    el("adverse").textContent = "Add $5 per reserve use, half a percentage point in term costs and one day of delay. After repricing, savings versus the selected comparison total "
+      + money(result.savings_cents) + " across " + report.cases + " loads. An unexpected delay after locking the original plans would miss " + report.surprise_delay_misses + " deadlines.";
+    el("stress-mix").textContent = "Replace the " + result.replaced_cases + " biggest savers with repeats of the lowest-saving load. The stressed total becomes "
+      + money(result.worst_mix_cents) + ". This tests how much the result depends on the mix of carriers.";
+  } catch {
+    el("adverse").textContent = "The stress comparison could not load.";
+    el("stress-mix").textContent = "";
+    el("stress-retry").hidden = false;
+  } finally {
+    stressLoading = false;
+  }
+}
+el("stress-test").ontoggle = el("stress-retry").onclick = showStress;
+
+async function load() {
+  report = await request("/api/trial");
+  const used = report.loads.filter(item => item.used_reserve).length;
+  el("reserve-count").textContent = used;
+  el("outside-count").textContent = report.cases - used;
+  el("context").textContent = "Choose one of " + report.cases + " loads to inspect its fees and payments.";
+  el("baseline").disabled = false;
   el("composition").textContent = "Combining funding sources saved " + money(report.composition_savings.total_cents) + " versus the simpler reserve strategy. A driver making the same choices manually could match these costs.";
-  el("adverse").textContent = "With an extra $5 fee, half a percentage point in term costs and a one-day delay, choosing a new plan leaves " + money(report.adverse_savings.total_cents) + " in total modeled savings. If the original plan is already locked, " + report.surprise_delay_misses + " bills miss their deadline.";
   el("assumptions").textContent = report.assumptions;
   loads = report.loads;
-  await filterLoads(location.hash.slice(1));
+  await openLinkedCase();
 }
 
 function filterLoads(previous = el("case").value) {
   const query = el("case-search").value.trim().toLowerCase();
   const method = el("case-filter").value;
-  const matches = loads.filter(item => item.load.toLowerCase().includes(query)
-    && (method === "all" || item.used_reserve === (method === "reserve")));
+  const matches = loads.filter(item => {
+    if (!item.load.toLowerCase().includes(query)) return false;
+    if (method === "savings") return item[el("baseline").value + "_savings_cents"] > 0;
+    return method === "all" || item.used_reserve === (method === "reserve");
+  });
+  if (method === "savings") {
+    const key = el("baseline").value + "_savings_cents";
+    matches.sort((a, b) => b[key] - a[key] || a.load.localeCompare(b.load));
+  }
   el("load-map").replaceChildren(...matches.map(item => {
     const cell = document.createElement("button");
     cell.type = "button";
@@ -125,14 +165,20 @@ el("clear-filters").onclick = () => {
   el("case-search").focus();
 };
 el("case-search").oninput = el("case-filter").onchange = () => filterLoads();
-window.addEventListener("hashchange", () => {
-  const key = location.hash.slice(1);
-  if (loads.some(item => item.load === key)) {
-    el("case-search").value = "";
-    el("case-filter").value = "all";
-    filterLoads(key);
-  }
-});
+function openLinkedCase() {
+  const [first, second] = location.hash.slice(1).split("/");
+  el("baseline").value = first === "same-access" ? "composition" : "conventional";
+  displayBaseline();
+  el("case-search").value = "";
+  el("case-filter").value = "all";
+  return filterLoads(first === "same-access" ? second : first);
+}
+
+el("baseline").onchange = () => {
+  displayBaseline();
+  filterLoads();
+};
+window.addEventListener("hashchange", () => { if (report) openLinkedCase(); });
 el("load-map").onclick = event => {
   const cell = event.target.closest("button");
   if (!cell) return;

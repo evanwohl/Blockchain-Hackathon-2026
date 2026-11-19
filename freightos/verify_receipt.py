@@ -81,14 +81,17 @@ def replay(receipt):
         raise ValueError("Receipt differs from verified execution")
     decision = receipt["decision"]
     if "profile" in decision:
-        from freightos.app import DATA, funding_plan
+        from freightos.funding import DATA, demo_plans, funding_plan
 
         evidence = json.loads((DATA / "case_report.json").read_bytes())
         for path, checksum in evidence["input_sha256"].items():
             if hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != checksum:
                 raise ValueError("Funding source snapshot differs")
         sample = json.loads((DATA / "sample_calendar.json").read_bytes())
-        plan = funding_plan(sample, evidence, decision["scenario"], decision["profile"])
+        if "cash_policy" in decision:
+            plan = demo_plans()[0][decision["profile"]][decision["scenario"]]
+        else:
+            plan = funding_plan(sample, evidence, decision["scenario"], decision["profile"])
         if (
             plan != decision
             or plan["payment_cents"] * 10000 != amount
@@ -112,6 +115,7 @@ def replay(receipt):
             raise ValueError("Synthetic funding plan differs from replay")
     return {
         "verified_signatures": len(signatures),
+        "wallet_usdc_raw": fork.balance(fork.cash),
         "slot": fork.slot,
         "bill": str(account_key),
         "vendor_received_usdc_raw": amount,

@@ -1,4 +1,4 @@
-import { downloadReceipt, el, facts, money, request, saveFile, tokenUnits } from "./common.js";
+import { cashPriority, downloadReceipt, el, facts, money, oilOptions, request, saveFile, tokenUnits, usesCredit } from "./common.js";
 
 const roundedDollars = cents => money(cents).replace(/\.00$/, "");
 
@@ -7,6 +7,7 @@ const profiles = {
   "credit line": { source: "Bank credit line", comparison: "using bank credit alone", fallback: "If you borrow the whole amount", terms: "The sample credit line offers $800 at 1% for the term." },
   "cash on hand": { source: "Available cash", comparison: "paying from cash", fallback: "If you pay directly with cash", terms: "Available cash covers the bill by its due date." }
 };
+profiles["road cash"] = profiles["credit line"];
 let state;
 let pending = "";
 let expiryTimer;
@@ -38,16 +39,22 @@ function dayLabel(day) {
 function scheduleEvents(plan) {
   const bill = plan.calendar.bills[0];
   return [
-    { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true },
+    { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true, outgoing: true },
     ...plan.invoice_elections.map(item => ({
       day: item.day, label: item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
       note: item.option === "standard" ? "Scheduled payment" : "Early payment", amount: item.receipt_cents
     })),
-    ...plan.funding.map(item => ({
-      day: plan.calendar.funding.find(source => source.id === item.source).available_day,
-      label: item.source === "reserve redemption" ? "Reserve available" : "Bank credit available",
-      note: "Planned funding", amount: item.net_proceeds_cents
-    }))
+    ...plan.funding.flatMap(item => {
+      const terms = plan.calendar.funding.find(source => source.id === item.source);
+      const reserve = item.source === "reserve redemption";
+      return [
+        { day: terms.available_day, label: reserve ? "Reserve available" : "Bank credit available",
+          note: "Planned funding", amount: item.net_proceeds_cents },
+        { day: terms.restore_day, label: reserve ? "Restore fuel reserve" : "Repay bank credit",
+          note: reserve ? "Planned principal replenishment" : "Principal and estimated fee",
+          amount: item.net_proceeds_cents + (reserve ? 0 : item.cost_cents), outgoing: true }
+      ];
+    })
   ].sort((a, b) => a.day - b.day);
 }
 
@@ -56,7 +63,9 @@ function renderCalendar(plan) {
   const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
   el("load-id").textContent = plan.load;
   el("bill-due").textContent = dayLabel(bill.day);
-  el("method").textContent = "FreightOS checks which money will arrive by day " + bill.day + ". It chooses the lowest-cost way to cover the fuel bill while keeping the cash you need on hand.";
+  el("method").textContent = plan.profile === "road cash"
+    ? "We find the smallest fuel reserve that covers every tested bill within " + money(plan.cash_policy.fee_allowance_cents) + " of its lowest fee. Then we price the bank draw for this bill."
+    : "FreightOS compares funding that arrives by day " + bill.day + " and prices the fees through repayment.";
   el("invoice-day").textContent = dayLabel(primary.day);
   const gap = primary.day - bill.day;
   el("day-gap").textContent = gap ? Math.abs(gap) + "-day gap" : "Same-day schedule";
@@ -75,7 +84,7 @@ function renderCalendar(plan) {
     day.textContent = dayLabel(event.day);
     label.textContent = event.label;
     note.textContent = event.note;
-    amount.textContent = money(event.amount);
+    amount.textContent = (event.outgoing ? "−" : "+") + money(event.amount);
     if (event.bill) row.dataset.bill = "";
     label.append(note);
     row.append(day, pin, label, amount);
@@ -108,7 +117,14 @@ function explainChoice(plan) {
   if (plan.profile === "cash on hand") {
     return ["Use the cash you have", "You have enough to pay for fuel on time. Collect both invoices on their usual dates."];
   }
-  if (plan.profile === "credit line") {
+  if (plan.profile === "road cash") {
+    const bank = plan.funding.find(s => s.source === "approved bank line");
+    const terms = plan.calendar.funding.find(s => s.id === bank.source);
+    return ["Keep cash for the road", "Use " + money(plan.payment_cents) + " from the fuel reserve and borrow "
+      + money(bank.net_proceeds_cents) + ". Plan to repay the bank " + money(bank.net_proceeds_cents + bank.cost_cents)
+      + " on day " + terms.restore_day + ", when the freight invoice pays."];
+  }
+  if (usesCredit(plan.profile)) {
     return ["Borrow only what’s missing", "Use the money set aside for fuel, then borrow " + money(plan.other_funds_cents) + " from your bank. Borrowing the whole bill would cost " + money(plan.alternative_cost_cents) + "."];
   }
   const backhaul = plan.calendar.invoices.find(invoice => invoice.id === "backhaul");
@@ -188,16 +204,67 @@ function renderPlan(plan) {
     return row;
   }));
   el("terms").textContent = profile.terms + (reserve ? " The cost of using your fuel money includes a fixed fee and the interest you give up." : "");
+  renderFuelPolicy(plan);
   const g = plan.gemini;
   el("market-assumption").textContent = plan.scenario === "oil stress"
     ? g.gallons + " gallons · Higher price estimate"
-    : g.gallons + " gallons · Original estimate";
+    : g.gallons + (plan.scenario === "fuel budget" ? " gallons · Original estimate" : " gallons · $" + g.stress_level + " oil");
   const [low, high] = g.extra_fuel_cents_interval;
   const budget = state.funding_plans[plan.profile]["fuel budget"].bill_cents;
-  const selected = plan.scenario === "oil stress" ? "This plan includes the higher estimate." : "This plan uses the original estimate.";
+  const selected = plan.scenario !== "fuel budget" ? "This plan includes the higher estimate." : "This plan uses the original estimate.";
   el("signal").textContent = "The original estimate for " + g.gallons + " gallons is " + money(budget)
     + ". At the $" + g.stress_level + " oil price in the recorded Gemini contract, this model adds "
     + money(low) + " to " + money(high) + ". " + selected;
+}
+
+function renderFuelPolicy(plan) {
+  const edge = state.pairing_values[plan.profile][plan.scenario];
+  const options = usesCredit(plan.profile) ? "Bank credit and return-invoice options" : "Return-invoice options";
+  facts(el("pair-fees"), [
+    ["Main invoice and existing cash", money(edge.base_cents)],
+    ["Add only the fuel reserve", money(edge.reserve_only_cents)],
+    ["Add only outside funding", money(edge.outside_only_cents)],
+    ["Allow both", money(edge.joint_cents)]
+  ]);
+  const limit = edge.boundary;
+  el("pair-limit").textContent = limit
+    ? options + " can work with the reserve to save " + money(edge.pairing_savings_cents) + " versus the cheaper group alone. With "
+      + money(limit.minimum_useful_capacity_cents) + " available in the reserve, fees are " + money(limit.cost_at_threshold_cents)
+      + ". One cent less brings fees to " + money(limit.cost_one_cent_below_cents) + "."
+    : "Your available cash already covers the bill. Combining sources adds no fee savings.";
+  const g = plan.gemini;
+  const market = state.market_levels[g.stress_level];
+  el("quote-evidence").textContent = "Recorded " + market.expiry.slice(0, 10) + " expiry. "
+    + (market.recorded_buy_yes == null ? "The snapshot has no YES ask at this level." : "The recorded YES offer was $" + market.recorded_buy_yes + " per contract.")
+    + " Each level is a planning scenario. Your local diesel price can move differently.";
+  const policy = state.invoice_policies[plan.profile];
+  el("policy-detail").hidden = !policy;
+  if (!policy) {
+    el("policy-copy").textContent = "This option assumes you already have enough cash for the selected bill.";
+    return;
+  }
+  const base = state.funding_plans[plan.profile];
+  const budgets = Object.values(base).map(choice => choice.bill_cents);
+  el("policy-copy").textContent = "Fuel bills from " + roundedDollars(Math.min(...budgets)) + " to " + roundedDollars(Math.max(...budgets))
+    + " can use the same invoice terms. Keep up to " + roundedDollars(policy.peak_reserve_cents) + " available in the reserve.";
+  const plans = base;
+  const sorted = Object.entries(policy.outcomes).sort(([a], [b]) => plans[a].bill_cents - plans[b].bill_cents);
+  el("policy-rows").replaceChildren(...sorted.map(([key, outcome]) => {
+    const row = document.createElement("tr");
+    const header = document.createElement("th");
+    header.scope = "row";
+    header.textContent = money(plans[key].bill_cents);
+    row.append(header);
+    row.insertCell().textContent = money(outcome.reserve_cents);
+    row.insertCell().textContent = money(outcome.cost_cents);
+    if (key === plan.scenario) row.className = "current-budget";
+    return row;
+  }));
+  el("policy-method").textContent = plan.cash_policy
+    ? "Both invoices stay on their usual terms. Across these fuel budgets, the most you pay above the lowest fee with the full reserve available is "
+      + money(policy.worst_regret_cents) + "."
+    : "We hold both invoice choices fixed, then resize funding for each fuel budget. The most this costs above choosing invoices after seeing the bill is "
+      + money(policy.worst_regret_cents) + " in these scenarios.";
 }
 
 function paymentView(plan) {
@@ -217,16 +284,17 @@ function paymentView(plan) {
     description: "Approve this transfer from your fuel reserve.",
     rows: [["To the fuel company", money(review.usdc_raw / 10000)], ["Still to cover separately", money(plan.other_funds_cents)]]
   };
-  if (state.deposit) return {
+  if (state.deposit && !state.setup_cents[profile]) return {
     stage: 1, title: "Your fuel money is ready", button: "Review " + money(plan.payment_cents) + " payment",
     description: "Your reserve is funded. Review the transfer before sending.",
     rows: [["For the fuel company", money(plan.payment_cents)], ["Still to pay separately", money(plan.other_funds_cents)]]
   };
-  const amount = tokenUnits(state.wallet_usdc_raw);
+  const amount = roundedDollars(state.setup_cents[profile]);
+  const left = money(state.wallet_usdc_raw / 10000 - state.setup_cents[profile]);
   return {
-    stage: 0, title: "Set money aside for fuel", button: "Set aside $" + amount,
-    description: "Move demo dollars into your reserve. You approve the fuel payment next.",
-    rows: [["To your fuel reserve", "$" + amount], ["Planned payment to fuel company", money(plan.payment_cents)]]
+    stage: 0, title: "Set money aside for fuel", button: "Set aside " + amount,
+    description: "This funds the reserve across the tested fuel budgets. Only the amount you approve next goes to the fuel company.",
+    rows: [["Add to your fuel reserve", amount], ["Stays in your wallet", left], ["Planned payment to fuel company", money(plan.payment_cents)]]
   };
 }
 
@@ -261,12 +329,14 @@ function render() {
   el("new-demo").hidden = !entry;
   el("reserve-receipt").disabled = el("new-demo").disabled = busy;
   el("return-bill").hidden = !receipt;
-  el("action-title").textContent = entry ? "This bill is paid" : recordable ? "Pay " + roundedDollars(balance) + " directly" : review ? "Check your payment" : "Send " + roundedDollars(plan.payment_cents) + " to the fuel company";
-  el("open-label").textContent = entry ? "View your payment entry" : recordable ? "I already paid this" : review ? "Return to approval" : state.deposit ? "Review payment" : "Set aside money for fuel";
+  el("action-title").textContent = entry ? "This bill is paid" : recordable ? "Pay " + roundedDollars(balance) + " directly"
+    : review ? "Check your payment" : state.setup_cents[profile] ? "Cover fuel in two payments" : "Review the fuel payment";
+  el("open-label").textContent = entry ? "View your payment entry" : recordable ? "I already paid this" : review ? "Return to approval" : state.deposit && !state.setup_cents[profile] ? "Review payment" : "Set aside " + money(state.setup_cents[profile]);
   el("payment-scope").textContent = entry ? "Your payment record covers the full bill."
     : recordable ? "Use " + separate + " to pay the fuel company yourself. Once you’ve paid, enter it here."
-    : state.deposit ? "Check the recipient and amount before approving the reserve payment."
-    : "Set aside your $" + tokenUnits(state.wallet_usdc_raw) + " in demo funds. You’ll approve the transfer before it goes out. Pay the other " + roundedDollars(plan.other_funds_cents) + " separately.";
+    : state.deposit && !state.setup_cents[profile] ? "Check the recipient and amount before approving the reserve payment."
+    : "Your fuel reserve will cover " + roundedDollars(plan.payment_cents) + " after approval. Pay the other "
+      + roundedDollars(plan.other_funds_cents) + " with " + separate + ".";
   el("plan-jump").textContent = plan.savings_cents ? "See how this saves " + money(plan.savings_cents) : "See why this plan costs " + money(plan.cost_cents);
   renderSource("reserve-part", receipt ? "Received by fuel company" : "Through FreightOS",
     receipt ? delivered : plan.payment_cents, receipt ? "This amount reached the fuel company in demo dollars. Open the receipt to check the payment."
@@ -312,6 +382,7 @@ function render() {
 async function sync(restore = false) {
   const previousApproval = state?.review?.id;
   state = await request("/api/state");
+  oilOptions(el("scenario"), state.plans);
   if (previousApproval && state.receipt?.approval === previousApproval) el("status").textContent = "";
   const locked = (state.receipt || state.review)?.decision || state.manual_payment;
   const choice = new URLSearchParams(location.hash.slice(1));
@@ -411,8 +482,8 @@ function prepareReview() {
 el("primary").onclick = () => {
   if (!state) return;
   if (!state.funding_plans[profile][scenario].payment_cents) return el("payment").close();
-  if (!state.deposit) return run("Setting aside funds…", async () => {
-    await request("/api/deposit", {});
+  if (state.setup_cents[profile] && !state.review) return run("Setting aside funds…", async () => {
+    await request("/api/deposit", { profile, version: state.record_version, max_cents: state.setup_cents[profile] });
     await prepareReview();
   });
   if (state.review) return run("Sending payment…", () => request("/api/approve", { approval: state.review.id }));
@@ -425,13 +496,33 @@ el("check").onclick = () => run("Checking recipient…", async () => {
 });
 el("verify").onclick = () => run("Verifying…", async () => {
   const proof = await request("/api/verify", {});
-  el("verified").textContent = "Payment checked. The fuel company received " + money(proof.vendor_received_usdc_raw / 10000) + " in demo dollars.";
+  el("verified").textContent = "Payment checked. The fuel company received " + money(proof.vendor_received_usdc_raw / 10000)
+    + ". Your demo wallet held " + money(proof.wallet_usdc_raw / 10000) + " after the transfer.";
 });
+el("check-public").onclick = async () => {
+  const button = el("check-public");
+  button.disabled = true;
+  el("public-account").hidden = true;
+  el("public-result").textContent = "Checking the mainnet custody account…";
+  try {
+    const result = await request("/api/reserve-observation");
+    const raw = BigInt(result.balance_usdc_raw);
+    const value = (raw / 1000000n).toLocaleString() + "." + ((raw % 1000000n) / 10000n).toString().padStart(2, "0");
+    el("public-result").textContent = "Public vault custody balance: " + value + " USDC at confirmed slot " + result.slot.toLocaleString()
+      + ". Demo payments use the saved fork.";
+    el("public-account").href = "https://explorer.solana.com/address/" + encodeURIComponent(result.custody);
+    el("public-account").hidden = false;
+  } catch {
+    el("public-result").textContent = "Public reserve data is unavailable. You can still review your demo payment.";
+  } finally {
+    button.disabled = false;
+  }
+};
 el("download").onclick = () => downloadReceipt(state.load, state.receipt);
 function previewSettings() {
-  const choice = el("profile").querySelector(":checked").value;
+  const choice = cashPriority(state, el("profile").querySelector(":checked").value, el("scenario").value);
   for (const input of el("profile").querySelectorAll("input")) {
-    const estimate = state.funding_plans[input.value][el("scenario").value];
+    const estimate = state.funding_plans[usesCredit(choice) && usesCredit(input.value) ? choice : input.value][el("scenario").value];
     input.labels[0].querySelector("small").textContent = money(estimate.cost_cents) + " plan fee";
   }
   const plan = state.funding_plans[choice][el("scenario").value];
@@ -455,15 +546,17 @@ el("day-gap").onclick = () => {
   schedule.scrollIntoView({ block: "nearest" });
 };
 el("configure").onclick = () => {
-  for (const input of el("profile").querySelectorAll("input")) input.checked = input.value === profile;
+  for (const input of el("profile").querySelectorAll("input")) input.checked = input.value === (usesCredit(profile) ? "credit line" : profile);
+  for (const radio of document.querySelectorAll(".cash-choice input")) radio.checked = radio.value === (profile === "road cash" ? profile : "credit line");
   el("scenario").value = scenario;
   previewSettings();
   el("settings").showModal();
 };
 el("scenario").onchange = el("profile").onchange = previewSettings;
+document.querySelector(".cash-choice").onchange = previewSettings;
 el("apply").onclick = () => {
-  profile = el("profile").querySelector(":checked").value;
   scenario = el("scenario").value;
+  profile = cashPriority(state, el("profile").querySelector(":checked").value, scenario);
   sessionStorage.setItem("funding-profile", profile);
   sessionStorage.setItem("fuel-scenario", scenario);
   render();
@@ -527,7 +620,7 @@ el("open-payment").onclick = () => {
   const plan = state.funding_plans[profile][scenario];
   if (state.receipt || !plan.payment_cents) return openRecord(plan);
   el("payment").showModal();
-  if (state?.deposit && !state.review && !state.receipt && state.funding_plans[profile][scenario].payment_cents) {
+  if (state?.deposit && !state.setup_cents[profile] && !state.review && !state.receipt && state.funding_plans[profile][scenario].payment_cents) {
     run("Preparing review…", prepareReview);
   }
 };

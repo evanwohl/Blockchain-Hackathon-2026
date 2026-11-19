@@ -1,10 +1,10 @@
-import { el, money, request } from "./common.js";
+import { cashPriority, el, money, oilOptions, request, usesCredit } from "./common.js";
 
 let state;
 
 function displayQuote() {
-  const profile = el("quote-profile").value;
   const scenario = el("quote-scenario").value;
+  const profile = cashPriority(state, el("quote-profile").value, scenario);
   const plan = state.funding_plans[profile][scenario];
   const locked = state.review || state.receipt || state.manual_payment;
   const source = { "quick pay": "You pay from the return invoice", "credit line": "You pay with bank credit", "cash on hand": "You pay with cash" };
@@ -19,10 +19,10 @@ function displayQuote() {
   el("quote-reserve").textContent = money(plan.payment_cents);
   el("quote-reserve").parentElement.hidden = !plan.payment_cents;
   el("quote-outside").textContent = money(plan.other_funds_cents);
-  el("outside-source").textContent = source[profile];
+  el("outside-source").textContent = source[usesCredit(profile) ? "credit line" : profile];
   el("quote-result").style.setProperty("--reserve-share", (100 * plan.payment_cents / plan.bill_cents) + "%");
   el("quote-fees").textContent = money(plan.cost_cents) + " estimated fees";
-  const alternative = profile === "credit line" ? "Bank credit alone" : "Early pay on the main invoice";
+  const alternative = usesCredit(profile) ? "Bank credit alone" : "Early pay on the main invoice";
   el("quote-compare").textContent = plan.savings_cents
     ? alternative + " costs " + money(plan.alternative_cost_cents) + ". You save an estimated " + money(plan.savings_cents) + "."
     : "Available cash covers the bill with no financing fee.";
@@ -36,6 +36,7 @@ async function load() {
   el("quote-status").textContent = "Loading plan prices…";
   try {
     state = await request("/api/state");
+    oilOptions(el("quote-scenario"), state.plans);
     displayQuote();
     el("quote-inputs").disabled = false;
     el("quote-result").hidden = false;
@@ -45,5 +46,13 @@ async function load() {
   }
 }
 el("quote-inputs").onchange = displayQuote;
+document.querySelector(".cash-choice").onchange = displayQuote;
 el("quote-retry").onclick = load;
 load();
+
+request("/api/trial").then(report => {
+  const edge = report.composition_savings;
+  el("trial-proof-title").textContent = money(edge.total_cents) + " in lower fees";
+  el("trial-proof-copy").textContent = "With the same reserve available to both strategies, FreightOS cost less on "
+    + edge.positive_cases + " of " + report.cases + " simulated loads. The other " + edge.ties + " tied.";
+}).catch(() => {});

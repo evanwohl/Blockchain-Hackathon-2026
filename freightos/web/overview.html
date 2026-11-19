@@ -15,7 +15,7 @@
   <div class="overview-hero">
     <section class="overview-copy" aria-labelledby="intro-title">
       <h1 id="intro-title">Fuel is due.<br><em>Freight pays later.</em></h1>
-      <p>Getting a whole invoice paid early can be expensive. FreightOS checks whether you can cover fuel for less using money you’ve set aside, early invoice pay, bank credit, or cash.</p>
+      <p>See how much to set aside for fuel, which invoice to collect early, and what you can keep for the road. Compare the fees before you move a dollar.</p>
       <div class="cash-window" id="cash-window" aria-label="Sample payment dates" hidden>
         <span>Fuel due<b id="window-due"></b></span><span id="window-gap"></span><span>Freight pays<b id="window-paid"></b></span>
       </div>
@@ -28,6 +28,13 @@
       <fieldset disabled id="quote-inputs"><legend class="visually-hidden">Compare funding options</legend>
         <label>What can you use?<select id="quote-profile"><option value="quick pay">Early pay on an invoice</option><option value="credit line">Bank credit and early pay</option><option value="cash on hand">Cash for the bill</option></select></label>
         <label>Fuel budget<select id="quote-scenario"><option value="oil stress">Higher fuel estimate</option><option value="fuel budget">Original estimate</option></select></label>
+      </fieldset>
+      <fieldset class="cash-choice" hidden>
+        <legend>What matters more on this trip?</legend>
+        <div class="cash-labels" aria-hidden="true"><span></span><span>Fees</span><span>Cash left</span></div>
+        <label><input type="radio" name="cash-priority" value="credit line" checked><span>Lowest fees</span><b></b><strong></strong></label>
+        <label><input type="radio" name="cash-priority" value="road cash"><span>Keep road cash</span><b></b><strong></strong></label>
+        <p class="cash-note"></p>
       </fieldset>
       <div id="quote-result" hidden>
         <div class="quote-total"><span>Fuel bill due</span><strong id="quote-bill"></strong></div>
@@ -47,7 +54,11 @@
       <section><h3>Approve the payment</h3><p>Check the amount and the fuel company, then approve. You get a signed receipt for the reserve transfer. Pay any remaining amount separately and record it on the bill.</p></section>
     </div>
     <details class="mechanism-proof"><summary>What happens onchain?</summary><p>The demo deposits digital dollars into a Kamino reserve on a local copy of Solana. Its payment program checks the approved amount and recipient. The signed reserve receipt can be replayed for verification. Early invoice pay, bank credit, and outside payments are modeled or recorded separately.</p></details>
-    <a class="sample-link" href="/trial">Explore the simulated loads</a>
+    <aside class="trial-proof" aria-labelledby="trial-proof-title">
+      <div><p class="panel-label">Simulated carrier trial</p><h3 id="trial-proof-title">What does better funding save?</h3>
+        <p id="trial-proof-copy">Compare FreightOS with a simpler strategy that has access to the same reserve.</p></div>
+      <a href="/trial#same-access">Inspect the load results</a>
+    </aside>
   </section>
 </main>
 <footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Test payments</span><span>All amounts in US dollars. Demo funds only.</span></div></footer>
