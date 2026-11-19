@@ -1,9 +1,9 @@
 import { downloadReceipt, el, facts, money, request, tokenUnits } from "./common.js";
 
 const profiles = {
-  "quick pay": { source: "Return-load quick pay", comparison: "invoice quick pay", fallback: "Quick pay on $3,000 invoice", terms: "Quick pay releases your invoice early for a 5% fee." },
-  "credit line": { source: "Bank credit line", comparison: "using bank credit alone", fallback: "Credit line alone", terms: "The sample credit line offers $800 at 1% for the term." },
-  "cash on hand": { source: "Available cash", comparison: "paying from cash", fallback: "Paying from cash", terms: "Available cash covers the bill by its due date." }
+  "quick pay": { source: "Early pay for your return load", comparison: "invoice quick pay", fallback: "If you get the main invoice paid early", terms: "In this example, getting paid in one day costs 5% of the invoice." },
+  "credit line": { source: "Bank credit line", comparison: "using bank credit alone", fallback: "If you borrow the whole amount", terms: "The sample credit line offers $800 at 1% for the term." },
+  "cash on hand": { source: "Available cash", comparison: "paying from cash", fallback: "If you pay directly with cash", terms: "Available cash covers the bill by its due date." }
 };
 let state;
 let pending = "";
@@ -21,7 +21,7 @@ function renderCalendar(plan) {
   const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
   el("load-id").textContent = plan.load;
   el("bill-due").textContent = "Day " + bill.day;
-  el("method").textContent = "FreightOS compares the funds and payment terms available to this load. It chooses the lowest estimated total fee among combinations that cover the bill by day " + bill.day + " and preserve your minimum cash balance.";
+  el("method").textContent = "FreightOS checks which money will arrive by day " + bill.day + ". It chooses the lowest-cost way to cover the fuel bill while keeping the cash you need on hand.";
   el("invoice-day").textContent = "Day " + primary.day;
   const gap = primary.day - bill.day;
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
@@ -59,32 +59,20 @@ function renderCalendar(plan) {
   }));
 }
 
-function fundingRibbon(startY, endY, thickness) {
-  if (!thickness) return "";
-  const boundary = offset => {
-    const start = startY + offset;
-    const end = endY + offset;
-    return [start, start - 15, end + 30, end];
-  };
-  const [top, topBend, topFold, topEnd] = boundary(-thickness / 2);
-  const [bottom, bottomBend, bottomFold, bottomEnd] = boundary(thickness / 2);
-  return `M0 ${top} C100 ${topBend} 154 ${topFold} 280 ${topEnd}
-    L280 ${bottomEnd} C154 ${bottomFold} 100 ${bottomBend} 0 ${bottom} Z`;
-}
-
 function explainChoice(plan) {
   const primary = plan.calendar.invoices.find(invoice => invoice.id === "primary load");
   if (plan.profile === "cash on hand") {
-    return ["Pay from cash.", "Your available cash covers the fuel bill on time. You can leave your reserve untouched and collect the freight invoice on its normal schedule."];
+    return ["Use the cash you have", "You have enough to pay for fuel on time. Collect both invoices on their usual dates."];
   }
   if (plan.profile === "credit line") {
-    return ["Borrow only the gap.", "Using your reserve cuts the bank draw to " + money(plan.other_funds_cents) + ". Financing the whole bill on credit would cost " + money(plan.alternative_cost_cents) + "."];
+    return ["Borrow only what’s missing", "Use the money set aside for fuel, then borrow " + money(plan.other_funds_cents) + " from your bank. Borrowing the whole bill would cost " + money(plan.alternative_cost_cents) + "."];
   }
   const backhaul = plan.calendar.invoices.find(invoice => invoice.id === "backhaul");
   const election = plan.invoice_elections.find(item => item.invoice === backhaul.id);
-  const reserve = plan.funding.find(item => item.source === "reserve redemption");
   const dollars = cents => money(cents).replace(/\.00$/, "");
-  return ["Advance the smaller invoice.", "Quick pay on the " + dollars(primary.face_cents) + " freight invoice costs " + dollars(plan.alternative_cost_cents) + ". The " + dollars(backhaul.face_cents) + " return load costs " + dollars(backhaul.face_cents - election.receipt_cents) + " to advance. Using your reserve adds " + dollars(reserve.cost_cents) + "."];
+  return ["Get paid early on the return load", "Ask for early pay on the " + dollars(backhaul.face_cents)
+    + " return load. You get " + dollars(election.receipt_cents) + " after the fee. You can collect the full "
+    + dollars(primary.face_cents) + " for the main load on day " + plan.invoice_elections.find(item => item.invoice === primary.id).day + "."];
 }
 
 function renderPlan(plan) {
@@ -94,33 +82,25 @@ function renderPlan(plan) {
   el("plan-cost").textContent = money(plan.cost_cents);
   el("alternative").textContent = profile.fallback;
   el("other-cost").textContent = money(plan.alternative_cost_cents);
-  const highestCost = Math.max(plan.cost_cents, plan.alternative_cost_cents, 1);
-  el("plan-bar").style.width = (100 * plan.cost_cents / highestCost) + "%";
-  el("other-bar").style.width = (100 * plan.alternative_cost_cents / highestCost) + "%";
-  el("bill").textContent = money(plan.bill_cents);
-  el("amount").textContent = money(plan.payment_cents);
-  el("other").textContent = money(plan.other_funds_cents);
-  el("other-label").textContent = profile.source;
-  const reserve = 54 * plan.payment_cents / plan.bill_cents;
-  const other = 54 - reserve;
-  el("reserve-source").hidden = !plan.payment_cents;
-  el("reserve-ribbon").setAttribute("d", fundingRibbon(other ? 40 : 80, 53 + reserve / 2, reserve));
-  el("other-ribbon").setAttribute("d", fundingRibbon(reserve ? 122 : 80, 107 - other / 2, other));
+  el("bill").textContent = el("for-fuel").textContent = money(plan.bill_cents);
   const [heading, reason] = explainChoice(plan);
   el("plan-head").textContent = heading;
   el("edge-reason").textContent = reason;
-  const costs = plan.funding.map(item => [
-    item.source === "reserve redemption" ? "Using the reserve" : "Using bank credit",
-    money(item.cost_cents)
-  ]);
-  for (const payment of plan.invoice_elections) {
-    const invoice = plan.calendar.invoices.find(item => item.id === payment.invoice);
-    const fee = invoice.face_cents - payment.receipt_cents;
-    if (fee) costs.push(["Early payment on the " + payment.invoice + " invoice", money(fee)]);
-  }
-  costs.push(["Total estimated cost", money(plan.cost_cents)]);
-  facts(el("fees"), costs);
-  el("terms").textContent = profile.terms + " Reserve costs include the sample fixed charge and estimated interest given up.";
+  const reserve = plan.funding.find(item => item.source === "reserve redemption");
+  const sources = [];
+  if (reserve) sources.push(["Money set aside for fuel", reserve.net_proceeds_cents, reserve.cost_cents]);
+  sources.push([profile.source, plan.other_funds_cents, plan.cost_cents - (reserve?.cost_cents || 0)]);
+  el("sources").replaceChildren(...sources.map(([name, amount, cost]) => {
+    const row = document.createElement("tr");
+    const label = document.createElement("th");
+    label.scope = "row";
+    label.textContent = name;
+    row.append(label);
+    row.insertCell().textContent = money(amount);
+    row.insertCell().textContent = money(cost);
+    return row;
+  }));
+  el("terms").textContent = profile.terms + (reserve ? " The cost of using your fuel money includes a fixed fee and the interest you give up." : "");
   const g = plan.gemini;
   el("market-assumption").textContent = plan.scenario === "oil stress"
     ? g.gallons + " gallons · Higher price estimate"
@@ -136,9 +116,9 @@ function renderPlan(plan) {
 function paymentView(plan) {
   const { receipt, review } = state;
   if (receipt) return {
-    stage: 2, title: "Reserve payment delivered", button: "Start another demo",
+    stage: 2, title: "Your fuel payment arrived", button: "Start another demo",
     description: "Your fuel vendor received the reserve payment in demo dollars.",
-    rows: [["Sent to the fuel vendor", tokenUnits(receipt.vendor_received_usdc_raw) + " USDC"], [state.manual_payment ? "Recorded separately by you" : "Still to pay separately", money(plan.other_funds_cents)]]
+    rows: [["Received by fuel company", money(receipt.vendor_received_usdc_raw / 10000)], [state.manual_payment ? "Recorded separately by you" : "Still to pay separately", money(plan.other_funds_cents)]]
   };
   if (!plan.payment_cents) return {
     stage: -1, title: "Pay from available cash", button: "Done",
@@ -146,20 +126,20 @@ function paymentView(plan) {
     rows: [["Cash needed", money(plan.bill_cents)], ["Financing cost", money(plan.cost_cents)]]
   };
   if (review) return {
-    stage: 1, title: "Review your payment", button: "Send " + money(plan.payment_cents) + " to fuel vendor",
-    description: "Send demo dollars (USDC) from your fuel reserve to this vendor. Check the recipient and amount before sending.",
-    rows: [["To", "Fuel vendor · " + review.payee_account.slice(0, 4) + "…" + review.payee_account.slice(-4)], ["Vendor receives", tokenUnits(review.usdc_raw) + " USDC"], ["Still to cover separately", money(plan.other_funds_cents)], ["Network fee", review.network_fee_lamports / 1e9 + " SOL"]]
+    stage: 1, title: "Review your payment", button: "Send " + money(plan.payment_cents) + " to fuel company",
+    description: "Check who gets the money and how much you still need to pay yourself.",
+    rows: [["To", "Fuel company"], ["Vendor receives", money(review.usdc_raw / 10000)], ["Still to cover separately", money(plan.other_funds_cents)]]
   };
   if (state.deposit) return {
-    stage: 1, title: "Your reserve is ready", button: "Review " + money(plan.payment_cents) + " payment",
+    stage: 1, title: "Your fuel money is ready", button: "Review " + money(plan.payment_cents) + " payment",
     description: "Confirm who will receive the funds and how much to send.",
     rows: [["From your reserve", money(plan.payment_cents)], ["Still to pay separately", money(plan.other_funds_cents)]]
   };
   const amount = tokenUnits(state.wallet_usdc_raw);
   return {
-    stage: 0, title: "Set up your fuel reserve", button: "Move $" + amount + " into reserve",
-    description: "Your fuel reserve holds digital dollars (USDC) for bills. Moving your demo balance there sets it aside. You approve the vendor payment in the next step.",
-    rows: [["Move to your reserve", "$" + amount], ["For this fuel bill", money(plan.payment_cents)]]
+    stage: 0, title: "Set money aside for fuel", button: "Set aside $" + amount,
+    description: "This moves your demo dollars into a fuel reserve for bills. The fuel company receives money only after you approve the next step.",
+    rows: [["Set aside for fuel", "$" + amount], ["Planned payment to fuel company", money(plan.payment_cents)]]
   };
 }
 
@@ -174,12 +154,13 @@ function render() {
   const view = paymentView(plan);
   const busy = Boolean(pending);
   const entry = state.manual_payment;
-  const separate = plan.payment_cents ? profiles[profile].source.toLowerCase() : "available cash";
+  const separate = profiles[profile].source.toLowerCase();
   const delivered = receipt ? receipt.vendor_received_usdc_raw / 10000 : 0;
   const balance = plan.bill_cents - delivered - (entry?.cents || 0);
   const recordable = receipt || !plan.payment_cents;
   el("balance").textContent = money(balance);
-  el("bill-status").textContent = entry ? "Paid" : receipt ? "Partly paid" : "Open";
+  el("original").hidden = balance === plan.bill_cents;
+  el("bill-status").textContent = entry ? "Paid" : receipt ? "Partly paid" : "Unpaid";
   el("bill-status").dataset.stage = entry ? "paid" : receipt ? "partial" : "open";
   el("configure").disabled = busy || Boolean(review || receipt || entry);
   el("open-payment").disabled = el("save-record").disabled = busy;
@@ -187,16 +168,17 @@ function render() {
   el("new-demo").hidden = !entry;
   el("reserve-receipt").disabled = el("new-demo").disabled = busy;
   el("return-bill").hidden = !receipt;
-  el("action-title").textContent = entry ? "Bill covered" : recordable ? "Pay outside FreightOS" : review ? "Approve the vendor payment" : "Pay from your reserve";
-  el("open-label").textContent = entry ? "Review outside payment" : recordable ? "Record outside payment" : review ? "Return to approval" : (state.deposit ? "Review " : "Prepare ") + money(plan.payment_cents) + " payment";
+  el("action-title").textContent = entry ? "This bill is paid" : recordable ? "Pay " + money(balance) + " directly" : review ? "Check your payment" : "Pay " + money(plan.payment_cents) + " through FreightOS";
+  el("open-label").textContent = entry ? "View your payment entry" : recordable ? "I already paid this" : review ? "Return to approval" : state.deposit ? "Review payment" : "Set aside money for fuel";
   el("payment-scope").textContent = entry ? "Your payment record covers the full bill."
-    : recordable ? "Pay " + money(balance) + " to the fuel vendor using " + separate + ". Record it here once you’ve paid."
+    : recordable ? "Use " + separate + " to pay the fuel company yourself. Once you’ve paid, enter it here."
     : state.deposit ? "Check the recipient and amount before approving the reserve payment."
-    : "Set aside demo dollars for fuel, then review the amount before sending it to your vendor.";
-  el("plan-jump").textContent = "See funding plan · " + money(plan.cost_cents) + " in fees ↓";
+    : "Set aside the full $" + tokenUnits(state.wallet_usdc_raw) + " demo balance for fuel. On the next screen, you can approve the amount going to the fuel company.";
+  el("plan-jump").textContent = "How we estimated the " + money(plan.cost_cents) + " cost ↓";
   const rows = [];
-  if (plan.payment_cents) rows.push([receipt ? "Delivered from reserve" : "Planned from reserve", money(receipt ? delivered : plan.payment_cents)]);
-  rows.push([entry ? "Recorded by you" : "You pay from " + separate, money(plan.other_funds_cents)]);
+  if (plan.payment_cents) rows.push([receipt ? "Received by fuel company" : "FreightOS pays after you approve", money(receipt ? delivered : plan.payment_cents)]);
+  const outsideLabel = { "quick pay": "You pay from your return load", "credit line": "You pay using bank credit", "cash on hand": "You pay with cash" };
+  rows.push([entry ? "Recorded by you" : outsideLabel[profile], money(plan.other_funds_cents)]);
   facts(el("payment-log"), rows);
   el("receipt-head").hidden = !receipt;
   el("receipt-load").textContent = receipt ? plan.load : "";
@@ -225,6 +207,8 @@ function render() {
   }
   if (!receipt) el("verified").textContent = "";
   currentStep = receipt || review || state.deposit;
+  el("network-details").hidden = !review;
+  el("network-details").textContent = review ? "Recipient account " + review.payee_account + ". Network fee " + review.network_fee_lamports / 1e9 + " SOL (demo funds)." : "";
   el("proof").hidden = !plan.payment_cents;
   el("details").hidden = !currentStep;
   if (el("proof").open && currentStep) el("details").textContent = JSON.stringify(currentStep, null, 2);
@@ -334,7 +318,7 @@ el("check").onclick = () => run("Checking recipient…", async () => {
 });
 el("verify").onclick = () => run("Verifying…", async () => {
   const proof = await request("/api/verify", {});
-  el("verified").textContent = proof.verified_signatures + " signatures verified. An independent replay confirmed delivery of " + tokenUnits(proof.vendor_received_usdc_raw) + " USDC.";
+  el("verified").textContent = "Payment checked. The fuel company received " + money(proof.vendor_received_usdc_raw / 10000) + " in demo dollars.";
 });
 el("download").onclick = () => downloadReceipt(state.load, state.receipt);
 function previewSettings() {

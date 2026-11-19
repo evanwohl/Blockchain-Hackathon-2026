@@ -25,12 +25,12 @@ async function showCase() {
     facts(el("case-facts"), [
       ["Fuel bill", money(row.case.bills[0].cents)],
       ["Paid from reserve", money(row.reserve_payment_cents)],
-      ["FreightOS financing cost", money(row.decision.cost_cents)],
-      ["Best conventional cost", money(row.conventional.cost_cents)],
-      ["Simpler reserve strategy", money(row.same_access_simple.cost_cents)]
+      ["Cost with FreightOS", money(row.decision.cost_cents)],
+      ["Lowest cost without a fuel reserve", money(row.conventional.cost_cents)],
+      ["Cost using the reserve with early invoice pay", money(row.same_access_simple.cost_cents)]
     ]);
     el("outcome").textContent = row.fork_receipt
-      ? "A signed test payment delivered " + money(row.reserve_payment_cents) + " in USDC to the vendor."
+      ? "The fuel company received " + money(row.reserve_payment_cents) + " in demo dollars."
       : "The driver could cover this bill without using the reserve.";
     const sources = row.decision.funding.map(item => [item.source, money(item.net_proceeds_cents)]);
     for (const invoice of row.decision.payments) {
@@ -61,7 +61,7 @@ async function load() {
   const savings = report.conventional_savings;
   const payments = report.execution_counts["signed and replayed on fork"];
   el("total").textContent = money(savings.total_cents);
-  el("context").textContent = "Choose one of " + report.cases + " loads to inspect its financing costs.";
+  el("context").textContent = "Choose one of " + report.cases + " loads to see how much it costs to pay for fuel.";
   facts(el("stats"), [
     ["Loads with lower financing costs", savings.positive_cases + " of " + report.cases],
     ["Loads with equal costs", savings.ties + " of " + report.cases],
@@ -76,7 +76,7 @@ async function load() {
     cell.type = "button";
     cell.value = item.load;
     cell.dataset.used = item.used_reserve;
-    cell.title = item.load + (item.used_reserve ? " · Used reserve" : " · No draw");
+    cell.title = item.load + (item.used_reserve ? " · Used reserve" : " · No reserve payment");
     cell.setAttribute("aria-label", cell.title);
     return cell;
   }));
