@@ -12,7 +12,7 @@ from uuid import uuid4
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, devnet, fuel_update, public_offer, reserve_return
-from freightos.surcharge import larger_offer_budget, offer_decision, standard_terms_threshold, surcharge_plans
+from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
 from hedging.quick_pay import integer, price_calendar
@@ -136,11 +136,25 @@ class LoadSettlement:
         cents, day = data.get("cents"), data.get("day")
         due = base["calendar"]["bills"][0]["day"]
         offer = None
+        allow_partial = data.get("allow_partial", False)
+        if type(allow_partial) is not bool or (allow_partial and "regular_day" not in data):
+            raise ValueError("Select partial payment only for a customer early-pay offer")
         if "regular_day" in data or "fee_cents" in data:
             regular = data.get("regular_day")
             if regular is None:
                 raise ValueError("Enter the regular payment day")
             plans, policy, offer = offer_decision(cents, day, regular, data.get("fee_cents"), cap, scenario)
+            if allow_partial:
+                option = partial_offer(cents, day, regular, data["fee_cents"], cap, scenario)
+                offer["partial_checked"] = True
+                if option:
+                    baseline_setup = self.fork.deposit_quote(policy["peak_reserve_cents"])
+                    plans, policy, partial = option
+                    setup = self.fork.deposit_quote(policy["peak_reserve_cents"])
+                    offer.update(partial={**partial, "setup_difference_cents": setup - baseline_setup,
+                                          "wallet_after_cents": wallet // 10000 - setup},
+                                 take_offer=True, early_cost_cents=plans[scenario]["cost_cents"],
+                                 least_saved_cents=partial["min_savings_cents"]["waiting"])
             if cap < available and not offer["take_offer"]:
                 offer["larger_budget"] = larger_offer_budget(cents, day, regular, data["fee_cents"], cap, available, scenario)
             other_day = regular if offer["take_offer"] else day
@@ -291,7 +305,8 @@ class LoadSettlement:
                 if quote["id"] != data.get("id"):
                     raise ValueError("Check the surcharge plan again before using it")
                 plans, policy = surcharge_plans(quote["cents"], quote["day"], quote["capacity_cents"],
-                                                quote.get("fee_cents", 0), quote.get("regular_day"))
+                                                quote.get("full_fee_cents", quote.get("fee_cents", 0)), quote.get("regular_day"),
+                                                quote.get("advance_cents"))
                 edges = {key: pairing_value(plan) for key, plan in plans.items()}
                 self.clear_surcharge()
                 key = quote["profile"]

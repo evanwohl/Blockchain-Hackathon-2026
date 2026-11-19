@@ -13,7 +13,7 @@ def surcharge_receipt(cents, day, fee=0):
 
 
 @lru_cache(maxsize=16, typed=True)
-def surcharge_plans(cents, day, capacity, fee=0, regular_day=None):
+def surcharge_plans(cents, day, capacity, fee=0, regular_day=None, advance_cents=None):
     integer(cents, "fuel surcharge")
     integer(day, "receipt day", 365)
     integer(capacity, "reserve capacity")
@@ -32,10 +32,21 @@ def surcharge_plans(cents, day, capacity, fee=0, regular_day=None):
     profile = f"fuel surcharge {cents} day {day} reserve {capacity}"
     if comparison is not None:
         profile += f" fee {fee} regular {regular_day}"
+    gross, charge = cents, fee
+    receipts = []
+    if advance_cents is not None:
+        gross = integer(advance_cents, "early portion", cents - 1)
+        if not gross or regular_day is None:
+            raise ValueError("A partial advance needs a positive early portion and a regular payment day")
+        charge = (gross * fee + cents - 1) // cents
+        balance = surcharge_receipt(cents - gross, regular_day)
+        receipts.append({**balance, "id": "remaining surcharge"})
+        profile += f" advance {gross}"
+    receipts.append(surcharge_receipt(gross, day, charge))
     quotes = {}
     for scenario, base in demo_plans()[0]["quick pay"].items():
         case = reserve_limit(base["calendar"], capacity)
-        case = {**case, "invoices": [*case["invoices"], surcharge_receipt(cents, day, fee)]}
+        case = {**case, "invoices": [*case["invoices"], *receipts]}
         quotes[scenario] = priced_plan(case, profile, scenario, base["gemini"], base["input_sha256"])
     policy = invoice_policy(quotes, comparison_costs=comparison)
     if policy is None:
@@ -46,10 +57,12 @@ def surcharge_plans(cents, day, capacity, fee=0, regular_day=None):
         on_time = day <= plan["calendar"]["bills"][0]["day"]
         plan["surcharge"] = {
             "version": 1, "cents": cents, "day": day, "capacity_cents": capacity,
-            "for_fuel_cents": min(cents - fee, plan["other_funds_cents"]) if on_time else 0,
+            "for_fuel_cents": min(gross - charge, plan["other_funds_cents"]) if on_time else 0,
         }
         if comparison is not None:
             plan["surcharge"].update(version=2, fee_cents=fee, regular_day=regular_day)
+        if advance_cents is not None:
+            plan["surcharge"].update(version=3, advance_cents=gross, fee_cents=charge, full_fee_cents=fee)
         plans[scenario] = plan
     return plans, policy
 
@@ -131,3 +144,27 @@ def larger_offer_budget(cents, day, regular_day, fee, cap, available, scenario):
             return {"limit_cents": target, "minimum_to_beat_current": target == minimum,
                     "peak_reserve_cents": revised_policy["peak_reserve_cents"], "early_cost_cents": offer["early_cost_cents"],
                     "wait_cost_cents": offer["wait_cost_cents"], "least_saved_cents": offer["least_saved_cents"]}
+
+def partial_offer(cents, day, regular_day, fee, cap, scenario):
+    full, _ = surcharge_plans(cents, day, cap, fee, regular_day)
+    if day > full[scenario]["calendar"]["bills"][0]["day"] or fee in (0, cents):
+        return None
+    required = standard_terms_threshold(cap)
+    net_full = cents - fee
+    gross = (required * cents + net_full - 1) // net_full
+    if not 0 < gross < cents:
+        return None
+    split, policy = surcharge_plans(cents, day, cap, fee, regular_day, gross)
+    if any(value != "standard" for value in policy["elections"].values()):
+        return None
+    waiting, _ = surcharge_plans(cents, regular_day, cap)
+    savings = {
+        label: min(other[key]["cost_cents"] - plan["cost_cents"] for key, plan in split.items())
+        for label, other in (("full", full), ("waiting", waiting))
+    }
+    if min(savings.values()) <= 0:
+        return None
+    return split, policy, {
+        "gross_cents": gross, "balance_cents": cents - gross, "min_savings_cents": savings,
+        "full_cost_cents": full[scenario]["cost_cents"], "net_needed_cents": required,
+    }

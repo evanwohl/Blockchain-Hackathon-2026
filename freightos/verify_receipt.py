@@ -106,7 +106,8 @@ def replay(receipt):
 
             terms = decision["surcharge"]
             plans, _ = surcharge_plans(terms["cents"], terms["day"], terms["capacity_cents"],
-                                       terms.get("fee_cents", 0), terms.get("regular_day"))
+                                       terms.get("full_fee_cents", terms.get("fee_cents", 0)), terms.get("regular_day"),
+                                       terms.get("advance_cents"))
             plan = plans[decision["scenario"]]
         elif "cash_policy" in decision or "late_freight" in decision:
             policy = decision.get("cash_policy") or decision["late_freight"]
