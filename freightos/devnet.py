@@ -100,19 +100,27 @@ def check_transaction(record, signature, instructions, payer):
     return tx.message.account_keys
 
 
-def token_delta(record, keys, account, mint, owner):
+def token_balances(meta, keys, account, mint, owner, *, allow_missing=False):
     index = keys.index(account)
 
     def balance(side):
-        row = next((r for r in record["meta"][side] if r["accountIndex"] == index), None)
-        if row is None:
+        rows = [row for row in meta[side] if row["accountIndex"] == index]
+        if not rows and allow_missing:
             return 0
+        if len(rows) != 1:
+            raise ValueError("Missing or duplicate token balance")
+        row = rows[0]
         if (row["mint"] != str(mint) or row["owner"] != str(owner) or row["programId"] != str(TOKEN)
                 or row["uiTokenAmount"]["decimals"] != 6):
             raise ValueError("Unexpected token balance identity")
         return int(row["uiTokenAmount"]["amount"])
 
-    return balance("postTokenBalances") - balance("preTokenBalances")
+    return balance("preTokenBalances"), balance("postTokenBalances")
+
+
+def token_delta(record, keys, account, mint, owner):
+    before, after = token_balances(record["meta"], keys, account, mint, owner, allow_missing=True)
+    return after - before
 
 
 def verify(run, rpc=None):
@@ -131,12 +139,14 @@ def verify(run, rpc=None):
         keys = check_transaction(record, signature, getattr(payment, step), payment.payer)
         slots.append(record["slot"])
         signatures[step] = signature
-        if step == "deposit" and token_delta(record, keys, payment.cash, MINT, payment.payer) != -run["deposit_raw"]:
-            raise ValueError("Reserve deposit amount differs")
+        if step == "deposit":
+            minted = token_delta(record, keys, payment.shares, SHARES, payment.payer)
+            if minted <= 0 or token_delta(record, keys, payment.cash, MINT, payment.payer) != -run["deposit_raw"]:
+                raise ValueError("Reserve deposit amount or issued shares differ")
         if step == "payment":
             received = token_delta(record, keys, payment.destination, MINT, payment.payee)
             burned = -token_delta(record, keys, payment.shares, SHARES, payment.payer)
-            if received != payment.amount or not 0 < burned <= payment.cap:
+            if received != payment.amount or not 0 < burned <= min(payment.cap, minted):
                 raise ValueError("Vendor proceeds or redeemed shares differ")
     if slots != sorted(slots):
         raise ValueError("Public payment steps are out of order")
@@ -144,8 +154,78 @@ def verify(run, rpc=None):
                                                             "minContextSlot": slots[-1]}]) if rpc else run["receipt"]
     payment.check_receipt(receipt["value"], 2)
     return {"load": payment.load, "slot": slots[-1], "vendor_received_raw": received, "shares_burned_raw": burned,
-            "decision": run["decision"], "deposit_raw": run["deposit_raw"], "signatures": signatures,
-            "receipt": str(payment.receipt), "source": "public-rpc" if rpc else "saved-receipt"}
+            "decision": run["decision"], "deposit_raw": run["deposit_raw"], "shares_minted_raw": minted, "signatures": signatures,
+            "receipt": str(payment.receipt), "share_account": str(payment.shares), "source": "public-rpc" if rpc else "saved-receipt"}
+
+
+def reserve_preview(run, proof, portion, rpc):
+    if portion not in ("road", "all") or proof["source"] != "public-rpc":
+        raise ValueError("A live public payment check is required")
+    plan = PublicPayment(run, Pubkey.from_string(run["payer"]))
+    config = {"commitment": "finalized", "minContextSlot": proof["slot"]}
+    account = rpc("getAccountInfo", [str(plan.shares), {**config, "encoding": "jsonParsed"}])
+    slot = account["context"]["slot"]
+    if slot < proof["slot"]:
+        raise ValueError("Share balance predates payment")
+    shares = 0
+    if account["value"] is not None:
+        value = account["value"]
+        info = value["data"]["parsed"]["info"]
+        if (value["owner"] != str(TOKEN) or value["executable"] or value["data"]["parsed"]["type"] != "account"
+                or info["owner"] != str(plan.payer) or info["mint"] != str(SHARES) or info["tokenAmount"]["decimals"] != 6):
+            raise ValueError("Unexpected public share account")
+        shares = int(info["tokenAmount"]["amount"])
+    cap = min(shares, proof["shares_minted_raw"] - proof["shares_burned_raw"])
+    scale = proof["decision"]["raw_units_per_cent"]
+    target = 1000 * scale if portion == "road" else None
+    result = {"portion": portion, "slot": slot, "share_account": str(plan.shares), "wallet_shares_raw": shares,
+              "eligible_shares_raw": cap, "shares_used_raw": 0, "return_raw": 0, "target_raw": target,
+              "raw_units_per_cent": scale, "source": "public-rpc"}
+    if not cap:
+        return result
+
+    def simulate(units):
+        nonlocal slot
+        withdrawal = vault_instruction(plan.route, plan.payer, plan.cash, plan.shares, units, venue=VENUE)
+        message = Message.new_with_blockhash([set_compute_unit_limit(400000), withdrawal], plan.payer, Hash.default())
+        wire = base64.b64encode(bytes(Transaction.new_unsigned(message))).decode()
+        response = rpc("simulateTransaction", [wire, {**config, "minContextSlot": slot, "encoding": "base64",
+                                                       "replaceRecentBlockhash": True, "sigVerify": False}])
+        value = response["value"]
+        if value["err"] is not None or response["context"]["slot"] < slot:
+            raise ValueError("Public reserve simulation unavailable")
+        before, after = token_balances(value, message.account_keys, plan.shares, SHARES, plan.payer)
+        cash_before, cash_after = token_balances(value, message.account_keys, plan.cash, MINT, plan.payer)
+        if before != shares or before - after != units or cash_after <= cash_before:
+            raise ValueError("Share balance or withdrawal proceeds changed")
+        slot = response["context"]["slot"]
+        return {**result, "slot": slot, "shares_used_raw": units, "return_raw": cash_after - cash_before,
+                "network_fee_lamports": value["fee"]}
+
+    full = simulate(cap)
+    if target is None or full["return_raw"] <= target:
+        return full
+    low, low_value = 0, 0
+    high, high_value = cap, full["return_raw"]
+    for _ in range(4):
+        if high - low == 1:
+            quote = simulate(high)
+            if target <= quote["return_raw"] < target + scale:
+                return quote
+            break
+        amount = low + ((target - low_value) * (high - low) + high_value - low_value - 1) // (high_value - low_value)
+        amount = min(high - 1, max(low + 1, amount))
+        quote = simulate(amount)
+        proceeds = quote["return_raw"]
+        if target <= proceeds < target + scale:
+            return quote
+        if not low_value <= proceeds <= high_value:
+            break
+        if proceeds < target:
+            low, low_value = amount, proceeds
+        else:
+            high, high_value = amount, proceeds
+    raise ValueError("Could not size the public quote at the current vault price")
 
 
 def execute(run, payer_file, step):
@@ -179,13 +259,19 @@ def execute(run, payer_file, step):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["verify", "approve", "pay"], default="verify", nargs="?")
+    parser.add_argument("action", choices=["verify", "quote", "approve", "pay"], default="verify", nargs="?")
     parser.add_argument("--payer-file", type=Path, help="Dedicated Devnet demo keypair")
+    parser.add_argument("--portion", choices=["road", "all"], default="road", help="Public reserve preview")
     args = parser.parse_args()
     run = json.loads(SAMPLE.read_bytes())
-    if args.action != "verify" and not args.payer_file:
+    if args.action in ("approve", "pay") and not args.payer_file:
         parser.error("Public execution requires --payer-file")
-    result = verify(run, request) if args.action == "verify" else execute(run, args.payer_file, args.action)
+    if args.action in ("verify", "quote"):
+        result = verify(run, request)
+        if args.action == "quote":
+            result = reserve_preview(run, result, args.portion, request)
+    else:
+        result = execute(run, args.payer_file, args.action)
     print(json.dumps(result, indent=2))
 
 

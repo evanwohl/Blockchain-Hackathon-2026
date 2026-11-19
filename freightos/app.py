@@ -407,6 +407,13 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, ValueError, RuntimeError, KeyError, TypeError):
                 self.respond(503, {"error": "Could not verify the receipt. Retry or open the transaction on Explorer."})
             return
+        if self.path in ("/api/public-payment/return/road", "/api/public-payment/return/all"):
+            portion = self.path.rsplit("/", 1)[-1]
+            try:
+                self.respond(200, self.server.return_previews[portion].read())
+            except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+                self.respond(503, {"error": "The public reserve quote is unavailable. Try again shortly."})
+            return
         if self.path == "/api/reserve-observation":
             try:
                 self.respond(200, self.server.public_reserve.read())
@@ -495,7 +502,10 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
     server.public_reserve = PublicCheck(reserve_observation)
-    server.public_payment = PublicCheck(lambda: devnet.verify(json.loads(devnet.SAMPLE.read_bytes()), devnet.request))
+    public_run = json.loads(devnet.SAMPLE.read_bytes())
+    server.public_payment = PublicCheck(lambda: devnet.verify(public_run, devnet.request))
+    server.return_previews = {portion: PublicCheck(lambda portion=portion: devnet.reserve_preview(
+        public_run, server.public_payment.read(), portion, devnet.request)) for portion in ("road", "all")}
     print(
         f"FreightOS at http://127.0.0.1:{server.server_port} (practice bill and public Devnet receipt)",
         flush=True,
