@@ -224,3 +224,21 @@ def test_program_enforces_share_limit_and_keeps_settled_bill_after_staging_closu
         in result.meta().logs()
     )
     assert fork.vm.get_account(key).data[0] == 2
+
+
+def test_refresh_restores_active_review_and_drops_expired_review(monkeypatch):
+    import freightos.fork as fork_module
+
+    app = LoadSettlement()
+    app.act("deposit", {})
+    quote = app.act("review", {"scenario": "fuel budget", "profile": "credit line"})
+    current = app.state()["review"]
+    assert current["id"] == quote["id"]
+    assert current["decision"]["profile"] == "credit line"
+    assert 0 < current["expires_in_seconds"] <= 60
+    deadline = fork_module.monotonic() + 61
+    monkeypatch.setattr(fork_module, "monotonic", lambda: deadline)
+    assert app.state()["review"] is None
+    with pytest.raises(ValueError, match="expired"):
+        app.act("approve", {"approval": quote["id"]})
+    assert app.state()["receipt"] is None

@@ -3,44 +3,52 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>FreightOS · Fuel bill</title>
-  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head>
 <body>
-<header><div class="bar"><span class="brand">Freight<span>OS</span></span><span class="network">Solana fork · Test funds</span></div></header>
+<header><div class="bar"><a class="brand" href="/">Freight<span>OS</span></a><nav aria-label="Main navigation"><a aria-current="page" href="/">Fuel bill</a><a href="/trial">Carrier trial</a></nav><span class="network">Demo · Test funds</span></div></header>
 <main>
-  <div class="loadline">Load FOS-2048 <span>Fuel statement · Due day 5</span></div>
+  <div class="loadline">Load FOS-2048 <span>Fuel bill due on day 5</span></div>
   <h1>Pay your fuel bill</h1>
-  <p class="intro">Keep the $3,000 freight invoice on standard terms if another way to pay costs less.</p>
-  <div class="grid">
-    <section class="panel">
-      <div class="headline"><p class="label">Fuel bill</p><strong id="bill">—</strong><span>USD</span></div>
-      <div class="inside">
-        <div class="controls">
-          <label>Fuel scenario<select id="scenario"><option value="oil stress">Gemini oil stress</option><option value="fuel budget">Original fuel budget</option></select></label>
-          <label>Other cash available<select id="profile"><option value="quick pay">Invoice quick pay</option><option value="credit line">Approved credit line</option><option value="cash on hand">Cash covers the bill</option></select></label>
-        </div>
-        <div class="split" aria-hidden="true"><i id="bar"></i></div>
-        <dl class="breakdown"><div><dt><i class="dot"></i>From lending reserve</dt><dd id="amount">—</dd></div><div><dt id="other-label">From other funds</dt><dd id="other">—</dd></div></dl>
-        <h2 class="small">What this costs you</h2>
-        <dl><div><dt>Selected plan</dt><dd id="cost">—</dd></div><div><dt id="alternative">Best plan without reserve</dt><dd id="alt-cost">—</dd></div><div class="saving"><dt>Modeled fees saved</dt><dd id="saved">—</dd></div></dl>
-        <p class="note" id="terms"></p>
-        <details><summary>Gemini market evidence</summary><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">View recorded contract data</a></details>
-      </div>
+  <p class="intro">Your $3,000 freight invoice pays on day 28. See what it costs to cover fuel before then.</p>
+  <div class="workspace">
+    <section class="outlook" aria-labelledby="savings-title">
+      <h2 class="label" id="savings-title">Estimated financing savings on this load</h2>
+      <strong class="hero-value" id="saved">—</strong>
+      <dl class="compare">
+        <div><dt>This plan costs</dt><dd id="plan-cost">—</dd></div>
+        <div><dt id="alternative">Alternative cost</dt><dd id="other-cost">—</dd></div>
+      </dl>
+      <a class="jump" href="#title">View payment plan</a>
     </section>
-    <section class="panel action">
-      <div class="actionhead"><p class="label">Kamino USDC reserve</p><ol id="steps" aria-label="Payment progress"><li>Fund</li><li>Review</li><li>Settle</li></ol></div>
-      <div class="inside"><h2 id="title">Loading reserve</h2><p id="instruction"></p>
+    <section class="panel action" aria-labelledby="title">
+      <div class="actionhead"><strong>Reserve payment</strong><ol id="steps" aria-label="Payment progress"><li>Fund</li><li>Review</li><li>Pay</li></ol></div>
+      <div class="inside">
+        <h2 id="title" tabindex="-1">Loading your plan</h2><p id="instruction"></p>
         <dl id="facts"></dl>
         <button id="primary" disabled>Loading</button>
         <button id="cancel" class="plain" hidden>Cancel review</button>
         <p role="status" id="status"></p>
-        <div id="challenge" hidden><h3>Check the vendor lock</h3><p>Simulate the same payment to a different vendor wallet.</p><button class="secondary" id="check">Test a different vendor</button><p id="result" role="status"></p></div>
-        <button id="verify" class="secondary" hidden>Verify on a fresh fork</button>
+        <details id="challenge" hidden><summary>Test the vendor protection</summary><p>Try the reviewed payment with a different recipient.</p><button class="secondary" id="check">Test a different vendor</button><p id="result" role="status"></p></details>
+        <button id="verify" class="secondary" hidden>Verify this payment</button>
         <p id="verified" role="status"></p>
-        <button id="download" class="plain" hidden>Download settlement receipt</button>
-        <details id="proof" hidden><summary>Protocol details</summary><pre id="details"></pre></details>
+        <button id="download" class="plain" hidden>Download signed receipt</button>
+        <details id="proof" hidden><summary>Technical receipt details</summary><pre id="details"></pre></details>
+      </div>
+    </section>
+    <section class="panel breakdown" aria-labelledby="funding-title">
+      <div class="inside">
+        <div class="section-title"><h2 id="funding-title">How to cover the bill</h2><strong id="bill">—</strong></div>
+        <div class="split" aria-hidden="true"><i id="bar"></i></div>
+        <dl><div><dt>From your reserve</dt><dd id="amount">—</dd></div><div><dt id="other-label">Other funds</dt><dd id="other">—</dd></div></dl>
+        <div class="controls">
+          <label>Fuel budget<select id="scenario" disabled><option value="oil stress">Higher oil price</option><option value="fuel budget">Original estimate</option></select></label>
+          <label>Available funding<select id="profile" disabled><option value="quick pay">Invoice quick pay</option><option value="credit line">Bank credit line</option><option value="cash on hand">Cash on hand</option></select></label>
+        </div>
+        <details><summary>Where the costs come from</summary><dl id="fees"></dl><p id="terms"></p></details>
+        <details><summary>How Gemini changes the fuel budget</summary><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">View recorded oil contracts</a></details>
       </div>
     </section>
   </div>
-  <footer><a href="/trial">Explore the synthetic carrier trial</a><p>Sample carrier and USDC vendor. Kamino and FreightOS programs execute locally on captured Solana mainnet state. Funding costs are illustrative.</p></footer>
+  <footer>Sample carrier. Payments use test USDC on a local Solana fork. The fuel vendor in this example accepts USDC.</footer>
 </main></body></html>

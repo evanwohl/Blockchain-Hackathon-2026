@@ -1,5 +1,6 @@
 import argparse
 import json
+from functools import cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import RLock
@@ -12,6 +13,17 @@ LOAD = "FOS-2048"
 ASSETS = Path(__file__).with_name("web")
 DATA = ROOT / "artifacts/quick_pay"
 PROFILES = ("quick pay", "credit line", "cash on hand")
+
+
+@cache
+def trial_data():
+    report = json.loads((DATA / "carrier_trial.json").read_bytes())
+    cases = {row["load"]: row for row in report.pop("rows")}
+    report["loads"] = [
+        {"load": load, "used_reserve": bool(row["fork_receipt"])}
+        for load, row in cases.items()
+    ]
+    return report, cases
 
 
 def funding_plan(sample, evidence, scenario, profile):
@@ -89,6 +101,7 @@ class LoadSettlement:
                 "wallet_usdc_raw": self.fork.balance(self.fork.cash),
                 "deposit": self.deposit_receipt,
                 "receipt": self.fork.receipts.get(LOAD),
+                "review": self.fork.pending_review(),
                 "plans": self.plans["quick pay"],
                 "funding_plans": self.plans,
             }
@@ -145,6 +158,16 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(status, "application/json", json.dumps(obj).encode())
 
     def do_GET(self):
+        if self.path == "/api/trial":
+            self.respond(200, trial_data()[0])
+            return
+        if self.path.startswith("/api/trial/"):
+            row = trial_data()[1].get(self.path.removeprefix("/api/trial/"))
+            if row is None:
+                self.respond(404, {"error": "Unknown load"})
+            else:
+                self.respond(200, row)
+            return
         if self.path == "/evidence/carrier-trial":
             self.reply(
                 200, "application/json", (DATA / "carrier_trial.json").read_bytes()
@@ -166,6 +189,7 @@ class Handler(BaseHTTPRequestHandler):
             "/trial.js": ("trial.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
             "/app.js": ("app.js", "text/javascript"),
+            "/common.js": ("common.js", "text/javascript"),
         }
         if self.path not in assets:
             self.respond(404, {"error": "Page unavailable"})
