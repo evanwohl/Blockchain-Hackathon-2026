@@ -14,9 +14,18 @@ use solana_program::{
 entrypoint!(process);
 
 const TOKEN: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+#[cfg(not(feature = "devnet"))]
 const USDC: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+#[cfg(not(feature = "devnet"))]
 const KAMINO: Pubkey = pubkey!("KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd");
+#[cfg(not(feature = "devnet"))]
 const VAULT: Pubkey = pubkey!("HDsayqAsDWy3QvANGqh2yNraqcD8Fnjgh73Mhb3WRS5E");
+#[cfg(feature = "devnet")]
+const USDC: Pubkey = pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+#[cfg(feature = "devnet")]
+const KAMINO: Pubkey = pubkey!("devkRngFnfp4gBc5a3LsadgbQKdPo8MSZ4prFiNSVmY");
+#[cfg(feature = "devnet")]
+const VAULT: Pubkey = pubkey!("7uib8xGAwkaPz4ZGCA6t8sSEid5Yp9ty13PHUweTypx");
 const WITHDRAW: [u8; 8] = [19, 131, 112, 155, 170, 220, 34, 57];
 const SIZE: usize = 1 + 32 * 4 + 8 * 2;
 const AUTHORIZED: u8 = 1;

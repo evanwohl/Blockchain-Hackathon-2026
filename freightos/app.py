@@ -11,7 +11,8 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, reserve_return
+from freightos import bill, devnet, reserve_return
+from freightos.live import reserve_observation
 from freightos.funding import DATA, LOAD, demo_plans, funding_plan
 from hedging.quick_pay import price_calendar
 from hedging.payment_timing import reserve_deadline
@@ -259,20 +260,19 @@ class LoadSettlement:
             raise ValueError("Unknown action")
 
 
-class PublicReserve:
-    def __init__(self):
+class PublicCheck:
+    def __init__(self, observe):
+        self.observe = observe
         self.lock = Lock()
         self.valid_until = 0
         self.observation = None
 
     def read(self):
-        from freightos.live import reserve_observation
-
         if not self.lock.acquire(blocking=False):
-            raise ValueError("Public reserve check is in progress")
+            raise ValueError("Public check is in progress")
         try:
             if monotonic() >= self.valid_until or self.observation is None:
-                self.observation = reserve_observation()
+                self.observation = self.observe()
                 self.valid_until = monotonic() + 30
             return self.observation
         finally:
@@ -346,6 +346,14 @@ class Handler(BaseHTTPRequestHandler):
                 (ROOT / "artifacts/gemini_ladder/active.json").read_bytes(),
             )
             return
+        if self.path in ("/api/public-payment", "/api/public-payment/verify"):
+            try:
+                result = (self.server.public_payment.read() if self.path.endswith("/verify")
+                          else devnet.verify(json.loads(devnet.SAMPLE.read_bytes())))
+                self.respond(200, result)
+            except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+                self.respond(503, {"error": "Could not verify the receipt. Retry or open the transaction on Explorer."})
+            return
         if self.path == "/api/reserve-observation":
             try:
                 self.respond(200, self.server.public_reserve.read())
@@ -357,6 +365,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/public-payment": ("public_payment.html", "text/html; charset=utf-8"),
+            "/public_payment.js": ("public_payment.js", "text/javascript"),
             "/overview.js": ("overview.js", "text/javascript"),
             "/bill": ("index.html", "text/html; charset=utf-8"),
             "/trial": ("trial.html", "text/html; charset=utf-8"),
@@ -430,9 +440,10 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
-    server.public_reserve = PublicReserve()
+    server.public_reserve = PublicCheck(reserve_observation)
+    server.public_payment = PublicCheck(lambda: devnet.verify(json.loads(devnet.SAMPLE.read_bytes()), devnet.request))
     print(
-        f"FreightOS at http://127.0.0.1:{server.server_port} (local fork, test funds)",
+        f"FreightOS at http://127.0.0.1:{server.server_port} (practice bill and public Devnet receipt)",
         flush=True,
     )
     try:
