@@ -8,6 +8,7 @@ const profiles = {
 let state;
 let pending = "";
 let expiryTimer;
+let clockTimer;
 let currentStep;
 
 let profile = sessionStorage.getItem("funding-profile") || "quick pay";
@@ -18,12 +19,22 @@ function renderCalendar(plan) {
   const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
   el("load-id").textContent = plan.load;
   el("bill-due").textContent = "Day " + bill.day;
-  el("bill-scenario").textContent = plan.scenario === "oil stress" ? "Higher fuel estimate" : "Original fuel estimate";
   el("invoice-value").textContent = money(primary.receipt_cents);
   el("invoice-day").textContent = "Day " + primary.day;
   const gap = primary.day - bill.day;
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
     : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
+  const days = Math.max(primary.day, bill.day, 1);
+  const strip = el("day-strip");
+  const ticks = document.createDocumentFragment();
+  for (let day = 1; day <= days; day++) {
+    const tick = document.createElement("i");
+    if (day >= Math.min(bill.day, primary.day) && day <= Math.max(bill.day, primary.day)) tick.className = "between";
+    if (day === bill.day) tick.classList.add("due-day");
+    if (day === primary.day) tick.classList.add("invoice-day");
+    ticks.append(tick);
+  }
+  strip.replaceChildren(ticks);
   const events = [
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true },
     ...plan.invoice_elections.map(item => ({
@@ -109,7 +120,7 @@ function paymentView(plan) {
   };
   if (review) return {
     stage: 1, title: "Review your payment", button: "Pay " + money(plan.payment_cents) + " in test USDC",
-    description: "Confirm the amount going to your fuel vendor. Approval is valid for one minute.",
+    description: "Check the recipient and amount before sending.",
     rows: [["To", "Fuel vendor · " + review.payee_account.slice(0, 4) + "…" + review.payee_account.slice(-4)], ["Vendor receives", tokenUnits(review.usdc_raw) + " USDC"], ["Still to cover separately", money(plan.other_funds_cents)], ["Network fee", review.network_fee_lamports / 1e9 + " SOL"]]
   };
   if (state.deposit) return {
@@ -180,6 +191,17 @@ async function sync(restore = false) {
   if (!Object.hasOwn(state.funding_plans, profile)) profile = "quick pay";
   if (!Object.hasOwn(state.funding_plans[profile], scenario)) scenario = "oil stress";
   clearTimeout(expiryTimer);
+  clearInterval(clockTimer);
+  el("review-clock").hidden = !state.review;
+  if (state.review) {
+    const expiresAt = Date.now() + state.review.expires_in_seconds * 1000;
+    const tick = () => {
+      const seconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      el("review-clock").textContent = seconds ? "Review expires in " + seconds + "s" : "Review expired";
+    };
+    tick();
+    clockTimer = setInterval(tick, 1000);
+  }
   if (state.review) expiryTimer = setTimeout(async () => {
     if (pending) return;
     try {
@@ -211,6 +233,8 @@ async function run(label, action) {
 }
 
 function showRetry(error) {
+  clearInterval(clockTimer);
+  el("review-clock").hidden = true;
   el("status").textContent = error.message;
   el("title").textContent = "Reconnect to your payment";
   el("primary").disabled = false;
@@ -248,7 +272,11 @@ el("verify").onclick = () => run("Verifying…", async () => {
 });
 el("download").onclick = () => downloadReceipt(state.load, state.receipt);
 function previewSettings() {
-  const choice = el("profile").value;
+  const choice = el("profile").querySelector(":checked").value;
+  for (const input of el("profile").querySelectorAll("input")) {
+    const estimate = state.funding_plans[input.value][el("scenario").value];
+    input.labels[0].querySelector("small").textContent = money(estimate.cost_cents) + " plan fee";
+  }
   const plan = state.funding_plans[choice][el("scenario").value];
   el("access-help").textContent = profiles[choice].terms;
   el("draft-bill").textContent = money(plan.bill_cents);
@@ -260,14 +288,14 @@ el("explain-plan").onclick = event => {
   button.setAttribute("aria-expanded", String(button.getAttribute("aria-expanded") !== "true"));
 };
 el("configure").onclick = () => {
-  el("profile").value = profile;
+  for (const input of el("profile").querySelectorAll("input")) input.checked = input.value === profile;
   el("scenario").value = scenario;
   previewSettings();
   el("settings").showModal();
 };
 el("scenario").onchange = el("profile").onchange = previewSettings;
 el("apply").onclick = () => {
-  profile = el("profile").value;
+  profile = el("profile").querySelector(":checked").value;
   scenario = el("scenario").value;
   sessionStorage.setItem("funding-profile", profile);
   sessionStorage.setItem("fuel-scenario", scenario);
