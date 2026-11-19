@@ -685,3 +685,17 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .reference-prices th, .reference-prices td { padding: .4rem .2rem; text-align: right; border-block-start: 1px solid #68705f; }
 .reference-prices th:first-child { text-align: left; padding-inline-start: 0; }
 .reference-prices thead th { color: #d7e7a5; font-weight: 500; }
+
+.surcharge-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+.surcharge-fields .expense-input { margin-top: .35rem; }
+#surcharge-form .secondary { margin: .7rem 0; }
+#surcharge-help, #surcharge-boundary, #surcharge-status { font-size: .92rem; line-height: 1.48; }
+#surcharge-before, #surcharge-result { border-top: 1px solid var(--line); padding-top: .85rem; }
+.surcharge-work h3 { margin: 0; font: 600 1.65rem/1.1 var(--display); }
+#surcharge-result .primary { width: 100%; }
+#surcharge-facts > div:nth-last-child(2) { color: #344e24; font-weight: 650; }
+@media (min-width: 761px) {
+  #surcharge { width: min(52rem, calc(100% - 3rem)); }
+  .surcharge-work { display: grid; grid-template-columns: .95fr 1.05fr; gap: 2rem; margin-top: 1.2rem; }
+  #surcharge-before, #surcharge-result { border-top: 0; border-left: 1px solid var(--line); padding: 0 0 0 1.6rem; }
+}
