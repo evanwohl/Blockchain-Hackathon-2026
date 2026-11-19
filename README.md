@@ -2,9 +2,9 @@
 
 ## Public payment demo
 
-Open **See the paid example** on Overview to inspect a completed fuel payment on Solana Devnet. FreightOS deposited test USDC in Kamino, bound the recipient and amount in its Rust program, then redeemed shares and paid the demo vendor 5.55 test USDC. Each test cent represents a dollar of the sample’s $555 reserve payment. Judges can verify all three transactions without a wallet. [Public payment on Solana Explorer](https://explorer.solana.com/tx/5A5yKCDw8qZAr4MwvAHBm3op1FdS79wPM7kCD8k6czkRqAG2dx8EgxCtRvbyooy9vozHCurhviXxEeMPLhuvoKv3?cluster=devnet)
+Open **See a full bill paid on Solana** on Overview. For a $745 sample fuel bill the demo customer pays 1.75 test USDC through the driver, and Kamino supplies 5.70 test USDC. The customer and driver signed the same transaction. The vendor received all 7.45 test USDC on public devnet. Each test cent represents one modeled dollar. [View the finalized settlement on Solana Explorer](https://explorer.solana.com/tx/2MAefNg3M2xFj27U82XEg2bwBQDhnmSUD24Ta4s7o47nN4hu5T1dMTKwyhAtHRZR9TQpFa2rAVa1yrNPx1QTGzvc?cluster=devnet)
 
-Run `uv run --locked python -m freightos.devnet verify` for the public receipt check. See [the project guide](AGENTS.md) for a fresh Devnet execution. The interactive practice bill runs on the local fork.
+Run `uv run --locked python -m freightos.public_offer --live` to verify the offer terms, both signatures, vault withdrawal and vendor balance. The original reserve-only example is available at `/public-payment` and through `python -m freightos.devnet verify`. See [the project guide](AGENTS.md) for the demo flow and execution details.
 
 FreightOS compares ways to fund a load’s fuel bill, shows how a recorded Gemini oil scenario changes the cash needed, and pays the approved vendor from a Kamino USDC reserve. The browser app uses test funds on a local Solana fork. It runs offline after dependency installation.
 

@@ -707,3 +707,15 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 #offer-limit { display: flex; align-items: baseline; justify-content: space-between; gap: .65rem; margin-top: .7rem; padding: .48rem .7rem; background: #e4e9da; color: #303d26; }
 #offer-limit span { font-size: .85rem; font-weight: 600; }
 #offer-limit strong { font: 600 1.6rem/1 var(--display); }
+
+.offer-spread .receipt-cost h2 { margin: 0; font: 600 1.7rem var(--display); }
+.offer-slip .facts { margin: .5rem 0 1.3rem; }
+#settled-bar { height: .65rem; margin-top: 1.25rem; background: linear-gradient(to right,#8b72a2 var(--customer-share),#53633c var(--customer-share)); }
+.offer-audit { margin-top: 1.1rem; border-top: 1px solid #afb5a2; padding-top: .5rem; }
+.offer-audit summary { min-height: 44px; font-weight: 600; }
+.offer-audit .payment-stops { margin-block: .4rem; }
+.offer-footnote { max-width: 75ch; margin: 1rem 0 .25rem; font-size: .9rem; }
+.offer-receipt-link { display: block; padding-top: .8rem; font-size: .85rem; text-underline-offset: .18em; }
+@media (max-width: 720px) {
+  .offer-spread .public-slip { grid-row: 1; }
+}

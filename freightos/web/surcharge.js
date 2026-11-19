@@ -82,6 +82,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
       ];
       const heading = el("surcharge-outcome");
       const boundary = el("surcharge-boundary");
+      el("public-offer-example").hidden = !decision;
       el("offer-limit").hidden = !decision;
       el("surcharge-facts").dataset.wait = String(decision?.take_offer === false);
       if (decision) {
