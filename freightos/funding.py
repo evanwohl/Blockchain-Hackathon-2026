@@ -6,7 +6,7 @@ from functools import cache
 from freightos.capture import ROOT
 from freightos.fuel_markets import fuel_levels
 from hedging.invoice_policy import invoice_policy, reserve_limit
-from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
+from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline, spendable_on
 from hedging.quick_pay import capacity_boundary, price_calendar
 
 DATA = ROOT / "artifacts/quick_pay"
@@ -112,6 +112,28 @@ def pairing_value(plan):
                                      {"cost_cents": best})
     return {"base_cents": base, "reserve_only_cents": reserve_only, "outside_only_cents": outside,
             "joint_cents": plan["cost_cents"], "pairing_savings_cents": gain, "boundary": boundary}
+
+
+def next_trip_options(plans, setup, wallet_raw):
+    fixed = LATE_PLANS["quick pay"]
+    reserve = next(s for s in plans[fixed]["oil stress"]["calendar"]["funding"] if s["id"] == "reserve redemption")
+    day = reserve["restore_day"]
+    options = []
+    for profile in (REFILL_LATER, fixed, BACKUPS[fixed]):
+        deposit = setup.get(profile)
+        if deposit is None:
+            continue
+        choices = plans[profile]
+        elections = {frozenset((e["invoice"], e["option"]) for e in p["invoice_elections"]) for p in choices.values()}
+        if choices.keys() != plans[fixed].keys() or len(elections) != 1:
+            continue
+        cash = wallet_raw // 10000 - deposit
+        capacities = [spendable_on(p["calendar"], p["invoice_elections"], p["funding"], day)
+                      for p in choices.values()]
+        options.append({"profile": profile, "capacity_cents": cash + min(capacities),
+                        "peak_cost_cents": max(p["cost_cents"] for p in choices.values())})
+    options.sort(key=lambda row: (row["peak_cost_cents"], -row["capacity_cents"]))
+    return {"day": day, "budgets": len(plans[fixed]), "options": options}
 
 
 def refill_cost(evidence, days):

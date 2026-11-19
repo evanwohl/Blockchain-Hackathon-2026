@@ -625,3 +625,24 @@ main.overview { width: 100%; max-width: none; padding: 0; }
   .public-cover h1 { margin-block: 1rem; }
   .public-cover h1 br { display: none; }
 }
+
+#next-trip { width: min(54rem,calc(100% - 2rem)); }
+.expense-layout { display: grid; grid-template-columns: 1fr 1.1fr; gap: 1.5rem; margin-top: 1rem; }
+.expense-limits { border-inline-start: 1px solid var(--line); padding-inline-start: 1.25rem; }
+#expense-help, .expense-limits p { font-size: .9rem; line-height: 1.45; }
+#expense-help { margin-block: .6rem; }
+@media (max-width: 760px) {
+  #next-trip { width: 100%; }
+  .expense-layout { grid-template-columns: 1fr; gap: .6rem; }
+  .expense-limits { padding-inline-start: 0; border-inline-start: 0; border-top: 1px solid var(--line); }
+}
+#next-trip summary { min-height: 46px; }
+#next-trip label { display: block; margin: .45rem 0; font-weight: 600; }
+.expense-input { display: flex; align-items: center; gap: .35rem; width: min(100%,14rem); border: 1px solid #67725b; padding: .45rem .7rem; background: var(--paper); font: 600 1.6rem var(--display); }
+.expense-input:focus-within { outline: 2px solid #1f799a; outline-offset: 2px; }
+.expense-input input { min-width: 0; width: 100%; border: 0; background: transparent; font: inherit; color: inherit; outline: none; }
+#expense-result { margin: .65rem 0; border-left: 3px solid #758449; padding: .6rem .8rem; background: #e8eddd; }
+#expense-result strong, #expense-result span { display: block; }
+#expense-result span { margin-top: .25rem; font-size: .9rem; line-height: 1.45; }
+#expense-result.short { background: #f3e7dc; border-color: #a56338; }
+#next-trip details { margin-top: .6rem; }

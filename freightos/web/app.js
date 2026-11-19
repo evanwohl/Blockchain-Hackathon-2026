@@ -1,5 +1,6 @@
 import { cashPriority, downloadReceipt, el, facts, money, oilOptions, request, saveFile, tokenUnits, usesCredit } from "./common.js";
 import { bindWallet, walletState } from "./wallet.js";
+import { renderNextTrip } from "./next_trip.js";
 import { openBillTab } from "./bill_tabs.js";
 
 const roundedDollars = cents => money(cents).replace(/\.00$/, "");
@@ -79,6 +80,7 @@ function renderCalendar(plan) {
   el("invoice-day").textContent = dayLabel(primary.day);
   renderDeadline(plan);
   renderInvoiceDelay(plan);
+  renderNextTrip(state, plan, dayLabel, regularProfile(plan) === "quick pay");
   const gap = primary.day - bill.day;
   el("day-gap").textContent = "View dates →";
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
@@ -454,7 +456,7 @@ function render() {
   el("switch-timing").disabled = el("usual-invoice").disabled = busy;
   el("switch-invoice").disabled = busy || plan.profile === el("switch-invoice").value;
   el("switch-refill").disabled = busy || plan.profile === el("switch-refill").value;
-  el("policy-rows").inert = busy;
+  el("policy-rows").inert = el("next-trip").inert = busy;
   const separate = profiles[profile].source.toLowerCase();
   el("reserve-ticket").classList.toggle("settled", Boolean(receipt));
   el("direct-ticket").classList.toggle("settled", Boolean(entry));
@@ -556,8 +558,8 @@ async function sync(restore = false) {
       sessionStorage.setItem("funding-profile", profile);
       sessionStorage.setItem("fuel-scenario", scenario);
     }
-    history.replaceState(null, "", location.pathname);
   }
+  if (choice.has("plan") || ["next-trip", "late-freight"].includes(choice.get("view"))) history.replaceState(null, "", location.pathname + location.search);
   if (locked) {
     scenario = locked.scenario;
     profile = locked.profile;
@@ -589,6 +591,7 @@ async function sync(restore = false) {
     openBillTab("dates-tab");
     el("open-invoice-delay").click();
   }
+  if (choice.get("view") === "next-trip" && !el("expense-note").hidden) el("expense-note").click();
   if (restore && (state.review || reopenPayment) && !el("payment").open) el("payment").showModal();
   reopenPayment = false;
 }
@@ -760,6 +763,19 @@ el("policy-rows").onclick = event => {
   if (!button || pending || state.review || state.receipt || state.manual_payment) return;
   usePlan(profile, button.value);
   el("policy-rows").querySelector('[aria-pressed="true"]').focus({ preventScroll: true });
+};
+el("open-next-trip").onclick = el("expense-note").onclick = el("from-delay-to-expense").onclick = () => {
+  if (el("invoice-delay").open) el("invoice-delay").close();
+  el("next-trip").showModal();
+  el("trip-expense").focus();
+};
+el("apply-expense").onclick = event => {
+  const next = event.currentTarget.value;
+  if (pending || !state.next_trip?.options.some(row => row.profile === next)) return;
+  el("next-trip").close();
+  usePlan(next, scenario);
+  openBillTab("fees-tab");
+  el("plan-head").focus();
 };
 el("open-invoice-delay").onclick = () => {
   el("invoice-delay").showModal();

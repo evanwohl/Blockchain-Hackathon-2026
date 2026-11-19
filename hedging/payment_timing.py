@@ -19,6 +19,16 @@ def _daily_flows(calendar, payments, draws, *, withhold=None, delay_invoice=None
     return sorted(flows.items())
 
 
+def spendable_on(calendar, payments, draws, day):
+    balance = calendar["opening_cash_cents"] - calendar["reserve_floor_cents"]
+    headroom = None
+    for event_day, flow in _daily_flows(calendar, payments, draws):
+        if event_day > day:
+            headroom = balance if headroom is None else min(headroom, balance)
+        balance += flow
+    return min(balance, headroom) if headroom is not None else balance
+
+
 def late_invoice_calendar(calendar, invoice, days):
     invoices = [{**item, "options": [
         {**option, "latest_day": option.get("latest_day", option["day"]) + days}
