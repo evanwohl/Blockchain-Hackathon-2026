@@ -123,22 +123,40 @@ class LoadSettlement:
                 except VaultExecutionError:
                     quotes[profile] = None
                 by_target[target] = quotes[profile]
+            self.return_limits = {}
             self.quotes = quotes
             self.quote_balances = balances
         return self.quotes
 
+    def next_trip_check(self, setup, wallet, shares):
+        check = next_trip_options(self.plans, setup, wallet)
+        for row in check["options"]:
+            available = 0
+            if shares and setup[row["profile"]] == 0:
+                target = self.reserve_target(row["profile"])
+                if target not in self.return_limits:
+                    try:
+                        quote = reserve_return.return_quote(self.fork, target, {})
+                        self.return_limits[target] = quote["return_usdc_raw"]
+                    except VaultExecutionError:
+                        pass
+                available = self.return_limits.get(target, 0)
+            row["returnable_cents"] = (wallet + available) // 10000 - wallet // 10000
+        return check
+
     def state(self):
         with self.lock:
             wallet = self.fork.balance(self.fork.cash)
+            shares = self.fork.balance(self.fork.shares)
             setup = {} if self.manual_payment or LOAD in self.fork.receipts else self.setup_quotes()
             review = self.fork.pending_review()
             return {
                 "load": LOAD,
                 "slot": self.fork.slot,
-                "reserve_shares_raw": self.fork.balance(self.fork.shares),
+                "reserve_shares_raw": shares,
                 "wallet_usdc_raw": wallet,
                 "setup_cents": setup,
-                "next_trip": next_trip_options(self.plans, setup, wallet) if setup and not review else None,
+                "next_trip": self.next_trip_check(setup, wallet, shares) if setup and not review else None,
                 "deposit": self.deposit_receipt,
                 "last_return": self.latest_return(),
                 "manual_payment": self.manual_payment,
@@ -154,8 +172,10 @@ class LoadSettlement:
 
     def latest_return(self):
         if self.returns:
-            receipt = next(reversed(self.returns.values()))
-            return {k: receipt[k] for k in ("signature", "quote", "wallet_after_raw")}
+            key = next(reversed(self.returns))
+            receipt = self.returns[key]
+            return {"id": key, "signature": receipt["signature"], "quote": receipt["quote"],
+                    "wallet_after_raw": receipt["wallet_after_raw"]}
 
     def return_quote(self, data):
         profile = data.get("profile")
@@ -172,6 +192,8 @@ class LoadSettlement:
         quote = reserve_return.return_quote(self.fork, target, {
             "profile": profile, "load": LOAD, "version": self.record_version,
             "payment_signature": settled["signature"] if settled else None})
+        if "extra_wallet_cents" in data:
+            quote = reserve_return.sized_return(self.fork, quote, data["extra_wallet_cents"])
         return {"id": bill.commitment(quote).hex(), **quote}
 
     def reserve_target(self, profile):

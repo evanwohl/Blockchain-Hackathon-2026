@@ -103,3 +103,79 @@ def test_sample_verification_uses_only_bundled_signed_loads():
     for load in ["unknown", next(k for k, row in rows.items() if not row["fork_receipt"])]:
         with pytest.raises(ValueError, match="no signed"):
             verified_sample(load)
+
+
+def test_next_trip_releases_only_the_shortfall_and_preserves_each_fuel_budget():
+    app = LoadSettlement()
+    version = app.record_version
+    app.act("deposit", {"profile": "credit line", "max_cents": 59901, "version": version})
+    check = app.state()["next_trip"]
+    flex = next(row for row in check["options"] if row["profile"] == "later reserve refill")
+    assert (flex["capacity_cents"], flex["returnable_cents"], check["return_yield_bps"]) == (99, 2900, 25)
+    body = {"profile": flex["profile"], "version": version, "extra_wallet_cents": 2000 - flex["capacity_cents"]}
+    proposal = app.act("return-quote", body)
+    fewer = reserve_return.withdraw(app.fork, proposal["return_shares_raw"] - 1)
+    assert reserve_return.simulated_cash(app.fork, [fewer]) < 20_000_000
+    assert app.state()["wallet_usdc_raw"] == 990000
+    with pytest.raises(ValueError, match="cannot cover"):
+        app.act("return-quote", {**body, "extra_wallet_cents": 2901})
+    with pytest.raises(ValueError, match="Review"):
+        app.act("return-reserve", {**body, "extra_wallet_cents": 1900, "id": proposal["id"]})
+    receipt = app.act("return-reserve", {**body, "id": proposal["id"]})
+    assert app.act("return-reserve", {**body, "id": proposal["id"]}) == receipt
+    proof = replay(receipt)
+    assert proof["returned_usdc_raw"] == 19_010_000 and proof["wallet_usdc_raw"] == 20_000_000
+    assert proof["protected_value_usdc_raw"] >= 570_000_000
+    state = app.state()
+    assert state["last_return"]["id"] == proposal["id"] and state["next_trip"]["options"][0]["capacity_cents"] == 2000
+    review = app.act("review", {"profile": flex["profile"], "scenario": "wti-93"})
+    assert replay(app.act("approve", {"approval": review["id"]}))["vendor_received_usdc_raw"] == 570_000_000
+
+
+def test_requested_return_counts_existing_subcent_cash_and_invalid_quotes_stay_read_only(monkeypatch):
+    app = LoadSettlement()
+    app.act("deposit", {})
+    initial = quote(app, "road cash")
+    app.act("return-reserve", initial)
+    body = {"profile": "invoice backup", "version": app.record_version, "extra_wallet_cents": 1}
+    before = app.state()["wallet_usdc_raw"]
+    proposal = app.act("return-quote", body)
+    assert 0 < proposal["return_usdc_raw"] < 10000
+    assert (before + proposal["return_usdc_raw"]) // 10000 == before // 10000 + 1
+    for bad in [True, "3", -1, 0]:
+        with pytest.raises(ValueError, match="positive"):
+            app.act("return-quote", {**body, "extra_wallet_cents": bad})
+    def unavailable(*args):
+        raise reserve_return.VaultExecutionError("Unavailable withdrawal quote")
+    monkeypatch.setattr(reserve_return, "return_quote", unavailable)
+    app.quote_balances = None
+    state = app.state()
+    assert state["wallet_usdc_raw"] == before
+    assert all(row["returnable_cents"] == 0 for row in state["next_trip"]["options"])
+
+
+def test_remaining_shares_below_the_withdrawal_minimum_can_still_be_topped_up():
+    from solders.compute_budget import set_compute_unit_limit
+
+    app = LoadSettlement()
+    app.act("deposit", {})
+    fork = app.fork
+    shares = fork.balance(fork.shares)
+    fork.send(fork.tx([set_compute_unit_limit(1400000), reserve_return.withdraw(fork, shares - 100)]))
+    assert fork.redemption_value(100) == 0
+    state = app.state()
+    assert state["reserve_shares_raw"] == 100
+    assert state["setup_cents"]["quick pay"] == 57001
+    assert all(row["returnable_cents"] == 0 for row in state["next_trip"]["options"])
+
+
+@pytest.mark.parametrize(("change", "error"), [({"extra_wallet_cents": 1}, "Return size"), ({"split_cost_raw": 100_000}, "Split cost")])
+def test_receipt_replay_reprices_target_even_when_incorrect_terms_were_signed(change, error):
+    app = LoadSettlement()
+    app.act("deposit", {})
+    request = {"profile": "invoice backup", "version": app.record_version, "extra_wallet_cents": 2000}
+    proposal = app.act("return-quote", request)
+    proposal.pop("id")
+    receipt = reserve_return.execute(app.fork, {**proposal, **change})
+    with pytest.raises(ValueError, match=error):
+        replay(receipt)

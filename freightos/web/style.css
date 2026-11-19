@@ -646,3 +646,8 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 #expense-result span { margin-top: .25rem; font-size: .9rem; line-height: 1.45; }
 #expense-result.short { background: #f3e7dc; border-color: #a56338; }
 #next-trip details { margin-top: .6rem; }
+
+#trip-return-choice { display: flex; gap: .55rem; align-items: center; min-height: 44px; font-size: .91rem; }
+#trip-return-choice input { accent-color: var(--accent); width: 1rem; height: 1rem; }
+#expense-plans small { display: block; margin-top: .2rem; color: var(--muted); line-height: 1.25; }
+#expense-comparison { display: block; border-top: 1px solid #bac3a6; margin-top: .55rem; padding-top: .45rem; font-size: .88rem; font-weight: 600; }

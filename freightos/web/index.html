@@ -130,14 +130,15 @@
         <label for="trip-expense" id="trip-expense-label"></label>
         <div class="expense-input"><span aria-hidden="true">$</span><input id="trip-expense" type="text" inputmode="decimal" autocomplete="off" maxlength="16" placeholder="0.00" aria-describedby="expense-help"></div>
         <p id="expense-help"></p>
-        <div id="expense-result" role="status" aria-atomic="true"><strong></strong><span></span></div>
+        <label id="trip-return-choice" hidden><input type="checkbox" id="include-return" checked> Include unused fuel reserve</label>
+        <div id="expense-result" role="status" aria-atomic="true"><strong></strong><span></span><small id="expense-comparison" hidden></small></div>
         <button type="button" class="secondary" id="apply-expense" hidden>Use this funding plan</button>
       </div><div class="expense-limits">
         <details><summary>Compare available cash</summary>
           <table class="cost-lines"><caption>Late-payment plans across the tested fuel budgets</caption>
-            <thead><tr><th scope="col">Funding plan</th><th scope="col">Cash for next trip</th><th scope="col">Highest cost</th></tr></thead><tbody id="expense-plans"></tbody>
+            <thead><tr><th scope="col">Funding plan</th><th scope="col">Cash for next trip</th><th scope="col">Highest est. cost</th></tr></thead><tbody id="expense-plans"></tbody>
           </table>
-          <p>We choose the lowest maximum cost that covers your expense. Cash includes invoice proceeds and wallet funds left after setup and scheduled payments. Early-pay dates must hold. Additional vault withdrawals and income from the next trip are excluded.</p>
+          <p>We compare costs across all tested fuel budgets. Cash includes invoice proceeds and wallet funds after planned bills and repayments. Early-pay dates must hold. The next trip’s income is excluded.</p><p id="expense-yield-note" hidden></p>
         </details>
       </div></div>
   </div></dialog>

@@ -29,6 +29,11 @@ class VaultExecutionError(RuntimeError):
     pass
 
 
+def below_withdrawal_minimum(result, index):
+    error = result.err()
+    return getattr(error, "index", None) == index and getattr(error.err, "code", None) in (7004, 7049)
+
+
 class ReserveFork:
     def __init__(self, payer=None, vendor_owner=None):
         manifest = json.loads((FIXTURE / "manifest.json").read_bytes())
@@ -138,6 +143,8 @@ class ReserveFork:
         redeem = vault_instruction(self.route, self.owner, self.cash, self.shares, shares)
         result = self.vm.simulate_transaction(self.tx([*instructions, redeem]))
         if isinstance(result, FailedTransactionMetadata):
+            if below_withdrawal_minimum(result, 2):
+                return 0
             raise VaultExecutionError("Could not confirm spendable reserve funds")
         cash = int.from_bytes(dict(result.post_accounts())[self.cash].data[64:72], "little")
         return cash - self.balance(self.cash) + amount
@@ -163,6 +170,8 @@ class ReserveFork:
             self.tx([set_compute_unit_limit(1_000_000), ix])
         )
         if isinstance(check, FailedTransactionMetadata):
+            if below_withdrawal_minimum(check, 1):
+                return 0
             raise VaultExecutionError(
                 "The vault could not redeem these shares on the captured state"
             )
