@@ -1,4 +1,4 @@
-import { downloadReceipt, el, facts, money, request } from "./common.js";
+import { downloadReceipt, el, facts, money, request, verifySample } from "./common.js";
 
 let selection;
 let row;
@@ -19,6 +19,8 @@ async function showCase() {
   const signal = selection.signal;
   row = null;
   el("case-facts").replaceChildren();
+  el("sample-result").textContent = "";
+  el("verify-sample").hidden = el("verify-sample").disabled = true;
   el("receipt").hidden = el("choices").hidden = el("raw").hidden = true;
   el("terms").textContent = el("status").textContent = "";
   el("retry").hidden = true;
@@ -45,7 +47,8 @@ async function showCase() {
     sources.unshift(["Opening cash", money(row.case.opening_cash_cents)]);
     facts(el("sources"), sources);
     el("deadline").textContent = "Bill due on day " + row.case.bills[0].day + ". Amounts shown are available funds and may exceed the bill.";
-    el("receipt").hidden = !row.fork_receipt;
+    el("verify-sample").disabled = false;
+    el("verify-sample").hidden = el("receipt").hidden = !row.fork_receipt;
     el("choices").hidden = el("raw").hidden = false;
     showDetails();
   } catch (error) {
@@ -156,6 +159,7 @@ function showError(error) {
   el("retry").hidden = false;
 }
 el("retry").onclick = () => (el("case").disabled ? load() : showCase()).catch(showError);
+el("verify-sample").onclick = () => verifySample(row.load, el("verify-sample"), el("sample-result"), selection.signal);
 el("receipt").onclick = () => downloadReceipt(row.load, row.fork_receipt);
 el("case").onchange = showCase;
 el("clear-filters").onclick = () => {
@@ -165,13 +169,15 @@ el("clear-filters").onclick = () => {
   el("case-search").focus();
 };
 el("case-search").oninput = el("case-filter").onchange = () => filterLoads();
-function openLinkedCase() {
+async function openLinkedCase() {
   const [first, second] = location.hash.slice(1).split("/");
-  el("baseline").value = first === "same-access" ? "composition" : "conventional";
+  el("baseline").value = !first || first === "same-access" ? "composition" : "conventional";
   displayBaseline();
   el("case-search").value = "";
   el("case-filter").value = "all";
-  return filterLoads(first === "same-access" ? second : first);
+  const linked = first === "same-access" ? second : first;
+  await filterLoads(linked);
+  if (linked && row?.load === linked) el("load-title").focus();
 }
 
 el("baseline").onchange = () => {

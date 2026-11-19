@@ -113,6 +113,7 @@ class ReserveFork:
 
     def deposit(self, amount=600_000_000):
         with self.lock:
+            self.vm.expire_blockhash()
             ix = vault_instruction(
                 self.route, self.owner, self.cash, self.shares, amount, deposit=True
             )

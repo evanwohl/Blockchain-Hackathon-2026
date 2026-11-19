@@ -14,6 +14,10 @@ from freightos.reserve import TOKEN, load_seed
 
 
 def replay(receipt):
+    if receipt.get("kind") == "fuel-reserve-return-v1":
+        from freightos.reserve_return import replay_return
+
+        return replay_return(receipt)
     payer = Pubkey.from_string(receipt["payer"])
     vendor = Pubkey.from_string(receipt["vendor_owner"])
     fork = ReserveFork(payer, vendor)
@@ -44,7 +48,17 @@ def replay(receipt):
         and record.data[0] == 2
     ):
         raise ValueError("Expected an authorized bill to become settled")
-    digest = bill.commitment(receipt["decision"])
+    decision = receipt["decision"]
+    digest = bill.commitment(decision)
+    if "selected" in decision:
+        # Historical calendars signed integer day keys. JSON exports turn those keys into strings.
+        selected = decision["selected"]
+        days = selected["balances_cents"]
+        if any(str(int(day)) != str(day) for day in days):
+            raise ValueError("Invalid calendar day in receipt")
+        decision = {**decision, "selected": {**selected, "balances_cents": {int(d): v for d, v in days.items()}}}
+        if digest != record.data[113:]:
+            digest = bill.commitment(decision)
     amount = fork.balance(fork.vendor) - before_vendor
     burned = before_shares - fork.balance(fork.shares)
     authorized_amount = int.from_bytes(record.data[97:105], "little")
@@ -79,7 +93,6 @@ def replay(receipt):
         receipt.get(k) != v for k, v in expected.items()
     ):
         raise ValueError("Receipt differs from verified execution")
-    decision = receipt["decision"]
     if "profile" in decision:
         from freightos.funding import DATA, demo_plans, funding_plan
 
