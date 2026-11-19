@@ -169,11 +169,14 @@ def reserve_preview(run, proof, portion, rpc):
                             scale, portion, target, rpc)
 
 
-def simulate_instructions(plan, instructions, slot, rpc):
+def simulate_instructions(plan, instructions, slot, rpc, *, trace=False):
     message = Message.new_with_blockhash([set_compute_unit_limit(400000), *instructions], plan.payer, Hash.default())
     wire = base64.b64encode(bytes(Transaction.new_unsigned(message))).decode()
-    response = rpc("simulateTransaction", [wire, {"commitment": "finalized", "minContextSlot": slot, "encoding": "base64",
-                                                  "replaceRecentBlockhash": True, "sigVerify": False}])
+    options = {"commitment": "finalized", "minContextSlot": slot, "encoding": "base64",
+               "replaceRecentBlockhash": True, "sigVerify": False}
+    if trace:
+        options["innerInstructions"] = True
+    response = rpc("simulateTransaction", [wire, options])
     if response["value"]["err"] is not None or response["context"]["slot"] < slot:
         raise ValueError("Public reserve simulation unavailable")
     return response["context"]["slot"], message.account_keys, response["value"]
@@ -200,31 +203,37 @@ def redemption_quote(plan, since_slot, remaining_shares, scale, portion, target,
     if not cap:
         return result
 
-    def simulate(units):
-        nonlocal slot
-        withdrawal = vault_instruction(plan.route, plan.payer, plan.cash, plan.shares, units, venue=VENUE)
-        slot, keys, value = simulate_instructions(plan, [withdrawal], slot, rpc)
-        before, after = token_balances(value, keys, plan.shares, SHARES, plan.payer)
-        cash_before, cash_after = token_balances(value, keys, plan.cash, MINT, plan.payer)
-        if before != shares or before - after != units or cash_after <= cash_before:
-            raise ValueError("Share balance or withdrawal proceeds changed")
-        return {**result, "slot": slot, "shares_used_raw": units, "return_raw": cash_after - cash_before,
-                "network_fee_lamports": value["fee"]}
+    full = withdrawal_value(plan, result, cap, rpc)
+    return sized_redemption(plan, full, target, rpc) if target is not None else full
 
-    full = simulate(cap)
-    if target is None or full["return_raw"] <= target:
+
+def withdrawal_value(plan, budget, units, rpc):
+    withdrawal = vault_instruction(plan.route, plan.payer, plan.cash, plan.shares, units, venue=VENUE)
+    slot, keys, value = simulate_instructions(plan, [withdrawal], budget["slot"], rpc)
+    before, after = token_balances(value, keys, plan.shares, SHARES, plan.payer)
+    cash_before, cash_after = token_balances(value, keys, plan.cash, MINT, plan.payer)
+    if before != budget["wallet_shares_raw"] or before - after != units or cash_after <= cash_before:
+        raise ValueError("Share balance or withdrawal proceeds changed")
+    return {**budget, "slot": slot, "shares_used_raw": units, "return_raw": cash_after - cash_before,
+            "network_fee_lamports": value["fee"]}
+
+
+def sized_redemption(plan, full, target, rpc):
+    if full["return_raw"] <= target:
         return full
+    cap, scale = full["eligible_shares_raw"], full["raw_units_per_cent"]
+    quote = full
     low, low_value = 0, 0
     high, high_value = cap, full["return_raw"]
     for _ in range(4):
         if high - low == 1:
-            quote = simulate(high)
+            quote = withdrawal_value(plan, quote, high, rpc)
             if target <= quote["return_raw"] < target + scale:
                 return quote
             break
         amount = low + ((target - low_value) * (high - low) + high_value - low_value - 1) // (high_value - low_value)
         amount = min(high - 1, max(low + 1, amount))
-        quote = simulate(amount)
+        quote = withdrawal_value(plan, quote, amount, rpc)
         proceeds = quote["return_raw"]
         if target <= proceeds < target + scale:
             return quote

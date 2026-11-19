@@ -74,3 +74,58 @@ def test_payment_requires_matching_wallet_vendor_custody_and_burn(proofs, accoun
 def test_invalid_amounts_do_not_start_a_simulation(proofs, fuel, road):
     with pytest.raises(ValueError):
         next_stop.preview(*proofs, fuel, road, captured([]))
+
+
+def two_stop_calls():
+    return json.loads(gzip.decompress(next_stop.TWO_STOPS.read_bytes()))["calls"]
+
+
+def test_gallon_budget_limits_the_first_fill_and_leaves_redeemable_shares():
+    result = next_stop.saved(True)
+    fuel = result["holdback"]
+    assert (fuel["trip_cents"], fuel["trip_gallons"], fuel["cost_cents"]) == (70634, 210, 1010)
+    assert fuel["event"] == "WTI2611192200"
+    assert result["budget_limit_cents"] == 1492 and result["shortfall_raw"] == 800
+    assert result["wallet_increase_raw"] == 50000 and result["vendor_raw"] == 149200
+    assert result["retained_raw"] == 101000 == result["retained_shares_raw"]
+    assert result["wallet_increase_raw"] + result["vendor_raw"] + result["retained_raw"] == result["available_raw"]
+    assert result["vendor_raw"] + 100 + result["wallet_increase_raw"] + result["retained_raw"] > result["available_raw"]
+
+
+@pytest.mark.parametrize("change", ["later transfer", "earlier transfer", "custody", "wallet", "stale slot", "starting cash"])
+def test_later_fuel_must_be_spendable_after_the_first_withdrawal(proofs, change):
+    calls = two_stop_calls()
+    record = calls[-1]
+    value = record["response"]["value"]
+    plan = next_stop.payment()
+    if change.endswith("transfer"):
+        position = 1 if change == "earlier transfer" else 3
+        group = next(row for row in value["innerInstructions"] if row["index"] == position)
+        transfer = next(ix for ix in group["instructions"] if ix.get("parsed", {}).get("type") == "transferChecked")
+        transfer["parsed"]["info"]["tokenAmount"]["amount"] = "1"
+    elif change == "stale slot":
+        record["response"]["context"]["slot"] = 1
+    else:
+        message = devnet.Transaction.from_bytes(devnet.base64.b64decode(record["params"][0])).message
+        account = plan.custody if change == "custody" else plan.cash
+        side = "preTokenBalances" if change == "starting cash" else "postTokenBalances"
+        balance = next(row for row in value[side] if row["accountIndex"] == message.account_keys.index(account))
+        balance["uiTokenAmount"]["amount"] = "1"
+    held = next_stop.fuel_holdback(3, next_stop.fuel_update.saved())
+    with pytest.raises(ValueError):
+        next_stop.preview(*proofs, 1500, 500, captured(calls), holdback=held)
+
+
+def test_no_first_fill_when_cash_and_future_fuel_exceed_the_available_balance(proofs):
+    held = next_stop.fuel_holdback(10, next_stop.fuel_update.saved())
+    calls = two_stop_calls()[:2]
+    result = next_stop.preview(*proofs, 1500, 500, captured(calls), holdback=held)
+    assert result["budget_limit_cents"] == 0 and result["retained_raw"] is None
+    assert result["vendor_raw"] == 0 and result["shortfall_raw"] > 0
+    assert not calls
+
+
+@pytest.mark.parametrize("gallons", [True, -1, 0, 1.25, "3"])
+def test_gallon_input_is_a_positive_whole_count(gallons):
+    with pytest.raises(ValueError):
+        next_stop.fuel_holdback(gallons, next_stop.fuel_update.saved())

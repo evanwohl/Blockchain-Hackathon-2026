@@ -5,10 +5,11 @@ import json
 from datetime import datetime, timezone
 from functools import cache
 
-from freightos import devnet, public_offer
+from freightos import devnet, fuel_update, public_offer
 from hedging.quick_pay import integer
 
 SNAPSHOT = devnet.SAMPLE.with_name("next_stop.json.gz")
+TWO_STOPS = devnet.SAMPLE.with_name("two_stops.json.gz")
 
 
 @cache
@@ -23,7 +24,18 @@ def amounts(fuel_cents, road_cents):
     integer(road_cents, "cash for the road")
 
 
-def preview(first, second, fuel_cents, road_cents, rpc):
+def fuel_holdback(gallons, market):
+    if not integer(gallons, "gallons for later"):
+        raise ValueError("Enter at least one gallon for the next stop")
+    trip_gallons = int(market["gallons"])
+    if trip_gallons <= 0 or market["marked_cents"] <= 0:
+        raise ValueError("A positive trip estimate is required to price future gallons")
+    cents = (market["marked_cents"] * gallons + trip_gallons - 1) // trip_gallons
+    return {"gallons": gallons, "cost_cents": cents, "trip_gallons": trip_gallons, "trip_cents": market["marked_cents"],
+            "oil_close": market["close"], "event": market["close_ticker"], "checked_at": market["checked_at"]}
+
+
+def preview(first, second, fuel_cents, road_cents, rpc, *, holdback=None):
     amounts(fuel_cents, road_cents)
     plan = payment()
     scale = second["decision"]["raw_units_per_cent"]
@@ -45,31 +57,90 @@ def preview(first, second, fuel_cents, road_cents, rpc):
               "wallet_after_settlement_raw": second["wallet_after_settlement_raw"],
               "available_raw": available, "slot": budget["slot"], "vendor_raw": 0, "wallet_increase_raw": 0,
               "shortfall_raw": max(0, fuel + road - available)}
-    if result["shortfall_raw"]:
+    if holdback is None:
+        if result["shortfall_raw"]:
+            return result
+        payment_check, _, _ = check_payment(plan, budget, fuel, road, rpc)
+        return {**result, **payment_check}
+
+    needed = holdback["cost_cents"] * scale
+    upper = min(fuel, max(0, (available - road - needed) // scale) * scale)
+    result.update(holdback=holdback, shortfall_raw=max(0, fuel + road + needed - available),
+                  budget_limit_cents=upper // scale, retained_raw=None)
+    if not upper:
         return result
-    units = budget["eligible_shares_raw"]
+    for _ in range(2):
+        split = check_split(plan, budget, upper, road, rpc)
+        deficit = needed - split["retained_raw"]
+        if deficit <= 0:
+            return {**result, **split, "budget_limit_cents": upper // scale}
+        upper -= ((deficit + scale - 1) // scale) * scale
+        if upper <= 0:
+            break
+        budget = {**budget, "slot": split["slot"]}
+    raise ValueError("The reserve could not confirm both withdrawals at the requested budget")
+
+
+def check_split(plan, budget, upper, road, rpc):
+    sized = devnet.sized_redemption(plan, budget, upper + road, rpc)
+    check, instructions, initial = check_payment(plan, sized, upper, road, rpc)
+    leftover = budget["eligible_shares_raw"] - sized["shares_used_raw"]
+    if not leftover:
+        raise ValueError("No remaining shares for the later fuel stop")
+    remaining = devnet.vault_instruction(plan.route, plan.payer, plan.cash, plan.shares, leftover, venue=devnet.VENUE)
+    slot, keys, value = devnet.simulate_instructions(plan, [*instructions, remaining], check["slot"], rpc, trace=True)
+    final = balances(plan, keys, value)
+    if any(final[key][0] != initial[key][0] for key in initial):
+        raise ValueError("Wallet or vault state changed between previews")
+    retained = withdrawal_proceeds(value, 3, plan)
+    if (withdrawal_proceeds(value, 1, plan) != sized["return_raw"]
+            or retained != final["cash"][1] - initial["cash"][1] or final["shares"][1] != initial["shares"][1] - leftover
+            or final["vendor"][1] != upper or final["custody"][1] != initial["custody"][1] - retained):
+        raise ValueError("The remaining reserve could not cover the later fuel stop")
+    return {**check, "slot": slot, "retained_raw": retained, "retained_shares_raw": leftover}
+
+
+def withdrawal_proceeds(value, index, plan):
+    group, = [row for row in value["innerInstructions"] if row["index"] == index]
+    transfer, = [ix["parsed"]["info"] for ix in group["instructions"]
+                 if ix["programId"] == str(devnet.TOKEN) and ix.get("parsed", {}).get("type") == "transferChecked"
+                 and ix["parsed"]["info"]["destination"] == str(plan.cash)]
+    if (transfer["mint"] != str(devnet.MINT) or transfer["source"] != str(plan.custody)
+            or transfer["authority"] != str(plan.vault_authority) or transfer["tokenAmount"]["decimals"] != 6):
+        raise ValueError("The withdrawal differs from the quoted vault and wallet")
+    return int(transfer["tokenAmount"]["amount"])
+
+
+def balances(plan, keys, value):
+    accounts = {"shares": (plan.shares, devnet.SHARES, plan.payer),
+                "cash": (plan.cash, devnet.MINT, plan.payer),
+                "vendor": (plan.destination, devnet.MINT, plan.payee),
+                "custody": (plan.custody, devnet.MINT, plan.vault_authority)}
+    result = {}
+    for key, identity in accounts.items():
+        before, after = devnet.token_balances(value, keys, *identity)
+        result[key] = before, after - before
+    return result
+
+
+def check_payment(plan, budget, fuel, road, rpc):
+    units = budget["shares_used_raw"]
     withdraw = devnet.vault_instruction(plan.route, plan.payer, plan.cash, plan.shares, units, venue=devnet.VENUE)
     pay = public_offer.transfer(plan.cash, plan.payer, plan.destination, fuel)
-    slot, keys, value = devnet.simulate_instructions(plan, [withdraw, pay], budget["slot"], rpc)
-
-    def flow(account, mint, owner):
-        before, after = devnet.token_balances(value, keys, account, mint, owner)
-        return before, after - before
-
-    owned, shares = flow(plan.shares, devnet.SHARES, plan.payer)
-    _, cash = flow(plan.cash, devnet.MINT, plan.payer)
-    _, vendor = flow(plan.destination, devnet.MINT, plan.payee)
-    _, custody = flow(plan.custody, devnet.MINT, plan.vault_authority)
-    if (owned != budget["wallet_shares_raw"] or shares != -units or vendor != fuel or cash < road
-            or cash + vendor != -custody or cash + vendor != available):
+    instructions = [withdraw, pay]
+    slot, keys, value = devnet.simulate_instructions(plan, instructions, budget["slot"], rpc)
+    state = balances(plan, keys, value)
+    cash = state["cash"][1]
+    if (state["shares"] != (budget["wallet_shares_raw"], -units) or state["vendor"][1] != fuel
+            or cash < road or cash + fuel != -state["custody"][1] or cash + fuel != budget["return_raw"]):
         raise ValueError("The simulated fuel payment and retained wallet cash do not reconcile")
-    return {**result, "slot": slot, "vendor_raw": vendor, "wallet_increase_raw": cash,
-            "network_fee_lamports": value["fee"]}
+    return {"slot": slot, "vendor_raw": fuel, "wallet_increase_raw": cash,
+            "network_fee_lamports": value["fee"]}, instructions, state
 
 
 @cache
-def saved():
-    sample = json.loads(gzip.decompress(SNAPSHOT.read_bytes()))
+def saved(two_stops=False):
+    sample = json.loads(gzip.decompress((TWO_STOPS if two_stops else SNAPSHOT).read_bytes()))
     calls = iter(sample["calls"])
 
     def replay(method, params):
@@ -79,7 +150,9 @@ def saved():
         return record["response"]
 
     result = preview(devnet.verify(json.loads(devnet.SAMPLE.read_bytes())),
-                     public_offer.verify(json.loads(public_offer.SAMPLE.read_bytes())), 2000, 1000, replay)
+                     public_offer.verify(json.loads(public_offer.SAMPLE.read_bytes())),
+                     1500 if two_stops else 2000, 500 if two_stops else 1000, replay,
+                     holdback=fuel_holdback(3, fuel_update.saved()) if two_stops else None)
     if next(calls, None) is not None:
         raise ValueError("Unexpected extra calls in the saved simulation")
     return {**result, "source": "saved", "checked_at": sample["checked_at"]}

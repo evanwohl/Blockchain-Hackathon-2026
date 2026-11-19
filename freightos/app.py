@@ -548,14 +548,15 @@ class Handler(BaseHTTPRequestHandler):
                 (ROOT / "artifacts/gemini_ladder/active.json").read_bytes(),
             )
             return
-        if self.path == "/api/next-stop":
+        if self.path in ("/api/next-stop", "/api/two-stops"):
             try:
-                self.respond(200, next_stop.saved())
+                self.respond(200, next_stop.saved(self.path == "/api/two-stops"))
             except (OSError, ValueError, KeyError, TypeError):
                 self.respond(503, {"error": "The saved next-stop example is unavailable."})
             return
-        if self.path == "/evidence/next-stop":
-            self.reply(200, "application/json", gzip.decompress(next_stop.SNAPSHOT.read_bytes()), static=True)
+        if self.path in ("/evidence/next-stop", "/evidence/two-stops"):
+            snapshot = next_stop.TWO_STOPS if self.path == "/evidence/two-stops" else next_stop.SNAPSHOT
+            self.reply(200, "application/json", gzip.decompress(snapshot.read_bytes()), static=True)
             return
         if self.path == "/evidence/offer-fuel-update":
             self.reply(200, "application/json", gzip.decompress(fuel_update.SNAPSHOT.read_bytes()), static=True)
@@ -651,15 +652,19 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
-            if self.path == "/api/next-stop":
+            if self.path in ("/api/next-stop", "/api/two-stops"):
                 fuel, road = data.get("fuel_cents"), data.get("road_cents")
                 next_stop.amounts(fuel, road)
+                gallons = data.get("gallons") if self.path == "/api/two-stops" else None
+                if self.path == "/api/two-stops" and not integer(gallons, "gallons for later"):
+                    raise ValueError("Enter at least one gallon for later")
                 try:
+                    holdback = next_stop.fuel_holdback(gallons, self.server.offer_fuel.read()) if gallons else None
                     result = next_stop.preview(self.server.public_payment.read(), self.server.public_offer.read(),
-                                               fuel, road, devnet.request)
+                                               fuel, road, devnet.request, holdback=holdback)
                     self.respond(200, next_stop.observed(result))
                 except (OSError, ValueError, KeyError, TypeError, RuntimeError):
-                    self.respond(503, {"error": "Public Solana could not confirm the preview. Try again."})
+                    self.respond(503, {"error": "The market and reserve checks could not confirm this preview. Try again."})
                 return
             if self.path not in (
                 "/api/quote-surcharge",
