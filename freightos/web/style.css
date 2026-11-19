@@ -752,3 +752,8 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 #share-history > div { border-color: #626c57; }
 #stop-check { background: #303b27; color: #fff; }
 #stop-check:hover:enabled { background: #46553b; }
+
+.stop-choice { display: flex; gap: .55rem; align-items: center; min-height: 44px; margin-top: .4rem; }
+.stop-choice input { width: 1.1rem; height: 1.1rem; accent-color: #40592b; }
+#stop-later .expense-input { max-width: 9rem; margin-top: .35rem; }
+#stop-adjustment { margin: .6rem 0; }
