@@ -656,10 +656,14 @@ class Handler(BaseHTTPRequestHandler):
                 fuel, road = data.get("fuel_cents"), data.get("road_cents")
                 next_stop.amounts(fuel, road)
                 gallons = data.get("gallons") if self.path == "/api/two-stops" else None
-                if self.path == "/api/two-stops" and not integer(gallons, "gallons for later"):
-                    raise ValueError("Enter at least one gallon for later")
+                pump_mills, oil_rise = data.get("pump_mills"), data.get("oil_rise", False)
+                if self.path == "/api/two-stops":
+                    next_stop.check_fuel_inputs(gallons, pump_mills, oil_rise)
                 try:
-                    holdback = next_stop.fuel_holdback(gallons, self.server.offer_fuel.read()) if gallons else None
+                    holdback = None
+                    if gallons:
+                        market = self.server.offer_fuel.read() if pump_mills is None or oil_rise else fuel_update.saved()
+                        holdback = next_stop.fuel_holdback(gallons, market, pump_mills=pump_mills, oil_rise=oil_rise)
                     result = next_stop.preview(self.server.public_payment.read(), self.server.public_offer.read(),
                                                fuel, road, devnet.request, holdback=holdback)
                     self.respond(200, next_stop.observed(result))
