@@ -233,6 +233,14 @@ class ReserveFork:
             self.approvals[review["id"]] = (monotonic() + 60, tx, staging, review)
             return review
 
+    def pending_review(self):
+        with self.lock:
+            for expiry, _, _, review in self.approvals.values():
+                remaining = expiry - monotonic()
+                if remaining > 0:
+                    return {**review, "expires_in_seconds": remaining}
+            return None
+
     def cancel(self, approval_id):
         with self.lock:
             if approval_id not in self.approvals:

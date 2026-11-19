@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#1a1d19"><title>FreightOS · Fuel and freight payments</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/media/barlow-condensed-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="modulepreload" href="/common.js"><link rel="preload" href="/api/state" as="fetch" crossorigin>
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/overview.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/" aria-current="page">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
+<main class="overview">
+  <div class="overview-hero">
+    <section class="overview-copy" aria-labelledby="intro-title">
+      <h1 id="intro-title">Fuel is due.<br><em>Freight pays later.</em></h1>
+      <p>Getting a whole invoice paid early can be expensive. FreightOS checks whether you can cover fuel for less using money you’ve set aside, early invoice pay, bank credit, or cash.</p>
+      <div class="cash-window" id="cash-window" aria-label="Sample payment dates" hidden>
+        <span>Fuel due<b id="window-due"></b></span><span id="window-gap"></span><span>Freight pays<b id="window-paid"></b></span>
+      </div>
+      <a class="intro-link" href="#quote-profile">Compare funding options</a>
+      <a class="intro-secondary" href="#mechanism">How the payment works</a>
+    </section>
+    <section class="quote-slip" aria-labelledby="quote-title">
+      <header><img src="/media/freightos-mark.svg" alt="" width="27" height="27"><span>Sample load <b id="quote-load">FOS-2048</b></span></header>
+      <h2 id="quote-title">Try a funding plan</h2>
+      <fieldset disabled id="quote-inputs"><legend class="visually-hidden">Compare funding options</legend>
+        <label>What can you use?<select id="quote-profile"><option value="quick pay">Early pay on an invoice</option><option value="credit line">Bank credit and early pay</option><option value="cash on hand">Cash for the bill</option></select></label>
+        <label>Fuel budget<select id="quote-scenario"><option value="oil stress">Higher fuel estimate</option><option value="fuel budget">Original estimate</option></select></label>
+      </fieldset>
+      <div id="quote-result" hidden>
+        <div class="quote-total"><span>Fuel bill due</span><strong id="quote-bill"></strong></div>
+        <div class="quote-track" aria-hidden="true"></div>
+        <dl class="quote-lines"><div><dt>From the fuel reserve</dt><dd id="quote-reserve"></dd></div><div><dt id="outside-source">Paid separately</dt><dd id="quote-outside"></dd></div></dl>
+        <div class="quote-fees" aria-live="polite" aria-atomic="true"><b id="quote-fees"></b><span id="quote-compare"></span></div>
+        <a id="quote-open" class="open-quote" href="/bill">Open this plan</a>
+      </div>
+      <p id="quote-status" role="status">Loading plan prices…</p><button class="secondary" id="quote-retry" hidden>Try again</button>
+    </section>
+  </div>
+  <section class="mechanism" id="mechanism" aria-labelledby="mechanism-title">
+    <h2 id="mechanism-title">From fuel bill to receipt</h2>
+    <div class="mechanism-steps">
+      <section><h3>Find the gap</h3><p>Compare the fuel due date with the date your freight invoice pays. The higher fuel estimate includes a cushion based on recorded Gemini oil markets.</p></section>
+      <section><h3>Price the options</h3><p>FreightOS checks which funds arrive in time. It compares the cost of using your reserve, taking early invoice pay, and drawing on available credit or cash.</p></section>
+      <section><h3>Approve the payment</h3><p>Check the amount and the fuel company, then approve. You get a signed receipt for the reserve transfer. Pay any remaining amount separately and record it on the bill.</p></section>
+    </div>
+    <details class="mechanism-proof"><summary>What happens onchain?</summary><p>The demo deposits digital dollars into a Kamino reserve on a local copy of Solana. Its payment program checks the approved amount and recipient. The signed reserve receipt can be replayed for verification. Early invoice pay, bank credit, and outside payments are modeled or recorded separately.</p></details>
+    <a class="sample-link" href="/trial">Explore the simulated loads</a>
+  </section>
+</main>
+<footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Test payments</span><span>All amounts in US dollars. Demo funds only.</span></div></footer>
+</body></html>

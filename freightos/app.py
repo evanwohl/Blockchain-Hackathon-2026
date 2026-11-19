@@ -1,8 +1,12 @@
 import argparse
+import gzip
+import hashlib
 import json
+from functools import cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import RLock
+from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
@@ -12,6 +16,17 @@ LOAD = "FOS-2048"
 ASSETS = Path(__file__).with_name("web")
 DATA = ROOT / "artifacts/quick_pay"
 PROFILES = ("quick pay", "credit line", "cash on hand")
+
+
+@cache
+def trial_data():
+    report = json.loads((DATA / "carrier_trial.json").read_bytes())
+    cases = {row["load"]: row for row in report.pop("rows")}
+    report["loads"] = [
+        {"load": load, "used_reserve": bool(row["fork_receipt"])}
+        for load, row in cases.items()
+    ]
+    return report, cases
 
 
 def funding_plan(sample, evidence, scenario, profile):
@@ -70,6 +85,8 @@ class LoadSettlement:
         self.lock = RLock()
         self.fork = ReserveFork()
         self.deposit_receipt = None
+        self.manual_payment = None
+        self.record_version = uuid4().hex
         self.evidence = json.loads((DATA / "case_report.json").read_bytes())
         self.sample = json.loads((DATA / "sample_calendar.json").read_bytes())
         self.plans = {
@@ -88,7 +105,10 @@ class LoadSettlement:
                 "reserve_shares_raw": self.fork.balance(self.fork.shares),
                 "wallet_usdc_raw": self.fork.balance(self.fork.cash),
                 "deposit": self.deposit_receipt,
+                "manual_payment": self.manual_payment,
+                "record_version": self.record_version,
                 "receipt": self.fork.receipts.get(LOAD),
+                "review": self.fork.pending_review(),
                 "plans": self.plans["quick pay"],
                 "funding_plans": self.plans,
             }
@@ -96,11 +116,43 @@ class LoadSettlement:
     def act(self, action, data):
         with self.lock:
             if action == "reset":
-                if LOAD not in self.fork.receipts:
+                if data.get("version", self.record_version) != self.record_version:
+                    raise ValueError("This demo session has changed")
+                if not self.manual_payment and LOAD not in self.fork.receipts:
                     raise ValueError("Finish the demo before starting a new session")
                 self.fork = ReserveFork()
                 self.deposit_receipt = None
+                self.manual_payment = None
+                self.record_version = uuid4().hex
                 return {"reset": True}
+            if action in ("record-payment", "undo-record"):
+                if data.get("version") != self.record_version:
+                    raise ValueError("This bill has changed. Review its current balance.")
+                if action == "undo-record":
+                    self.manual_payment = None
+                    self.record_version = uuid4().hex
+                    return {"removed": True}
+                profile, scenario = data.get("profile"), data.get("scenario")
+                plan = self.plans.get(profile, {}).get(scenario)
+                if not plan or self.fork.pending_review():
+                    raise ValueError("Review the current bill before recording a payment")
+                receipt = self.fork.receipts.get(LOAD)
+                if receipt and receipt["decision"] != plan:
+                    raise ValueError("Use the plan on the reserve receipt")
+                if plan["payment_cents"] and not receipt:
+                    raise ValueError("Complete the reserve payment first")
+                entry = {"profile": profile, "scenario": scenario, "cents": plan["other_funds_cents"]}
+                reference = data.get("reference", "")
+                if not isinstance(reference, str) or len(reference) > 80 or (reference and not reference.isprintable()):
+                    raise ValueError("Use up to 80 printable characters for the payment reference")
+                if reference.strip():
+                    entry["reference"] = reference.strip()
+                if self.manual_payment and self.manual_payment != entry:
+                    raise ValueError("An outside payment is already recorded")
+                self.manual_payment = entry
+                return entry
+            if self.manual_payment and action in ("deposit", "review"):
+                raise ValueError("This bill is already covered")
             if action == "cancel":
                 return self.fork.cancel(data.get("approval"))
             if action == "check-vendor":
@@ -132,19 +184,50 @@ class LoadSettlement:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def reply(self, status, content_type, body):
+    def reply(self, status, content_type, body, *, static=False):
+        cache_control = "no-cache" if static else "no-store"
+        etag = None
+        if static:
+            etag = f'W/"{hashlib.sha256(body).hexdigest()}"'
+            validators = self.headers.get("If-None-Match", "").split(",")
+            if any(value.strip() in (etag, etag[2:], "*") for value in validators):
+                status = 304
+            if content_type == "font/woff2":
+                cache_control = "private, max-age=86400"
+        compressible = len(body) >= 1024 and content_type != "font/woff2"
         self.send_response(status)
+        self.send_header("Cache-Control", cache_control)
+        if etag:
+            self.send_header("ETag", etag)
+        if compressible:
+            self.send_header("Vary", "Accept-Encoding")
+        if status == 304:
+            self.end_headers()
+            return
+        encodings = self.headers.get("Accept-Encoding", "").lower().split(",")
+        if compressible and any(value.strip() == "gzip" for value in encodings):
+            body = gzip.compress(body, compresslevel=4, mtime=0)
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
     def respond(self, status, obj):
-        self.reply(status, "application/json", json.dumps(obj).encode())
+        self.reply(status, "application/json", json.dumps(obj, separators=(",", ":")).encode())
 
     def do_GET(self):
+        if self.path == "/api/trial":
+            self.respond(200, trial_data()[0])
+            return
+        if self.path.startswith("/api/trial/"):
+            row = trial_data()[1].get(self.path.removeprefix("/api/trial/"))
+            if row is None:
+                self.respond(404, {"error": "Unknown load"})
+            else:
+                self.respond(200, row)
+            return
         if self.path == "/evidence/carrier-trial":
             self.reply(
                 200, "application/json", (DATA / "carrier_trial.json").read_bytes()
@@ -161,17 +244,24 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(200, self.server.settlement.state())
             return
         assets = {
-            "/": ("index.html", "text/html; charset=utf-8"),
+            "/": ("overview.html", "text/html; charset=utf-8"),
+            "/overview.js": ("overview.js", "text/javascript"),
+            "/bill": ("index.html", "text/html; charset=utf-8"),
             "/trial": ("trial.html", "text/html; charset=utf-8"),
             "/trial.js": ("trial.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
             "/app.js": ("app.js", "text/javascript"),
+            "/media/freightos-mark.svg": ("media/freightos-mark.svg", "image/svg+xml"),
+            "/media/instrument-serif-latin-400-italic.woff2": ("media/instrument-serif-latin-400-italic.woff2", "font/woff2"),
+            "/media/barlow-condensed-latin-600-normal.woff2": ("media/barlow-condensed-latin-600-normal.woff2", "font/woff2"),
+            "/media/inter-latin-wght-normal.woff2": ("media/inter-latin-wght-normal.woff2", "font/woff2"),
+            "/common.js": ("common.js", "text/javascript"),
         }
         if self.path not in assets:
             self.respond(404, {"error": "Page unavailable"})
             return
         name, mime = assets[self.path]
-        self.reply(200, mime, (ASSETS / name).read_bytes())
+        self.reply(200, mime, (ASSETS / name).read_bytes(), static=True)
 
     def do_POST(self):
         host = f"127.0.0.1:{self.server.server_port}"
@@ -199,6 +289,8 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/check-vendor",
                 "/api/verify",
                 "/api/reset",
+                "/api/record-payment",
+                "/api/undo-record",
             ):
                 self.respond(404, {"error": "Action unavailable"})
                 return
