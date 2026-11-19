@@ -76,7 +76,7 @@
       <p id="edge-reason"></p>
       <dl class="difference" aria-label="Estimated fee comparison">
         <div class="saving"><dt id="difference-label">Estimated savings</dt><dd id="saved"></dd></div>
-        <div class="fee-row"><dt>Fees with this plan</dt><dd id="chosen-cost"></dd></div>
+        <div class="fee-row"><dt>Estimated plan cost</dt><dd id="chosen-cost"></dd></div>
         <div class="fee-row"><dt id="alternative">Other option</dt><dd id="other-cost"></dd></div>
       </dl>
       <table class="cost-lines">
@@ -100,17 +100,11 @@
         <dl class="backup-fees"><div><dt>With reserve</dt><dd id="normal-fee"></dd></div><div><dt>Without reserve</dt><dd id="backup-fee"></dd></div></dl>
         <p id="backup-copy"></p><button class="secondary" id="switch-timing" type="button"></button><p id="backup-lock" hidden></p>
       </details>
-      <details class="invoice-delay" id="invoice-delay"><summary>What if the freight customer pays late?</summary>
-        <dl class="delay-dates"><div><dt>Diesel paid</dt><dd id="delay-bill-date"></dd></div><div><dt>Reserve refill</dt><dd id="delay-refill-date"></dd></div><div><dt>Late freight</dt><dd id="delay-freight-date"></dd></div></dl>
-        <p id="delay-gap"></p>
-        <dl class="backup-fees"><div><dt>Usual invoice terms</dt><dd id="delay-normal-fee"></dd></div><div><dt>Earlier freight payment</dt><dd id="delay-safe-fee"></dd></div></dl>
-        <p id="delay-terms"></p><p id="delay-wallet"></p>
-        <button class="secondary" type="button" id="switch-invoice"></button><p id="invoice-lock" hidden></p>
-      </details>
+      <button class="delay-launch" type="button" id="open-invoice-delay" aria-haspopup="dialog">What if the freight customer pays late? <span aria-hidden="true">↗</span></button>
     </section>
     <section class="fuel-window" aria-labelledby="window-title"><p class="panel-label">Fuel planning</p><h2 id="window-title">If fuel prices change</h2>
-      <p id="policy-copy"></p><details id="policy-detail"><summary>Compare fuel estimates</summary><p id="budget-help"></p><table class="cost-lines"><caption>Reserve payment and fees by fuel estimate</caption>
-      <thead><tr><th scope="col">Fuel budget</th><th scope="col">From reserve</th><th scope="col">Est. fees</th></tr></thead><tbody id="policy-rows"></tbody></table><p id="policy-method"></p></details>
+      <p id="policy-copy"></p><details id="policy-detail"><summary>Compare fuel estimates</summary><p id="budget-help"></p><table class="cost-lines"><caption>Reserve payment and cost by fuel estimate</caption>
+      <thead><tr><th scope="col">Fuel budget</th><th scope="col">From reserve</th><th scope="col">Est. cost</th></tr></thead><tbody id="policy-rows"></tbody></table><p id="policy-method"></p></details>
     </section>
   <details class="market-note">
     <summary><span>How we estimate fuel</span><span id="market-assumption"></span></summary>
@@ -127,6 +121,22 @@
     </details>
     </div>
   </div>
+  <dialog id="invoice-delay" aria-labelledby="delay-heading"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Payment timing · FOS-2048</p><button type="button" class="close" aria-label="Close timing comparison" data-dismiss>×</button></div>
+    <h2 id="delay-heading" tabindex="-1">If freight pays a week late</h2>
+    <dl class="delay-dates"><div><dt>Fuel due</dt><dd id="delay-bill-date"></dd></div><div><dt>Usual refill</dt><dd id="delay-refill-date"></dd></div><div><dt>Late freight</dt><dd id="delay-freight-date"></dd></div></dl>
+    <p id="delay-gap"></p><p id="delay-wallet"></p>
+    <div class="delay-options">
+      <section><h3>Keep the refill date</h3><p class="delay-price"><strong id="delay-safe-fee"></strong> estimated cost</p>
+        <p id="delay-terms"></p><button class="secondary" type="button" id="switch-invoice"></button></section>
+      <section id="refill-choice" hidden><h3>Refill when freight pays</h3><p class="delay-price"><strong id="refill-cost"></strong> estimated cost</p>
+        <p id="refill-tradeoff"></p><button type="button" class="secondary" id="switch-refill"></button>
+        <details><summary>Cost of the extra week</summary><p id="refill-yield"></p><a href="/evidence/reserve-yield" target="_blank" rel="noopener">Open the recorded Kamino rate</a></details>
+      </section>
+    </div>
+    <div class="delay-footer"><p>Usual terms cost <strong id="delay-normal-fee"></strong>.</p><button type="button" class="secondary" id="usual-invoice">Use usual terms</button></div>
+    <p id="invoice-lock" hidden></p>
+  </div></dialog>
   <dialog id="wallet-dialog" aria-labelledby="wallet-head"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Fuel reserve</p><button type="button" class="close" aria-label="Close wallet details" data-dismiss>×</button></div>
     <h2 id="wallet-head" tabindex="-1">Money for the road</h2><p id="wallet-copy"></p>
@@ -158,16 +168,17 @@
     <p id="access-help"></p>
     <label for="scenario">Fuel budget</label><select id="scenario"><option value="oil stress">Allow for higher fuel prices</option><option value="fuel budget">Original fuel estimate</option></select>
     <label class="no-reserve" id="late-freight-field"><input type="checkbox" id="late-freight">Plan for the main customer to pay a week late</label>
+    <label class="no-reserve" id="later-refill-field" hidden><input type="checkbox" id="later-refill">The fuel reserve can wait until the freight is paid</label>
     <label class="no-reserve" id="no-reserve-field"><input type="checkbox" id="no-reserve">Plan without the fuel reserve</label>
     <fieldset class="cash-choice" hidden>
         <legend>What matters more on this trip?</legend>
-        <div class="cash-labels" aria-hidden="true"><span></span><span>Fees</span><span>Cash left</span></div>
-        <label><input type="radio" name="cash-priority" value="credit line" checked><span>Lowest fees</span><b></b><strong></strong></label>
+        <div class="cash-labels" aria-hidden="true"><span></span><span>Cost</span><span>Cash left</span></div>
+        <label><input type="radio" name="cash-priority" value="credit line" checked><span>Lowest cost</span><b></b><strong></strong></label>
         <label><input type="radio" name="cash-priority" value="road cash"><span>Keep road cash</span><b></b><strong></strong></label>
         <p class="cash-note"></p>
       </fieldset>
     </div>
-    <footer class="settings-confirm"><dl><div><dt>Fuel bill</dt><dd id="draft-bill">—</dd></div><div><dt>Est. fees</dt><dd id="draft-cost">—</dd></div></dl>
+    <footer class="settings-confirm"><dl><div><dt>Fuel bill</dt><dd id="draft-bill">—</dd></div><div><dt>Est. cost</dt><dd id="draft-cost">—</dd></div></dl>
       <button class="primary" id="apply">Update plan</button></footer>
   </div></dialog>
   <dialog id="payment" aria-labelledby="title"><div class="sheet">

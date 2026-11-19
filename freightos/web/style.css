@@ -523,12 +523,27 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .deadline p:not(.panel-label) { font-size: .9rem; line-height: 1.5; }
 #delay-link { display: inline-block; margin: .7rem 0 0; text-underline-offset: .2em; }
 #delay-link[hidden] { display: none; }
-.invoice-delay { border-top: 1px solid #b6beac; }
-.delay-dates { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .5rem 0; padding: .7rem 0; border-block: 1px solid #bbc1ad; }
-.delay-dates dt { font-size: .75rem; }
-.delay-dates dd { margin: .25rem 0 0; font: 600 1.45rem/1 var(--display); }
-.invoice-delay[open] { padding-bottom: .8rem; }
-#backup-detail > summary, .invoice-delay > summary { min-height: 46px; }
+.delay-launch { display: flex; justify-content: space-between; align-items: center; gap: .8rem; width: 100%; min-height: 46px; padding: .55rem 0; border: 0; border-top: 1px solid #b6beac; background: transparent; font: 600 .9rem Inter,sans-serif; text-align: left; }
+.delay-launch[hidden] { display: none; }
+#invoice-delay { width: min(48rem,calc(100% - 2rem)); }
+#invoice-delay .sheet { padding: clamp(1rem,3vw,2rem); }
+#invoice-delay h2 { font-size: clamp(2.1rem,4.3vw,3.6rem); }
+#invoice-delay p:not(.eyebrow), #invoice-delay details { font-size: .91rem; line-height: 1.5; }
+.delay-dates { display: grid; grid-template-columns: repeat(3,1fr); gap: .6rem; margin: 1rem 0 .8rem; padding: .75rem 0; border-block: 1px solid #a9afa0; }
+.delay-dates dt { color: var(--muted); font-size: .78rem; }
+.delay-dates dd { margin: .2rem 0 0; font: 600 1.55rem/1 var(--display); }
+#delay-wallet { margin-top: .35rem; color: var(--muted); }
+.delay-options { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(16rem,100%),1fr)); margin: 1.1rem 0 .65rem; gap: .8rem; }
+.delay-options section { padding: .9rem 1rem; border-top: 3px solid #8c809d; background: #ebe9ed; }
+.delay-options #refill-choice { border-color: #758449; background: #e8eddd; }
+.delay-options h3 { font: 600 1.45rem/1.1 var(--display); }
+.delay-price { margin: .5rem 0; }
+.delay-price strong { font: 600 2.45rem/1 var(--display); }
+.delay-options .secondary { margin-top: .8rem; background: var(--paper); }
+.delay-options details summary { min-height: 44px; }
+.delay-footer { display: flex; justify-content: space-between; align-items: center; gap: .8rem; border-top: 1px solid #a9afa0; padding-top: .7rem; }
+#backup-detail > summary { min-height: 46px; }
+@media (max-width: 600px) { #invoice-delay { width: 100%; } }
 #backup-detail[open] { padding-bottom: .8rem; }
 .backup-fees { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; padding: .65rem .8rem; background: #eeecef; border-left: 2px solid #8c809d; }
 .backup-fees dt { font-size: .8rem; }

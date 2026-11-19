@@ -27,6 +27,13 @@ def late_invoice_calendar(calendar, invoice, days):
     return {**calendar, "invoices": invoices}
 
 
+def later_refill_calendar(calendar, reserve_id, days, extra_bps):
+    return {**calendar, "funding": [
+        {**source, "restore_day": source["restore_day"] + days, "term_cost_bps": source["term_cost_bps"] + extra_bps}
+        if source["id"] == reserve_id else source for source in calendar["funding"]
+    ]}
+
+
 def invoice_delay_gap(calendar, payments, draws, invoice, days):
     balance = calendar["opening_cash_cents"] - calendar["reserve_floor_cents"]
     largest = 0

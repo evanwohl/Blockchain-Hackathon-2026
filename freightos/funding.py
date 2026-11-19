@@ -1,10 +1,12 @@
+import hashlib
 import json
+from decimal import Decimal, ROUND_CEILING
 from functools import cache
 
 from freightos.capture import ROOT
 from freightos.fuel_markets import fuel_levels
 from hedging.invoice_policy import invoice_policy, reserve_limit
-from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, reserve_deadline
+from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 from hedging.quick_pay import capacity_boundary, price_calendar
 
 DATA = ROOT / "artifacts/quick_pay"
@@ -16,6 +18,8 @@ BACKUPS = {"quick pay": "invoice backup", "credit line": "bank backup", ROAD_CAS
 DELAY_DAYS = 7
 LATE_PLANS = {profile: profile + " late freight" for profile in BACKUPS}
 BACKUPS.update({late: late + " backup" for late in LATE_PLANS.values()})
+REFILL_LATER = "later reserve refill"
+BACKUPS[REFILL_LATER] = "later reserve refill backup"
 
 
 def funding_plan(sample, evidence, scenario, profile):
@@ -110,6 +114,20 @@ def pairing_value(plan):
             "joint_cents": plan["cost_cents"], "pairing_savings_cents": gain, "boundary": boundary}
 
 
+def refill_cost(evidence, days):
+    path = "artifacts/quick_pay/vault_metrics.json"
+    raw = (ROOT / path).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != evidence["input_sha256"][path]:
+        raise ValueError("Kamino yield snapshot differs from the funding evidence")
+    metrics = json.loads(raw)
+    rate = Decimal(metrics["metrics"]["apyActual"])
+    if not rate.is_finite() or rate < 0 or metrics["observed"] != evidence["as_of"]:
+        raise ValueError("Invalid recorded reserve yield")
+    factor = (1 + rate) ** (Decimal(days) / 365) - 1
+    return {"apy": str(rate), "extra_term_bps": int((factor * 10000).to_integral_value(rounding=ROUND_CEILING)),
+            "observed": metrics["observed"]}
+
+
 @cache
 def demo_plans():
     evidence = json.loads((DATA / "case_report.json").read_bytes())
@@ -135,10 +153,13 @@ def demo_plans():
             plan["cash_policy"] = {"version": 1, "fee_allowance_cents": allowance,
                                    "reserve_limit_cents": policy["peak_reserve_cents"]}
             plans[profile][key] = plan
-    for regular, late in LATE_PLANS.items():
+    refill = refill_cost(evidence, DELAY_DAYS)
+    for regular, late in [*LATE_PLANS.items(), ("quick pay", REFILL_LATER)]:
         delayed = {}
         for key, original in plans[regular].items():
             case = late_invoice_calendar(original["calendar"], "primary load", DELAY_DAYS)
+            if late == REFILL_LATER:
+                case = later_refill_calendar(case, "reserve redemption", DELAY_DAYS, refill["extra_term_bps"])
             delayed[key] = priced_plan(case, late, key, original["gemini"], original["input_sha256"])
         policy = invoice_policy(delayed)
         if policy is None:
@@ -148,6 +169,8 @@ def demo_plans():
         for key, p in delayed.items():
             plan = priced_plan(p["calendar"], late, key, p["gemini"], p["input_sha256"], policy["elections"])
             plans[late][key] = {**plan, "late_freight": {"regular_profile": regular, "days": DELAY_DAYS}}
+            if late == REFILL_LATER:
+                plans[late][key]["refill_policy"] = {"version": 1, **refill}
     for profile, backup in BACKUPS.items():
         plans[backup] = {}
         for key, original in plans[profile].items():
@@ -168,5 +191,8 @@ def demo_plans():
         for key, p in plans[regular].items():
             gap = invoice_delay_gap(p["calendar"], p["invoice_elections"], p["funding"], "primary load", DELAY_DAYS)
             comparison = {**gap, "days": DELAY_DAYS, "regular": regular, "alternative": late}
+            if regular == "quick pay":
+                comparison["flexible"] = REFILL_LATER
+                edges[REFILL_LATER][key]["invoice_delay"] = comparison
             edges[regular][key]["invoice_delay"] = edges[late][key]["invoice_delay"] = comparison
     return plans, edges, levels, policies

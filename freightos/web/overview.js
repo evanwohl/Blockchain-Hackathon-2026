@@ -81,7 +81,7 @@ load();
 
 request("/api/trial").then(report => {
   const edge = report.composition_savings;
-  el("trial-proof-title").textContent = money(edge.total_cents) + " in lower fees";
+  el("trial-proof-title").textContent = money(edge.total_cents) + " in lower modeled costs";
   el("trial-proof-copy").textContent = "With the same reserve available to both strategies, FreightOS cost less on "
     + edge.positive_cases + " of " + report.cases + " simulated loads. The other " + edge.ties + " tied.";
 }).catch(() => {});
