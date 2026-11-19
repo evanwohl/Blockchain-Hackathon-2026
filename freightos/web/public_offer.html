@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1a1d19"><title>Paid fuel bill · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/public_offer.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
+<main class="public-ledger">
+  <a class="ledger-back" href="/">← Load overview</a>
+  <div class="public-spread offer-spread">
+    <section class="public-cover">
+      <p class="panel-label">Customer offer · FOS-2048</p>
+      <h1>Fuel bill<br> <em>paid in full.</em></h1>
+      <p>The driver covered a $745 fuel bill with $175 from the customer and $570 from the fuel reserve. Both wallets signed one payment to the fuel company.</p>
+      <div class="receipt-cost"><h2>Why take the offer?</h2>
+        <p>The customer offered to pay a $180 fuel surcharge on day 5 for a $5 fee. That puts $175 toward fuel when it’s due. The driver keeps both freight invoices on regular terms.</p>
+        <dl id="offer-costs" hidden></dl><p id="offer-savings"></p>
+      </div>
+      <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer">Try a different fee or payment date →</a>
+    </section>
+    <section class="public-slip offer-slip" aria-labelledby="slip-title">
+      <p class="panel-label">Fuel company receipt · Solana Devnet</p>
+      <h2 id="slip-title">Received in one transaction</h2>
+      <strong class="public-amount"><span id="full-payment">7.45</span> <small>test USDC</small></strong>
+      <p>One test cent represents one dollar of the fuel bill.</p>
+      <div id="settled-split" hidden><div id="settled-bar" aria-hidden="true"></div><dl class="facts" id="settled-sources"></dl></div>
+      <button class="secondary" id="verify-offer" disabled>Verify on public Solana</button>
+      <p id="offer-status" class="public-status" role="status">Opening the saved receipt…</p>
+      <a class="receipt-fallback" href="https://explorer.solana.com/tx/2MAefNg3M2xFj27U82XEg2bwBQDhnmSUD24Ta4s7o47nN4hu5T1dMTKwyhAtHRZR9TQpFa2rAVa1yrNPx1QTGzvc?cluster=devnet" target="_blank" rel="noopener">Open the settlement on Explorer ↗</a>
+      <details class="offer-audit" id="offer-trace"><summary>Trace the money</summary><ol class="payment-stops" id="offer-stops"></ol><a href="/evidence/public-offer" download="FreightOS-public-offer.json">Download signed evidence</a></details>
+    </section>
+  </div>
+  <p class="offer-footnote">FreightOS funded both demo wallets with test tokens. The payment and customer fee settled on devnet. Trip dates, dollar amounts and estimated savings use sample contract terms.</p>
+  <a class="ledger-back" href="/public-payment">Explore the original reserve payment and remaining vault shares →</a>
+</main>
+</body>
+</html>

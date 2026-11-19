@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, reserve_return
+from freightos import bill, devnet, public_offer, reserve_return
 from freightos.surcharge import offer_decision, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -479,6 +479,17 @@ class Handler(BaseHTTPRequestHandler):
                 (ROOT / "artifacts/gemini_ladder/active.json").read_bytes(),
             )
             return
+        if self.path == "/evidence/public-offer":
+            self.reply(200, "application/json", public_offer.SAMPLE.read_bytes(), static=True)
+            return
+        if self.path in ("/api/public-offer", "/api/public-offer/verify"):
+            try:
+                proof = (self.server.public_offer.read() if self.path.endswith("/verify")
+                         else public_offer.verify(json.loads(public_offer.SAMPLE.read_bytes())))
+                self.respond(200, proof)
+            except (OSError, ValueError, RuntimeError, KeyError, TypeError):
+                self.respond(503, {"error": "The public payment check is unavailable. Retry or view the signed transaction."})
+            return
         if self.path in ("/api/public-payment", "/api/public-payment/verify"):
             try:
                 result = (self.server.public_payment.read() if self.path.endswith("/verify")
@@ -505,6 +516,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/public-offer": ("public_offer.html", "text/html; charset=utf-8"),
+            "/public_offer.js": ("public_offer.js", "text/javascript"),
             "/public-payment": ("public_payment.html", "text/html; charset=utf-8"),
             "/public_payment.js": ("public_payment.js", "text/javascript"),
             "/overview.js": ("overview.js", "text/javascript"),
@@ -585,6 +598,8 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
     server.public_reserve = PublicCheck(reserve_observation)
+    offer_run = json.loads(public_offer.SAMPLE.read_bytes())
+    server.public_offer = PublicCheck(lambda: public_offer.verify(offer_run, devnet.request))
     public_run = json.loads(devnet.SAMPLE.read_bytes())
     server.public_payment = PublicCheck(lambda: devnet.verify(public_run, devnet.request))
     server.return_previews = {portion: PublicCheck(lambda portion=portion: devnet.reserve_preview(
