@@ -49,7 +49,7 @@ async function loadQuote() {
   try {
     const { state, profile } = current;
     if (requestedIncrease && (requestedIncrease.version !== state.record_version || requestedIncrease.profile !== profile)) {
-      throw new Error("This plan changed. Recheck the next-trip expense.");
+      throw new Error("This plan changed. Recheck the amount for your wallet.");
     }
     const result = await request("/api/return-quote", { version: state.record_version, profile,
       ...(requestedIncrease && { extra_wallet_cents: requestedIncrease.cents }) });
@@ -57,8 +57,10 @@ async function loadQuote() {
     quote = result;
     const canReturn = result.return_usdc_raw > 0;
     const protectedAmount = money(result.protected_cents);
-    show(requestedIncrease ? "Return cash for the next trip" : canReturn ? "Move unused money back" : "Keep this money set aside",
-      requestedIncrease ? "Confirm to move just enough into your wallet for the expense you entered."
+    const road = requestedIncrease?.purpose === "road";
+    show(road ? "Put road cash back in your wallet" : requestedIncrease ? "Return cash for the next trip" : canReturn ? "Move unused money back" : "Keep this money set aside",
+      road ? "Confirm this return to keep your road cash available and your planned fuel payments covered."
+        : requestedIncrease ? "Confirm to move just enough into your wallet for the expense you entered."
         : result.protected_cents ? "Your plan needs " + protectedAmount + " available across its tested fuel budgets."
         : "Your current bill needs no more money from this reserve.",
       requestedIncrease ? "Proposed return" : "Available to return", result.return_usdc_raw, [
@@ -73,8 +75,8 @@ async function loadQuote() {
   }
 }
 
-export function openWalletReturn(cents = 0) {
-  requestedIncrease = cents ? { cents, profile: current.profile, version: current.state.record_version } : null;
+export function openWalletReturn(cents = 0, purpose = "expense") {
+  requestedIncrease = cents ? { cents, purpose, profile: current.profile, version: current.state.record_version } : null;
   el("wallet-dialog").showModal();
   loadQuote();
 }
@@ -93,7 +95,7 @@ export function bindWallet(run, refresh) {
     quote = null;
     el("confirm-return").disabled = true;
     el("wallet-status").textContent = "Moving the money to your wallet…";
-    if (approved.extra_wallet_cents) sessionStorage.setItem("next-trip-expense-quote", approved.id);
+    if (requestedIncrease?.purpose === "expense") sessionStorage.setItem("next-trip-expense-quote", approved.id);
     await run("Returning funds…", () => request("/api/return-reserve", {
       id: approved.id, profile: approved.profile, version: approved.version,
       ...(approved.extra_wallet_cents && { extra_wallet_cents: approved.extra_wallet_cents })

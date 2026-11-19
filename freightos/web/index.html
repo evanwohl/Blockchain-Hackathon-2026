@@ -140,6 +140,10 @@
         <label><span id="customer-fee-label">Fee they keep</span><span class="expense-input"><span aria-hidden="true">$</span><input id="customer-fee" type="number" inputmode="decimal" step=".01" min="0" disabled required></span></label>
       </div>
       <label class="offer-toggle" id="partial-field" hidden><input type="checkbox" id="allow-partial"> My customer allows a smaller advance at the same rate</label>
+      <details id="road-cash-field"><summary>Keep cash for tolls and repairs</summary>
+        <label>Cash to leave in my wallet<span class="expense-input"><span aria-hidden="true">$</span><input id="road-cash" type="number" min="0" max="10000000000" step=".01" inputmode="decimal" aria-describedby="road-cash-help"></span></label>
+        <p id="road-cash-help">FreightOS uses the rest of your available money to price fuel funding.</p>
+      </details>
       <details id="reserve-limit-field"><summary>Set a fuel reserve limit</summary>
         <label>Most I’ll use for fuel<span class="expense-input"><span aria-hidden="true">$</span><input id="reserve-limit" type="number" min="0" max="10000000000" step=".01" inputmode="decimal" aria-describedby="reserve-limit-help"></span></label>
         <p id="reserve-limit-help">Applies to each fuel estimate. Leave blank to use the available reserve.</p>
@@ -155,6 +159,9 @@
       <dl class="facts" id="surcharge-facts"></dl>
       <details id="offer-sources" hidden><summary>How the fuel bill gets paid</summary><dl class="facts" id="offer-source-rows"></dl></details>
       <p id="surcharge-boundary"></p>
+      <details id="whole-comparison" hidden><summary>Compare keeping more cash available</summary>
+        <p id="whole-tradeoff"></p><button id="compare-whole" class="secondary" type="button">Check whole-payment options</button>
+      </details>
       <div class="budget-option" id="budget-option" hidden><p id="budget-tradeoff"></p><button class="secondary" id="compare-budget" type="button">Compare this limit</button></div>
       <button class="primary" id="apply-surcharge" type="button">Use this plan</button>
       <a class="offer-receipt-link" href="/public-offer" id="public-offer-example" hidden>View the $5 sample offer’s paid receipt →</a>

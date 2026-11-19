@@ -470,6 +470,10 @@ function paymentView(plan) {
   };
 }
 
+function cashToReturn(plan) {
+  return Math.max(0, (plan.road_cash_cents || 0) - Math.floor(state.wallet_usdc_raw / 10000));
+}
+
 function render() {
   if (!state) return;
   const plan = state.funding_plans[profile][scenario];
@@ -520,6 +524,13 @@ function render() {
       + money(plan.payment_cents) + " goes to the fuel company. You pay " + money(plan.other_funds_cents) + " separately.";
   const savings = feeComparison(plan) - plan.cost_cents;
   el("plan-jump").textContent = savings > 0 ? "See how this saves " + money(savings) : "See why this plan costs " + money(plan.cost_cents);
+  const returnNeeded = cashToReturn(plan);
+  if (returnNeeded && !receipt && !entry && !review) {
+    el("action-title").textContent = "Put your road money back in your wallet";
+    el("open-label").textContent = "Review " + money(returnNeeded) + " return";
+    el("payment-scope").textContent = "Your plan keeps " + money(plan.road_cash_cents)
+      + " for tolls and repairs. Confirm the wallet return before paying the fuel company.";
+  }
   if (unavailable) {
     el("open-payment").disabled = true;
     el("open-label").textContent = "Reserve unavailable";
@@ -543,6 +554,7 @@ function render() {
   el("title").textContent = view.title;
   if (changedStep && el("payment").open) el("title").focus();
   el("instruction").textContent = view.description;
+  if (plan.road_cash_cents) view.rows.push(["Cash reserved for the road", money(plan.road_cash_cents)]);
   facts(el("facts"), view.rows);
   el("steps").hidden = view.stage < 0;
   Array.from(el("steps").children).forEach((step, index) => {
@@ -897,6 +909,7 @@ el("statement").onclick = async () => {
     if (plan.surcharge) lines.push("Customer surcharge face amount: " + money(plan.surcharge.cents),
       "Expected customer proceeds: " + money((plan.surcharge.advance_cents ?? plan.surcharge.cents) - (plan.surcharge.fee_cents || 0)) + " on trip day " + plan.surcharge.day,
       "Customer surcharge allocated to fuel: " + money(plan.surcharge.for_fuel_cents));
+    if (plan.road_cash_cents) lines.push("Cash protected for the road: " + money(plan.road_cash_cents));
     if (plan.surcharge?.advance_cents) lines.push("Remaining customer surcharge: " + money(plan.surcharge.cents - plan.surcharge.advance_cents) + " on trip day " + plan.surcharge.regular_day);
     if (plan.surcharge?.regular_day) lines.push("Customer early-payment fee: " + money(plan.surcharge.fee_cents),
       "Regular customer payment due on trip day " + plan.surcharge.regular_day);
@@ -920,6 +933,7 @@ el("return-bill").onclick = () => { el("payment").close(); el("open-payment").fo
 el("reserve-receipt").onclick = () => el("payment").showModal();
 el("open-payment").onclick = () => {
   const plan = state.funding_plans[profile][scenario];
+  if (!state.receipt && !state.manual_payment && cashToReturn(plan)) return openWalletReturn(cashToReturn(plan), "road");
   if (state.receipt || !plan.payment_cents) return openRecord(plan);
   el("payment").showModal();
   if (state?.deposit && !state.setup_cents[profile] && !state.review && !state.receipt && state.funding_plans[profile][scenario].payment_cents) {

@@ -34,6 +34,7 @@ function displayQuote() {
   el("quote-open").href = locked ? "/bill" : "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario });
   el("quote-open").textContent = locked ? "Return to current bill" : "Walk through this bill";
   el("offer-example").hidden = locked || profile !== "quick pay";
+  el("road-example").hidden = el("offer-example").hidden;
   el("offer-example").href = "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario, view: "surcharge-offer" });
   el("delay-link").hidden = locked || !state.pairing_values[profile][scenario].invoice_delay;
   el("delay-link").href = "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario, view: "late-freight" });

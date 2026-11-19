@@ -217,3 +217,58 @@ def test_partial_permission_does_not_force_a_split(cents, day, fee, limit):
     from freightos.surcharge import partial_offer
 
     assert partial_offer(cents, day, 28, fee, limit, "oil stress") is None
+
+
+@pytest.mark.parametrize("prefunded", [False, True])
+def test_road_cash_survives_setup_return_and_vendor_receipt(prefunded):
+    app = LoadSettlement()
+    if prefunded:
+        app.act("deposit", {"version": app.record_version, "profile": "quick pay", "max_cents": 60000})
+    data = {"version": app.record_version, "cents": 50000, "day": 5, "regular_day": 28, "fee_cents": 1500,
+            "allow_partial": True, "road_cash_cents": 10000, "scenario": "oil stress"}
+    wallet = app.fork.balance(app.fork.cash)
+    quote = app.act("quote-surcharge", data)
+    assert quote["wallet_return_cents"] == (7001 if prefunded else 0)
+    assert quote["setup_cents"] == (0 if prefunded else 50000)
+    assert quote["capacity_cents"] == 49999 and quote["wallet_after_cents"] == 10000
+    assert quote["offer"]["partial"]["gross_cents"] == 26806 and quote["fee_cents"] == 805
+    with pytest.raises(ValueError, match="again"):
+        app.act("apply-surcharge", {**data, "road_cash_cents": 9999, "id": quote["id"]})
+    chosen = app.act("apply-surcharge", {**data, "id": quote["id"]})
+    assert app.fork.balance(app.fork.cash) == wallet
+    pay = {**chosen, "scenario": data["scenario"], "version": app.record_version}
+    if prefunded:
+        with pytest.raises(ValueError, match="road money"):
+            app.act("review", pay)
+        body = {**pay, "extra_wallet_cents": quote["wallet_return_cents"]}
+        back = app.act("return-quote", body)
+        assert back["remaining_value_raw"] >= 49999 * 10000
+        receipt = app.act("return-reserve", {**body, "id": back["id"]})
+        assert app.act("verify-return", receipt)["wallet_usdc_raw"] >= 10000 * 10000
+        pay["version"] = app.record_version
+    else:
+        with pytest.raises(ValueError, match="selected plan"):
+            app.act("deposit", {})
+        app.act("deposit", {**pay, "max_cents": quote["setup_cents"]})
+    review = app.act("review", pay)
+    receipt = app.act("approve", {"approval": review["id"]})
+    assert receipt["decision"]["road_cash_cents"] == 10000
+    proof = app.act("verify", {})
+    assert proof["vendor_received_usdc_raw"] == 48499 * 10000
+    assert proof["wallet_usdc_raw"] // 10000 == 10000
+    assert app.act("record-payment", pay)["cents"] == 26001
+
+
+def test_road_cash_respects_the_draw_limit_and_vault_minimum():
+    app = LoadSettlement()
+    data = {"version": app.record_version, "cents": 50000, "day": 5, "regular_day": 28, "fee_cents": 1500,
+            "allow_partial": True, "road_cash_cents": 10000, "scenario": "oil stress", "reserve_limit_cents": 48500}
+    quote = app.act("quote-surcharge", data)
+    assert quote["capacity_cents"] == 48500
+    assert quote["wallet_after_cents"] > 10000
+    for floor in [59999, 60000]:
+        q = app.act("quote-surcharge", {**data, "road_cash_cents": floor})
+        assert q["capacity_cents"] == q["setup_cents"] == 0 and q["wallet_after_cents"] == 60000
+    for floor in [60001, -1, True, "100", 10.5]:
+        with pytest.raises(ValueError):
+            app.act("quote-surcharge", {**data, "road_cash_cents": floor})

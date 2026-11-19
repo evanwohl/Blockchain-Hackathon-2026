@@ -138,6 +138,9 @@ class ReserveFork:
         instructions = [set_compute_unit_limit(1_400_000), deposit]
         minted = self.vm.simulate_transaction(self.tx(instructions))
         if isinstance(minted, FailedTransactionMetadata):
+            error = minted.err()
+            if getattr(error, "index", None) == 1 and getattr(error.err, "code", None) == 7026:
+                return self.redemption_value(shares) if shares else 0
             raise VaultExecutionError("Could not quote the reserve deposit")
         shares = int.from_bytes(dict(minted.post_accounts())[self.shares].data[64:72], "little")
         redeem = vault_instruction(self.route, self.owner, self.cash, self.shares, shares)
