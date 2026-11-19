@@ -133,7 +133,14 @@ def next_trip_options(plans, setup, wallet_raw):
         options.append({"profile": profile, "capacity_cents": cash + min(capacities),
                         "peak_cost_cents": max(p["cost_cents"] for p in choices.values())})
     options.sort(key=lambda row: (row["peak_cost_cents"], -row["capacity_cents"]))
-    return {"day": day, "budgets": len(plans[fixed]), "options": options}
+    apy = Decimal(plans[REFILL_LATER]["oil stress"]["refill_policy"]["apy"])
+    return {"day": day, "budgets": len(plans[fixed]), "options": options,
+            "return_yield_bps": period_yield_bps(apy, day - 1)}
+
+
+def period_yield_bps(apy, days):
+    factor = (1 + apy) ** (Decimal(days) / 365) - 1
+    return int((factor * 10000).to_integral_value(rounding=ROUND_CEILING))
 
 
 def refill_cost(evidence, days):
@@ -145,8 +152,7 @@ def refill_cost(evidence, days):
     rate = Decimal(metrics["metrics"]["apyActual"])
     if not rate.is_finite() or rate < 0 or metrics["observed"] != evidence["as_of"]:
         raise ValueError("Invalid recorded reserve yield")
-    factor = (1 + rate) ** (Decimal(days) / 365) - 1
-    return {"apy": str(rate), "extra_term_bps": int((factor * 10000).to_integral_value(rounding=ROUND_CEILING)),
+    return {"apy": str(rate), "extra_term_bps": period_yield_bps(rate, days),
             "observed": metrics["observed"]}
 
 

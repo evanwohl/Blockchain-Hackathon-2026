@@ -1,5 +1,5 @@
 import { cashPriority, downloadReceipt, el, facts, money, oilOptions, request, saveFile, tokenUnits, usesCredit } from "./common.js";
-import { bindWallet, walletState } from "./wallet.js";
+import { bindWallet, openWalletReturn, walletState } from "./wallet.js";
 import { renderNextTrip } from "./next_trip.js";
 import { openBillTab } from "./bill_tabs.js";
 
@@ -771,11 +771,13 @@ el("open-next-trip").onclick = el("expense-note").onclick = el("from-delay-to-ex
 };
 el("apply-expense").onclick = event => {
   const next = event.currentTarget.value;
+  const extra = Number(event.currentTarget.dataset.extra);
   if (pending || !state.next_trip?.options.some(row => row.profile === next)) return;
   el("next-trip").close();
   usePlan(next, scenario);
   openBillTab("fees-tab");
   el("plan-head").focus();
+  if (extra > 0) openWalletReturn(extra);
 };
 el("open-invoice-delay").onclick = () => {
   el("invoice-delay").showModal();

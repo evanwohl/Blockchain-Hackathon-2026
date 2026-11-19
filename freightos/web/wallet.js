@@ -3,6 +3,7 @@ import { el, facts, money, request, saveFile, tokenUnits } from "./common.js";
 let current;
 let quote;
 let sequence = 0;
+let requestedIncrease;
 const dollars = raw => raw > 0 && raw < 10000 ? "Less than 1¢"
   : (raw % 10000 ? "≈ " : "") + money(raw / 10000);
 
@@ -47,17 +48,24 @@ async function loadQuote() {
   show("Check unused fuel money", "Checking the reserve and your current bill…", "", null, [], "");
   try {
     const { state, profile } = current;
-    const result = await request("/api/return-quote", { version: state.record_version, profile });
+    if (requestedIncrease && (requestedIncrease.version !== state.record_version || requestedIncrease.profile !== profile)) {
+      throw new Error("This plan changed. Recheck the next-trip expense.");
+    }
+    const result = await request("/api/return-quote", { version: state.record_version, profile,
+      ...(requestedIncrease && { extra_wallet_cents: requestedIncrease.cents }) });
     if (attempt !== sequence) return;
     quote = result;
     const canReturn = result.return_usdc_raw > 0;
     const protectedAmount = money(result.protected_cents);
-    show(canReturn ? "Move unused money back" : "Keep this money set aside",
-      result.protected_cents ? "Your plan needs " + protectedAmount + " available across its tested fuel budgets."
+    show(requestedIncrease ? "Return cash for the next trip" : canReturn ? "Move unused money back" : "Keep this money set aside",
+      requestedIncrease ? "Confirm to move just enough into your wallet for the expense you entered."
+        : result.protected_cents ? "Your plan needs " + protectedAmount + " available across its tested fuel budgets."
         : "Your current bill needs no more money from this reserve.",
-      "Available to return", result.return_usdc_raw, [
+      requestedIncrease ? "Proposed return" : "Available to return", result.return_usdc_raw, [
         ["Wallet after this return", dollars(result.wallet_before_raw + result.return_usdc_raw)],
-        ["Needed in the reserve", protectedAmount]
+        ["Needed in the reserve", protectedAmount],
+        ...(requestedIncrease ? [["Reserve value after return", dollars(result.remaining_value_raw)],
+          ["Vault fees and rounding from splitting", tokenUnits(result.split_cost_raw) + " USDC"]] : [])
       ], canReturn ? "confirm" : "");
     if (!canReturn) el("wallet-status").textContent = "There’s no spendable cent above the amount needed for this plan.";
   } catch (error) {
@@ -65,25 +73,33 @@ async function loadQuote() {
   }
 }
 
+export function openWalletReturn(cents = 0) {
+  requestedIncrease = cents ? { cents, profile: current.profile, version: current.state.record_version } : null;
+  el("wallet-dialog").showModal();
+  loadQuote();
+}
+
 export function bindWallet(run, refresh) {
-  el("open-return").onclick = () => { el("wallet-dialog").showModal(); loadQuote(); };
+  el("open-return").onclick = () => openWalletReturn();
   el("last-return").onclick = () => { showReceipt(); el("wallet-dialog").showModal(); };
   el("retry-return").onclick = async () => {
     try { await refresh(); await loadQuote(); }
     catch { el("wallet-status").textContent = "Could not refresh the wallet. Check again."; }
   };
-  el("wallet-dialog").onclose = () => { sequence++; quote = null; };
+  el("wallet-dialog").onclose = () => { sequence++; quote = null; requestedIncrease = null; };
   el("confirm-return").onclick = async () => {
     if (!quote) return;
     const approved = quote;
     quote = null;
     el("confirm-return").disabled = true;
     el("wallet-status").textContent = "Moving the money to your wallet…";
+    if (approved.extra_wallet_cents) sessionStorage.setItem("next-trip-expense-quote", approved.id);
     await run("Returning funds…", () => request("/api/return-reserve", {
-      id: approved.id, profile: approved.profile, version: approved.version
+      id: approved.id, profile: approved.profile, version: approved.version,
+      ...(approved.extra_wallet_cents && { extra_wallet_cents: approved.extra_wallet_cents })
     }), el("wallet-status"));
     el("confirm-return").disabled = false;
-    if (current.state.last_return?.quote.version === approved.version && current.state.last_return?.quote.profile === approved.profile) {
+    if (current.state.last_return?.id === approved.id) {
       showReceipt();
       el("wallet-head").focus();
     } else {
