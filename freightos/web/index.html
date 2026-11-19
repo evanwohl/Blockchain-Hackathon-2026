@@ -132,13 +132,21 @@
     <form id="surcharge-form" aria-describedby="surcharge-help">
       <div class="surcharge-fields">
         <label>Agreed surcharge<span class="expense-input"><span aria-hidden="true">$</span><input id="surcharge-amount" type="number" inputmode="decimal" step=".01" min=".01" max="10000000000" value="180" required></span></label>
-        <label>Trip day it clears<span class="expense-input"><input id="surcharge-day" type="number" inputmode="numeric" step="1" min="1" max="365" value="5" required></span></label>
-      </div><button type="submit" class="secondary" id="check-surcharge">Check plan</button>
+        <label><span id="surcharge-date-label">Trip day it clears</span><span class="expense-input"><input id="surcharge-day" type="number" inputmode="numeric" step="1" min="1" max="365" value="5" required></span></label>
+      </div>
+      <label class="offer-toggle"><input type="checkbox" id="has-surcharge-offer"> My customer offers early pay for a fee</label>
+      <div class="surcharge-fields" id="offer-fields" hidden>
+        <label>Regular pay day<span class="expense-input"><input id="regular-pay-day" type="number" inputmode="numeric" step="1" min="2" max="365" value="28" disabled required></span></label>
+        <label>Fee they keep<span class="expense-input"><span aria-hidden="true">$</span><input id="customer-fee" type="number" inputmode="decimal" step=".01" min="0" disabled required></span></label>
+      </div>
+      <button type="submit" class="secondary" id="check-surcharge">Check plan</button>
     </form>
     <p id="surcharge-status" role="status"></p></div>
     <section id="surcharge-before" aria-labelledby="surcharge-before-title"><h3 id="surcharge-before-title">Without a surcharge</h3><dl class="facts" id="surcharge-base"></dl></section>
     <section id="surcharge-result" aria-labelledby="surcharge-outcome" hidden>
-      <h3 id="surcharge-outcome" tabindex="-1"></h3><dl class="facts" id="surcharge-facts"></dl>
+      <h3 id="surcharge-outcome" tabindex="-1"></h3>
+      <div id="offer-limit" hidden><span>Highest fee worth paying</span><strong id="offer-limit-value"></strong></div>
+      <dl class="facts" id="surcharge-facts"></dl>
       <p id="surcharge-boundary"></p>
       <button class="primary" id="apply-surcharge" type="button">Use this plan</button>
     </section></div>

@@ -693,9 +693,17 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 #surcharge-before, #surcharge-result { border-top: 1px solid var(--line); padding-top: .85rem; }
 .surcharge-work h3 { margin: 0; font: 600 1.65rem/1.1 var(--display); }
 #surcharge-result .primary { width: 100%; }
-#surcharge-facts > div:nth-last-child(2) { color: #344e24; font-weight: 650; }
+#surcharge-facts:not([data-wait="true"]) > div:nth-last-child(2), #surcharge-facts[data-wait="true"] > div:last-child { color: #344e24; font-weight: 650; }
 @media (min-width: 761px) {
   #surcharge { width: min(52rem, calc(100% - 3rem)); }
   .surcharge-work { display: grid; grid-template-columns: .95fr 1.05fr; gap: 2rem; margin-top: 1.2rem; }
   #surcharge-before, #surcharge-result { border-top: 0; border-left: 1px solid var(--line); padding: 0 0 0 1.6rem; }
 }
+
+.sheet .offer-toggle { display: flex; gap: .5rem; align-items: center; min-height: 44px; margin: .55rem 0 0; }
+.offer-toggle input { flex: none; width: 1.05rem; height: 1.05rem; accent-color: #40592b; }
+
+.timing-links { display: grid; justify-items: start; gap: .45rem; }
+#offer-limit { display: flex; align-items: baseline; justify-content: space-between; gap: .65rem; margin-top: .7rem; padding: .48rem .7rem; background: #e4e9da; color: #303d26; }
+#offer-limit span { font-size: .85rem; font-weight: 600; }
+#offer-limit strong { font: 600 1.6rem/1 var(--display); }
