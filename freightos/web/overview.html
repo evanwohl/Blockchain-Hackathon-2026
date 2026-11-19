@@ -7,7 +7,7 @@
   <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/media/barlow-condensed-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="modulepreload" href="/common.js"><link rel="preload" href="/api/state" as="fetch" crossorigin>
-  <link rel="stylesheet" href="/style.css"><script type="module" src="/overview.js"></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/overview.js"></script>
 </head>
 <body class="workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/" aria-current="page">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
@@ -51,23 +51,40 @@
       <p id="quote-status" role="status">Loading plan prices…</p><button class="secondary" id="quote-retry" hidden>Try again</button>
     </section>
   </div>
-  <section class="mechanism" id="mechanism" aria-labelledby="mechanism-title">
-    <h2 id="mechanism-title">Follow the money</h2>
-    <div class="mechanism-steps">
-      <section><p class="mechanism-label">Fuel estimate · Gemini prediction markets</p><h3>Allow for a price jump</h3><p id="mechanism-fuel">Recorded oil contracts give FreightOS prices to test against the driver's fuel budget.</p> <a href="/public-offer#fuel-update">Check the paid example against Gemini →</a></section>
-      <section><p class="mechanism-label">Funding decision · FreightOS</p><h3 id="mechanism-choice-title">Choose how to pay</h3><p id="mechanism-choice">FreightOS prices funds that will arrive before the fuel bill is due.</p><div class="timing-links"><a href="/trip-cover">Check my fuel budget against oil prices →</a><a id="offer-example" href="/bill" hidden>Try a $5 early-payment offer →</a><a id="delay-link" href="/bill" hidden>Check a late customer payment →</a><a id="road-example" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer&amp;surcharge_cents=50000&amp;offer_fee_cents=1500&amp;partial=1&amp;road_cash_cents=10000" hidden>Keep $100 for tolls and repairs →</a></div></section>
-      <section><p class="mechanism-label">Vendor payment · Solana</p><h3 id="mechanism-pay-title">Approve the transfer</h3><p id="mechanism-pay">The driver approves the amount from the reserve and gets a signed receipt.</p><a href="/next-stop#two-stops">See what you can spend at the next stop →</a></section>
+  <section class="money-story" id="mechanism" aria-labelledby="mechanism-title">
+    <header class="paper-heading"><h2 id="mechanism-title">Follow the <em>money.</em></h2><span id="flow-load" class="folio">Sample load FOS-2048</span></header>
+    <div class="flow-board">
+      <div class="flow-nav" role="tablist" aria-label="How this load is funded">
+        <button id="flow-fuel-tab" role="tab" aria-selected="true" aria-controls="flow-fuel"><span>Fuel budget</span><small>Gemini</small></button>
+        <button id="flow-funds-tab" role="tab" aria-selected="false" aria-controls="flow-funds" tabindex="-1"><span>Funding</span><small>FreightOS</small></button>
+        <button id="flow-pay-tab" role="tab" aria-selected="false" aria-controls="flow-pay" tabindex="-1"><span>Payment</span><small id="flow-payment-method">Vendor</small></button>
+      </div>
+      <section class="flow-page" id="flow-fuel" role="tabpanel" aria-labelledby="flow-fuel-tab" tabindex="0">
+        <div class="flow-reading"><h3>Allow for a price jump</h3><p id="mechanism-fuel">Gemini oil markets supply the thresholds used to test this trip’s fuel budget.</p>
+          <a class="paper-action" href="/trip-cover">Test my fuel budget</a></div>
+        <div class="flow-figure"><p class="folio">Tested fuel budget</p><strong id="flow-fuel-value">—</strong>
+          <dl><div><dt>Original estimate</dt><dd id="flow-original">—</dd></div><div><dt>Fuel to buy</dt><dd id="flow-gallons">—</dd></div></dl>
+          <a href="/public-offer#fuel-update">See the Gemini price check</a></div>
+      </section>
+      <section class="flow-page" id="flow-funds" role="tabpanel" aria-labelledby="flow-funds-tab" tabindex="0" hidden>
+        <div class="flow-reading"><h3 id="mechanism-choice-title">Choose how to pay</h3><p id="mechanism-choice">Compare the money that can reach the fuel company by the due date.</p>
+          <a class="paper-action" id="flow-plan" href="/bill">Review this funding plan</a>
+          <details id="flow-alternatives" hidden><summary>Try other payment terms</summary><div class="flow-links"><a id="offer-example" href="/bill" hidden>Try a $5 early-payment offer</a><a id="delay-link" href="/bill" hidden>Check a late customer payment</a><a id="road-example" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer&amp;surcharge_cents=50000&amp;offer_fee_cents=1500&amp;partial=1&amp;road_cash_cents=10000" hidden>Keep $100 for tolls and repairs</a></div></details></div>
+        <div class="flow-figure funding-figure"><p class="folio">Estimated plan fees</p><strong id="flow-fees">—</strong><dl><div><dt>Fuel reserve</dt><dd id="flow-reserve">—</dd></div><div><dt>Other funding</dt><dd id="flow-outside">—</dd></div></dl></div>
+      </section>
+      <section class="flow-page" id="flow-pay" role="tabpanel" aria-labelledby="flow-pay-tab" tabindex="0" hidden>
+        <div class="flow-reading"><h3 id="mechanism-pay-title">Approve the transfer</h3><p id="mechanism-pay">Review the payee and amount before approving the reserve payment.</p>
+          <a class="paper-action" href="/public-offer">Inspect a public payment receipt</a></div>
+        <div class="flow-figure"><p id="flow-pay-label" class="folio">Reserve payment</p><strong id="flow-payment">—</strong><dl><div><dt>Fuel due</dt><dd id="flow-due">—</dd></div><div><dt>Freight pays</dt><dd id="flow-paid">—</dd></div></dl><a href="/next-stop#two-stops">See what you can spend at the next stop</a></div>
+      </section>
     </div>
-    <section class="sample-replay" aria-labelledby="sample-replay-title">
-      <div><p class="panel-label">Practice receipt · Sample SYN-004</p><h3 id="sample-replay-title">Check the receipt yourself</h3>
-        <p>Replay a separate sample on the local Solana fork and check how much reached the fuel company.</p></div>
-      <div class="replay-action"><button class="secondary" id="replay-sample">Verify sample payment</button><p id="sample-result" role="status"></p><a href="/trial#same-access/SYN-004">Inspect this sample load</a></div>
+    <section class="evidence-spread" aria-label="Check the demo evidence">
+      <div class="trial-reading"><p class="folio">Funding comparison · Synthetic loads</p><h3 id="trial-proof-title">Modeled fee savings</h3>
+        <p id="trial-proof-copy">Compare both funding strategies with the same reserve available.</p><a href="/trial#same-access">Inspect the load results</a></div>
+      <div class="receipt-reading"><p class="folio">Payment receipt · SYN-004</p><h3>Verify a fuel payment</h3>
+        <p>Replay this sample’s signed payment on the local fork to check what the fuel company received.</p>
+        <div class="receipt-actions"><button class="paper-action" id="replay-sample">Verify sample payment</button><a href="/trial#same-access/SYN-004">Inspect this load</a></div><p id="sample-result" role="status"></p></div>
     </section>
-    <aside class="trial-proof" aria-labelledby="trial-proof-title">
-      <div><p class="panel-label">Simulated carrier trial</p><h3 id="trial-proof-title">What does better funding save?</h3>
-        <p id="trial-proof-copy">Compare FreightOS with a simpler strategy that has access to the same reserve.</p></div>
-      <a href="/trial#same-access">Inspect the load results</a>
-    </aside>
   </section>
 </main>
 <footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Test payments</span><span>All amounts in US dollars. Demo funds only.</span></div></footer>

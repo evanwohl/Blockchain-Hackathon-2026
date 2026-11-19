@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#22271f"><title>Trip cover · FreightOS</title>
   <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css"><script type="module" src="/trip_cover.js"></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/trip_cover.js"></script>
 </head>
 <body class="workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
@@ -36,11 +36,11 @@
       <h2 id="trip-heading">What to set aside</h2>
       <p id="trip-pending" hidden>Compare the updated trip to see its fuel buffer.</p>
       <div id="trip-result" hidden>
+        <div class="trip-outcome" aria-live="polite"><small id="trip-bound"></small><strong id="trip-cash"></strong><p id="trip-why"></p></div>
         <fieldset class="trip-timing"><legend>When do you need to buy fuel?</legend>
           <label><input type="radio" name="timing" value="before" checked> Before I can spend a payout</label>
           <label><input type="radio" name="timing" value="after"> After I can spend a payout</label>
         </fieldset>
-        <div class="trip-outcome" aria-live="polite"><small id="trip-bound"></small><strong id="trip-cash"></strong><p id="trip-why"></p></div>
         <dl id="trip-options" class="facts"></dl><p id="reserve-observation" hidden></p>
         <a id="trip-reserve" class="ledger-back">Check the cash buffer on Solana →</a>
         <details><summary>Which oil contracts were compared?</summary>

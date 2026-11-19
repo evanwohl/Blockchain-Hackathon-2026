@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1a1d19"><title>Paid fuel bill · FreightOS</title>
   <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css"><script type="module" src="/public_offer.js"></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/public_offer.js"></script>
 </head>
 <body class="workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
@@ -50,13 +50,13 @@
       <p class="panel-label">After payment · Fuel budget</p>
       <h2 id="fuel-update-title">Did the budget cover the oil move?</h2>
       <p>Compare the paid bill with what the same trip would cost using Gemini’s next reported oil close.</p>
-      <a class="ledger-back" href="/next-stop#two-stops">Use this estimate to budget for two stops →</a><br>
-      <a class="ledger-back" href="#fuel-cover">Could an oil contract cover a higher bill? ↓</a>
       <div class="preview-outcome" id="fuel-margin" hidden><span id="margin-label"></span><strong id="margin-value"></strong></div>
+      <div class="receipt-links"><a class="ledger-back" href="/next-stop#two-stops">Use this estimate to budget for two stops</a>
+      <a class="ledger-back" href="#fuel-cover">Could an oil contract cover a higher bill?</a></div>
     </div>
     <div class="reserve-quote">
       <h3>Trip estimate</h3><dl class="facts" id="fuel-update-facts"></dl>
-      <p id="fuel-at"></p><button class="secondary" id="refresh-fuel">Refresh from Gemini</button>
+      <div class="check-bar"><button class="secondary" id="refresh-fuel">Refresh from Gemini</button><p id="fuel-at"></p></div>
       <p id="fuel-status" role="status">Opening the saved market check…</p>
       <details><summary>How the estimate works</summary>
         <p id="fuel-method"></p><p id="fuel-quote"></p>
@@ -74,8 +74,8 @@
         <label><input type="radio" name="payout-time" value="fuel" checked> Before I can spend a payout</label>
         <label><input type="radio" name="payout-time" value="paid"> After I can spend a payout</label>
       </fieldset>
-      <a class="ledger-back" href="/trip-cover">Compare oil protection for my trip →</a>
-      <a id="cover-reserve" class="ledger-back" hidden>Check the cash buffer on Solana →</a>
+      <div class="receipt-links"><a class="ledger-back" href="/trip-cover">Compare oil protection for my trip</a>
+      <a id="cover-reserve" class="ledger-back" hidden>Check the cash buffer on Solana</a></div>
     </div>
     <div class="reserve-quote">
       <h3 id="cover-answer">Extra cash for fuel</h3>

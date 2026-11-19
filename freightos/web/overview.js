@@ -40,6 +40,20 @@ function displayQuote() {
   el("delay-link").href = "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario, view: "late-freight" });
   el("quote-scope").textContent = plan.payment_cents ? "Test dollars on a local copy of Solana. No wallet setup needed." : "Cash covers this bill. You can record your direct payment in the demo.";
   const original = state.plans["fuel budget"].bill_cents;
+  el("flow-load").textContent = "Sample load " + plan.load;
+  el("flow-plan").href = el("quote-open").href;
+  el("flow-alternatives").hidden = el("offer-example").hidden && el("delay-link").hidden;
+  el("flow-fuel-value").textContent = money(plan.bill_cents);
+  el("flow-original").textContent = money(original);
+  el("flow-gallons").textContent = plan.gemini.gallons + " gallons";
+  el("flow-fees").textContent = money(plan.cost_cents);
+  el("flow-reserve").textContent = money(plan.payment_cents);
+  el("flow-outside").textContent = money(plan.other_funds_cents);
+  el("flow-payment-method").textContent = plan.payment_cents ? "Solana" : "Direct";
+  el("flow-pay-label").textContent = plan.payment_cents ? "To approve from reserve" : "Driver pays directly";
+  el("flow-payment").textContent = money(plan.payment_cents || plan.bill_cents);
+  el("flow-due").textContent = "Day " + due;
+  el("flow-paid").textContent = "Day " + paid;
   el("mechanism-fuel").textContent = "Start with " + money(original) + " for " + plan.gemini.gallons
     + " gallons. " + (scenario === "fuel budget"
       ? "This plan uses the original bill. Higher oil prices from recorded Gemini contracts are also tested when sizing the reserve."
@@ -85,9 +99,30 @@ load();
 
 request("/api/trial").then(report => {
   const edge = report.composition_savings;
-  el("trial-proof-title").textContent = money(edge.total_cents) + " in lower modeled costs";
+  el("trial-proof-title").textContent = money(edge.total_cents) + " in lower fees";
   el("trial-proof-copy").textContent = "With the same reserve available to both strategies, FreightOS cost less on "
     + edge.positive_cases + " of " + report.cases + " simulated loads. The other " + edge.ties + " tied.";
 }).catch(() => {});
 
 el("replay-sample").onclick = () => verifySample("SYN-004", el("replay-sample"), el("sample-result"));
+
+const flowTabs = [...document.querySelectorAll(".flow-nav [role=tab]")];
+function showFlow(selected) {
+  for (const tab of flowTabs) {
+    const active = tab === selected;
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
+    el(tab.getAttribute("aria-controls")).hidden = !active;
+  }
+}
+for (const [index, tab] of flowTabs.entries()) {
+  tab.onclick = () => showFlow(tab);
+  tab.onkeydown = event => {
+    const next = { ArrowRight: (index + 1) % flowTabs.length, ArrowLeft: (index + flowTabs.length - 1) % flowTabs.length,
+      Home: 0, End: flowTabs.length - 1 }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    flowTabs[next].focus();
+    showFlow(flowTabs[next]);
+  };
+}

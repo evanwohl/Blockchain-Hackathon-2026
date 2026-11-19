@@ -145,6 +145,7 @@ function filterLoads(previous = el("case").value) {
     const cell = document.createElement("button");
     cell.type = "button";
     cell.value = item.load;
+    cell.textContent = item.load.replace(/^SYN-/, "");
     cell.dataset.used = item.used_reserve;
     cell.title = item.load + (item.used_reserve ? " · Used reserve" : " · No reserve payment");
     cell.setAttribute("aria-label", cell.title);
