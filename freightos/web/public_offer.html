@@ -50,7 +50,8 @@
       <p class="panel-label">After payment · Fuel budget</p>
       <h2 id="fuel-update-title">Did the budget cover the oil move?</h2>
       <p>Compare the paid bill with what the same trip would cost using Gemini’s next reported oil close.</p>
-      <a class="ledger-back" href="/next-stop#two-stops">Use this estimate to budget for two stops →</a>
+      <a class="ledger-back" href="/next-stop#two-stops">Use this estimate to budget for two stops →</a><br>
+      <a class="ledger-back" href="#fuel-cover">Could an oil contract cover a higher bill? ↓</a>
       <div class="preview-outcome" id="fuel-margin" hidden><span id="margin-label"></span><strong id="margin-value"></strong></div>
     </div>
     <div class="reserve-quote">
@@ -61,6 +62,30 @@
         <p id="fuel-method"></p><p id="fuel-quote"></p>
         <a id="fuel-event" hidden target="_blank" rel="noopener">View Gemini’s oil close ↗</a>
       </details>
+    </div>
+  </section>
+  <section id="fuel-cover" class="reserve-proof" aria-labelledby="cover-title">
+    <div class="reserve-balance">
+      <p class="panel-label">Next trip · Same 210 gallons</p>
+      <h2 id="cover-title">Could an oil contract cover a higher bill?</h2>
+      <p id="cover-range">Compare extra cash for fuel with buying a contract that pays if oil closes at or above a set price.</p>
+      <fieldset id="cover-timing" disabled>
+        <legend>When is the fuel bill due?</legend>
+        <label><input type="radio" name="payout-time" value="fuel" checked> Before I can spend a payout</label>
+        <label><input type="radio" name="payout-time" value="paid"> After I can spend a payout</label>
+      </fieldset>
+      <a id="cover-reserve" class="ledger-back" hidden>Check the cash buffer on Solana →</a>
+    </div>
+    <div class="reserve-quote">
+      <h3 id="cover-answer">Extra cash for fuel</h3>
+      <dl id="cover-facts" class="facts"></dl><p id="cover-why" aria-live="polite"></p>
+      <details><summary>What the comparison assumes</summary>
+        <p id="cover-model"></p><p id="cover-cost"></p>
+        <a href="https://www.gemini.com/fees/predictions" target="_blank" rel="noopener">Gemini fee schedule ↗</a><br>
+        <a href="/evidence/fuel-cover" download="FreightOS-original-oil-book.json">Download the original market snapshot</a>
+      </details>
+      <button class="secondary" id="refresh-cover">Refresh oil contract prices</button>
+      <p id="cover-status" role="status">Opening the recorded order book…</p>
     </div>
   </section>
   <a class="ledger-back" href="/public-payment">Explore the original reserve payment and remaining vault shares →</a>

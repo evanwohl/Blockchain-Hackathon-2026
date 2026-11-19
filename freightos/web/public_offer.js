@@ -114,3 +114,56 @@ async function checkFuel(live) {
 }
 refreshFuel.onclick = () => checkFuel(true);
 checkFuel(false);
+
+const timing = el("cover-timing");
+let cover;
+
+function renderCover() {
+  const position = cover.position;
+  const fuelFirst = timing.querySelector("input:checked").value === "fuel";
+  const buffer = money(cover.cash_only_cents);
+  el("cover-range").textContent = "Suppose the next trip has the same " + money(cover.fuel_budget_cents)
+    + " budget. See how much extra cash it would need if oil closes as high as $" + cover.ceiling + " a barrel.";
+  const rows = [["Cash buffer alone", buffer]];
+  if (position) rows.push(["With the oil contract", money(fuelFirst ? position.fuel_first_cents : position.usable_first_cents)]);
+  facts(el("cover-facts"), rows);
+  el("cover-answer").textContent = fuelFirst || !position ? "Keep the fuel money available." : "A payout could reduce the cash buffer.";
+  el("cover-why").textContent = !position ? (cover.ask ? "The displayed offers provide no cheaper buffer in this range."
+    : "A matching fresh offer with available quantity could not be verified. Budget from the cash-only figure.")
+    : fuelFirst ? "Set aside " + buffer + ". Buying the contract would also use " + money(position.upfront_cents)
+      + " before the stop. A later payout cannot pay a bill due now."
+    : "Only if a winning payout reaches the driver in time, the modeled extra cash falls to " + money(position.usable_first_cents)
+      + ". If the transfer is delayed, the full " + buffer + " fuel buffer is still needed.";
+  el("cover-model").textContent = "The contract pays $1 per unit if Gemini’s oil index closes at $" + cover.threshold
+    + " or higher on " + utc(cover.expiry) + ". The comparison tests fuel costs through $" + cover.ceiling
+    + ", the highest strike in the trip’s original market. Higher oil or a different local diesel price can leave a larger bill.";
+  el("cover-cost").textContent = position ? "The displayed book priced " + position.quantity + " YES contracts at "
+    + money(position.premium_cents) + " plus " + money(position.fee_cents) + " in estimated taker fees. At the upper oil price, a winning payout of "
+    + money(position.payout_cents) + " leaves " + money(Math.max(0, cover.cash_only_cents - position.payout_cents))
+    + " of the higher fuel cost to pay. The model assumes the shown fills and zero transfer cost. The demo holds no contracts."
+    : "The demo holds no contracts. The comparison credits no unverified sale or payout.";
+  const reserve = el("cover-reserve");
+  reserve.hidden = !cover.cash_only_cents;
+  reserve.href = "/next-stop#fuel-buffer=" + cover.cash_only_cents;
+  reserve.textContent = "Check the " + buffer + " cash buffer on Solana →";
+}
+
+async function checkCover(live) {
+  const refresh = el("refresh-cover");
+  refresh.disabled = true;
+  const status = el("cover-status");
+  if (live) status.textContent = "Checking prices and available quantity on Gemini…";
+  try {
+    cover = await request("/api/fuel-cover" + (live ? "/refresh" : ""));
+    timing.disabled = false;
+    renderCover();
+    status.textContent = (live ? "Checked with Gemini" : "Recorded Gemini book") + " · " + utc(cover.checked_at);
+  } catch {
+    status.textContent = cover ? "Refresh unavailable. Showing the comparison from " + utc(cover.checked_at) + "." : "Comparison unavailable. Try refreshing.";
+  } finally {
+    refresh.disabled = false;
+  }
+}
+timing.onchange = renderCover;
+el("refresh-cover").onclick = () => checkCover(true);
+checkCover(false);

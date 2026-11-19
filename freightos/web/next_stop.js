@@ -137,5 +137,10 @@ if (location.hash === "#two-stops") {
   el("stop-fuel").value = "15.00";
   el("stop-road").value = "5.00";
 }
+const buffer = /^#fuel-buffer=([1-9][0-9]{0,8})$/.exec(location.hash);
+if (buffer) {
+  el("stop-fuel").value = (Number(buffer[1]) / 100).toFixed(2);
+  el("stop-road").value = "0.00";
+}
 updateMode();
-check(false);
+check(Boolean(buffer));
