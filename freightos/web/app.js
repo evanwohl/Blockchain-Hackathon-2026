@@ -12,6 +12,7 @@ let clockTimer;
 let currentStep;
 let displayedPlan;
 let reopenPayment = false;
+el("schedule").open = window.matchMedia("(min-width: 1160px)").matches;
 
 let profile = sessionStorage.getItem("funding-profile") || "quick pay";
 let scenario = sessionStorage.getItem("fuel-scenario") || "oil stress";
@@ -24,6 +25,15 @@ function renderCalendar(plan) {
   el("method").textContent = "FreightOS checks which money will arrive by day " + bill.day + ". It chooses the lowest-cost way to cover the fuel bill while keeping the cash you need on hand.";
   el("invoice-day").textContent = "Day " + primary.day;
   const gap = primary.day - bill.day;
+  el("day-gap").textContent = gap ? "View " + Math.abs(gap) + "-day gap" : "View same-day schedule";
+  el("day-gap").parentElement.style.setProperty("--intervals", Math.max(1, Math.abs(gap)));
+  const lines = [];
+  for (let lane = 0; lane <= 14; lane++) {
+    const t = lane / 14;
+    lines.push(`M 0 ${52 + t * 8} C 110 ${52 + t * 8}, 146 ${3 + t * 39}, 254 ${5 + t * 43}
+      S 446 ${78 - t * 7}, 516 ${59 - t * 19} S 598 ${28 + t * 4}, 640 ${28 + t * 4}`);
+  }
+  el("road-lines").setAttribute("d", lines.join(" "));
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
     : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
   const events = [
@@ -158,7 +168,11 @@ function render() {
   const delivered = receipt ? receipt.vendor_received_usdc_raw / 10000 : 0;
   const balance = plan.bill_cents - delivered - (entry?.cents || 0);
   const recordable = receipt || !plan.payment_cents;
-  el("balance").textContent = money(balance);
+  const [whole, cents] = money(balance).split(".");
+  const fraction = document.createElement("span");
+  fraction.className = "balance-cents";
+  fraction.textContent = "." + cents;
+  el("balance").replaceChildren(whole, fraction);
   el("original").hidden = balance === plan.bill_cents;
   el("bill-status").textContent = entry ? "Paid" : receipt ? "Partly paid" : "Unpaid";
   el("bill-status").dataset.stage = entry ? "paid" : receipt ? "partial" : "open";
@@ -174,7 +188,7 @@ function render() {
     : recordable ? "Use " + separate + " to pay the fuel company yourself. Once you’ve paid, enter it here."
     : state.deposit ? "Check the recipient and amount before approving the reserve payment."
     : "Set aside the full $" + tokenUnits(state.wallet_usdc_raw) + " demo balance for fuel. On the next screen, you can approve the amount going to the fuel company.";
-  el("plan-jump").textContent = "How we estimated the " + money(plan.cost_cents) + " cost ↓";
+  el("plan-jump").textContent = plan.savings_cents ? "See how this saves " + money(plan.savings_cents) : "See why this plan costs " + money(plan.cost_cents);
   const rows = [];
   if (plan.payment_cents) rows.push([receipt ? "Received by fuel company" : "FreightOS pays after you approve", money(receipt ? delivered : plan.payment_cents)]);
   const outsideLabel = { "quick pay": "You pay from your return load", "credit line": "You pay using bank credit", "cash on hand": "You pay with cash" };
@@ -333,6 +347,12 @@ function previewSettings() {
   el("draft-cost").textContent = money(plan.cost_cents);
 }
 
+el("day-gap").onclick = () => {
+  const schedule = el("schedule");
+  schedule.open = true;
+  schedule.querySelector("summary").focus();
+  schedule.scrollIntoView({ block: "nearest" });
+};
 el("configure").onclick = () => {
   for (const input of el("profile").querySelectorAll("input")) input.checked = input.value === profile;
   el("scenario").value = scenario;
