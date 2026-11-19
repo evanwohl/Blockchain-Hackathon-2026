@@ -34,22 +34,26 @@
         <svg id="slips" viewBox="0 0 480 252" aria-hidden="true" focusable="false">
           <defs>
             <pattern id="paper-lines" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 4L4 0" stroke="currentColor" stroke-width=".4" opacity=".45"/></pattern>
-            <g id="ticket-face">
-              <path d="M0 0H354V145H0Z" fill="var(--face)"/>
-              <path d="M6 6H348V139H6Z" fill="none" stroke="currentColor" opacity=".55"/>
-              <path d="M14 29H341M14 113H341M242 29V113" fill="none" stroke="currentColor" opacity=".55"/>
-              <rect x="243" y="30" width="97" height="82" fill="url(#paper-lines)"/>
-              <g transform="translate(291 71)" fill="none" stroke="currentColor" stroke-width=".9">
+            <g id="engraving" fill="none" stroke="currentColor" stroke-width=".9">
                 <defs><ellipse id="seal-loop" rx="36" ry="14"/></defs>
                 <use href="#seal-loop" transform="rotate(0)"/> <use href="#seal-loop" transform="rotate(10)"/> <use href="#seal-loop" transform="rotate(20)"/> <use href="#seal-loop" transform="rotate(30)"/> <use href="#seal-loop" transform="rotate(40)"/> <use href="#seal-loop" transform="rotate(50)"/> <use href="#seal-loop" transform="rotate(60)"/> <use href="#seal-loop" transform="rotate(70)"/> <use href="#seal-loop" transform="rotate(80)"/> <use href="#seal-loop" transform="rotate(90)"/> <use href="#seal-loop" transform="rotate(100)"/> <use href="#seal-loop" transform="rotate(110)"/> <use href="#seal-loop" transform="rotate(120)"/> <use href="#seal-loop" transform="rotate(130)"/> <use href="#seal-loop" transform="rotate(140)"/> <use href="#seal-loop" transform="rotate(150)"/> <use href="#seal-loop" transform="rotate(160)"/> <use href="#seal-loop" transform="rotate(170)"/>
               </g>
+            <g id="paid-mark" transform="translate(291 71)"><circle r="17" fill="currentColor"/><path d="m-8 0 5 5 11-12" fill="none" stroke="var(--face)" stroke-width="3"/></g>
+            <g id="ticket-face">
+              <path d="M0 0H354V145H0Z" fill="var(--face)"/>
+              <path d="M228 1H241V144H228Z" fill="url(#paper-lines)"/>
+              <path d="M6 6H348V139H6Z" fill="none" stroke="currentColor" opacity=".55"/>
+              <path d="M14 29H341M14 113H341M242 29V113" fill="none" stroke="currentColor" opacity=".55"/>
+              <rect x="243" y="30" width="97" height="82" fill="url(#paper-lines)"/>
+              <use href="#engraving" transform="translate(291 71)"/>
               <path d="M15 12H35L31 17H13ZM13 19H29L25 24H11Z" fill="currentColor"/>
               <text x="41" y="22" class="ticket-brand">FreightOS</text>
             </g>
           </defs>
-          <g id="direct-ticket" class="ticket direct"><path class="slip-side"/><path class="slip-front"/><path class="slip-edges"/><g class="face"><use href="#ticket-face"/><text x="14" y="99" class="ticket-value"></text><text x="14" y="131" class="ticket-source"></text><text x="340" y="22" class="ticket-load" text-anchor="end"></text></g></g>
-          <g id="reserve-ticket" class="ticket reserve"><path class="slip-side"/><path class="slip-front"/><path class="slip-edges"/><g class="face"><use href="#ticket-face"/><text x="14" y="99" class="ticket-value"></text><text x="14" y="131" class="ticket-source"></text><text x="340" y="22" class="ticket-load" text-anchor="end"></text></g></g>
+          <g id="direct-ticket" class="ticket direct"><path class="slip-side"/><path class="slip-front"/><path class="slip-edges"/><g class="face"><use href="#ticket-face"/><use class="paid-mark" href="#paid-mark"/><text x="14" y="99" class="ticket-value"></text><text x="14" y="131" class="ticket-source"></text><text x="340" y="22" class="ticket-load" text-anchor="end"></text></g></g>
+          <g id="reserve-ticket" class="ticket reserve"><path class="slip-side"/><path class="slip-front"/><path class="slip-edges"/><g class="face"><use href="#ticket-face"/><use class="paid-mark" href="#paid-mark"/><text x="14" y="99" class="ticket-value"></text><text x="14" y="131" class="ticket-source"></text><text x="340" y="22" class="ticket-load" text-anchor="end"></text></g></g>
         </svg>
+        <div class="split-key"><span>Payment split</span><i id="allocation" aria-hidden="true"></i></div>
         <div id="payment-log">
           <details id="reserve-part"><summary><span>Through FreightOS</span><strong></strong></summary><p></p></details>
           <details id="direct-part"><summary><span>You pay separately</span><strong></strong></summary><p></p></details>
@@ -62,17 +66,17 @@
       <p class="panel-label">Recommended plan</p>
       <h2 id="plan-head" tabindex="-1">Loading plan</h2>
       <p id="edge-reason"></p>
+      <dl class="difference" aria-label="Estimated fee comparison">
+        <div class="saving"><dt>Estimated savings</dt><dd id="saved"></dd></div>
+        <div class="fee-row"><dt>Fees with this plan</dt><dd id="chosen-cost"></dd></div>
+        <div class="fee-row"><dt id="alternative">Other option</dt><dd id="other-cost"></dd></div>
+      </dl>
       <table class="cost-lines">
         <caption>Money for the fuel bill and estimated cost</caption>
         <thead><tr><th scope="col">Where it comes from</th><th scope="col">For fuel</th><th scope="col">Est. cost</th></tr></thead>
         <tbody id="sources"></tbody>
         <tfoot><tr><th scope="row">Total</th><td id="for-fuel"></td><td id="plan-cost"></td></tr></tfoot>
       </table>
-      <dl class="difference" aria-label="Estimated fee comparison">
-        <div class="fee-row"><dt>Fees with this plan</dt><dd id="chosen-cost"></dd></div>
-        <div class="fee-row"><dt id="alternative">Other option</dt><dd id="other-cost"></dd></div>
-        <div class="saving"><dt>Estimated savings</dt><dd id="saved"></dd></div>
-      </dl>
       <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p><p id="terms"></p></details>
     </section>
     <div class="schedule-column">
@@ -86,7 +90,7 @@
   <dialog id="record" aria-labelledby="record-title"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Outside payment</p><button type="button" class="close" aria-label="Close payment record" data-dismiss>×</button></div>
     <h2 id="record-title"></h2><p id="record-help"></p>
-    <dl class="facts" id="record-facts"></dl>
+    <div class="amount-slip outside"><dl class="facts" id="record-facts"></dl><svg class="slip-seal" viewBox="-39 -39 78 78" aria-hidden="true" focusable="false"><use href="#engraving"/><circle r="12" fill="var(--slip-stock)"/><path class="seal-arrow" d="M-5 0H5M1-4l4 4-4 4"/><path class="seal-check" d="m-5 0 3 3 7-7"/></svg></div>
     <button id="save-record" class="primary"></button><p id="record-error" role="status"></p>
   </div></dialog>
   <dialog id="settings" aria-labelledby="settings-title"><div class="sheet">
@@ -104,17 +108,16 @@
     <button class="primary" id="apply">Update plan</button>
   </div></dialog>
   <dialog id="payment" aria-labelledby="title"><div class="sheet">
-    <div class="dialog-head"><p class="eyebrow">Fuel payment · Test funds</p><button type="button" class="close" aria-label="Close payment" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
-    <ol id="steps" aria-label="Payment progress"><li>1 · Set money aside</li><li>2 · Pay for fuel</li><li>3 · Receipt</li></ol>
+    <div class="dialog-head"><p class="eyebrow">Demo payment <span class="sheet-load" id="receipt-load"></span></p><button type="button" class="close" aria-label="Close payment" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <ol id="steps" aria-label="Payment progress"><li>1 · Set aside</li><li>2 · Approve</li><li>3 · Receipt</li></ol>
     <div class="payment-record">
-      <div class="receipt-head" id="receipt-head" hidden><img src="/media/freightos-mark.svg" alt="" width="33" height="33"><span>Load <b id="receipt-load"></b></span></div>
-      <h2 id="title" tabindex="-1">Loading your plan</h2><p id="instruction"></p><p id="review-clock" hidden></p><dl id="facts" class="facts"></dl>
+      <h2 id="title" tabindex="-1">Loading your plan</h2><p id="instruction"></p><div class="amount-slip"><dl id="facts" class="facts"></dl><svg class="slip-seal" viewBox="-39 -39 78 78" aria-hidden="true" focusable="false"><use href="#engraving"/><circle r="12" fill="var(--slip-stock)"/><path class="seal-arrow" d="M-5 0H5M1-4l4 4-4 4"/><path class="seal-check" d="m-5 0 3 3 7-7"/></svg></div><p id="review-clock" hidden></p>
     </div>
     <button id="primary" class="primary" disabled>Loading</button>
     <button id="cancel" class="plain" hidden>Cancel review</button><p role="status" id="status"></p>
     <button class="primary" id="return-bill" hidden>Return to bill</button>
-    <button id="verify" class="secondary" hidden>Verify payment</button><p id="verified" role="status"></p>
-    <button id="download" class="plain" hidden>Download signed receipt</button>
+    <div class="receipt-tools" id="receipt-head" hidden><button id="verify" class="secondary">Verify payment</button><button id="download" class="secondary">Download receipt</button></div>
+    <p id="verified" role="status"></p>
     <button id="reset" class="plain" hidden>Start another demo</button>
     <details id="challenge" hidden><summary>Test the vendor protection</summary><p>Try the reviewed payment with a different recipient.</p><button class="secondary" id="check">Test a different vendor</button><p id="result" role="status"></p></details>
     <details id="proof" hidden><summary>Transfer details and network fee</summary><p>Demo payments use USDC, a digital dollar. The fuel reserve uses Kamino on a local copy of Solana.</p><p id="network-details" hidden></p><pre id="details"></pre></details>

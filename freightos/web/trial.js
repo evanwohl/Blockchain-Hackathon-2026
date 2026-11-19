@@ -59,6 +59,9 @@ async function load() {
   const report = await request("/api/trial");
   el("trial-count").textContent = report.cases;
   const savings = report.conventional_savings;
+  const used = report.loads.filter(item => item.used_reserve).length;
+  el("reserve-count").textContent = used;
+  el("outside-count").textContent = report.cases - used;
   const payments = report.execution_counts["signed and replayed on fork"];
   el("total").textContent = money(savings.total_cents);
   el("context").textContent = "Choose one of " + report.cases + " loads to see how much it costs to pay for fuel.";

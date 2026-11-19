@@ -120,6 +120,7 @@ function renderPlan(plan) {
   const profile = profiles[plan.profile];
   renderCalendar(plan);
   drawFunding(plan);
+  el("allocation").style.setProperty("--reserve-share", (100 * plan.payment_cents / plan.bill_cents) + "%");
   el("saved").textContent = money(plan.savings_cents);
   el("plan-cost").textContent = el("chosen-cost").textContent = money(plan.cost_cents);
   const scale = Math.max(1, plan.cost_cents, plan.alternative_cost_cents);
@@ -163,7 +164,7 @@ function paymentView(plan) {
   const { receipt, review } = state;
   if (receipt) return {
     stage: 2, title: "Your fuel payment arrived", button: "Start another demo",
-    description: "Your fuel vendor received the reserve payment in demo dollars.",
+    description: state.manual_payment ? "Both parts of this bill are accounted for." : "The reserve payment is complete. Pay the remaining balance directly.",
     rows: [["Received by fuel company", money(receipt.vendor_received_usdc_raw / 10000)], [state.manual_payment ? "Recorded separately by you" : "Still to pay separately", money(plan.other_funds_cents)]]
   };
   if (!plan.payment_cents) return {
@@ -173,19 +174,19 @@ function paymentView(plan) {
   };
   if (review) return {
     stage: 1, title: "Review your payment", button: "Send " + money(plan.payment_cents) + " to fuel company",
-    description: "Check who gets the money and how much you still need to pay yourself.",
-    rows: [["To", "Fuel company"], ["Vendor receives", money(review.usdc_raw / 10000)], ["Still to cover separately", money(plan.other_funds_cents)]]
+    description: "Approve this transfer from your fuel reserve.",
+    rows: [["To the fuel company", money(review.usdc_raw / 10000)], ["Still to cover separately", money(plan.other_funds_cents)]]
   };
   if (state.deposit) return {
     stage: 1, title: "Your fuel money is ready", button: "Review " + money(plan.payment_cents) + " payment",
-    description: "Confirm who will receive the funds and how much to send.",
-    rows: [["From your reserve", money(plan.payment_cents)], ["Still to pay separately", money(plan.other_funds_cents)]]
+    description: "Your reserve is funded. Review the transfer before sending.",
+    rows: [["For the fuel company", money(plan.payment_cents)], ["Still to pay separately", money(plan.other_funds_cents)]]
   };
   const amount = tokenUnits(state.wallet_usdc_raw);
   return {
     stage: 0, title: "Set money aside for fuel", button: "Set aside $" + amount,
-    description: "This moves your demo dollars into a fuel reserve for bills. The fuel company receives money only after you approve the next step.",
-    rows: [["Set aside for fuel", "$" + amount], ["Planned payment to fuel company", money(plan.payment_cents)]]
+    description: "Move demo dollars into your reserve. You approve the fuel payment next.",
+    rows: [["To your fuel reserve", "$" + amount], ["Planned payment to fuel company", money(plan.payment_cents)]]
   };
 }
 
@@ -201,6 +202,8 @@ function render() {
   const busy = Boolean(pending);
   const entry = state.manual_payment;
   const separate = profiles[profile].source.toLowerCase();
+  el("reserve-ticket").classList.toggle("settled", Boolean(receipt));
+  el("direct-ticket").classList.toggle("settled", Boolean(entry));
   const delivered = receipt ? receipt.vendor_received_usdc_raw / 10000 : 0;
   const balance = plan.bill_cents - delivered - (entry?.cents || 0);
   const recordable = receipt || !plan.payment_cents;
@@ -231,7 +234,9 @@ function render() {
   renderSource("direct-part", entry ? "Recorded by you" : "You pay separately", plan.other_funds_cents,
     entry ? "You marked this amount as paid outside FreightOS." : "Use " + separate + " to cover this part directly with the fuel company.");
   el("receipt-head").hidden = !receipt;
-  el("receipt-load").textContent = receipt ? plan.load : "";
+  el("receipt-load").textContent = plan.load;
+  el("payment").classList.toggle("received", Boolean(receipt));
+  el("return-bill").textContent = balance > 0 ? "Back to bill · " + roundedDollars(balance) + " left" : "Back to paid bill";
   el("reset").hidden = !receipt;
   el("reset").disabled = busy;
   el("verify").textContent = pending === "Verifying…" ? pending : "Verify payment";
@@ -417,10 +422,11 @@ let recordRequest;
 function openRecord(plan) {
   const undo = Boolean(state.manual_payment);
   recordRequest = { undo, body: { version: state.record_version, profile, scenario } };
+  el("record").classList.toggle("received", undo);
   el("record-title").textContent = undo ? "Recorded outside payment" : "Record your payment";
   el("record-help").textContent = undo ? "You marked this amount as paid outside FreightOS. Undoing the entry reopens that balance."
     : "Confirm you already paid the fuel vendor outside FreightOS. This updates the bill record only.";
-  facts(el("record-facts"), [["Load", plan.load], ["Source", profiles[profile].source], ["Amount", money(plan.other_funds_cents)]]);
+  facts(el("record-facts"), [[undo ? "Recorded by you" : "Paid by you outside FreightOS", money(plan.other_funds_cents)], ["Source", profiles[profile].source], ["Load", plan.load]]);
   el("save-record").textContent = undo ? "Undo payment entry" : "I paid " + money(plan.other_funds_cents);
   el("record-error").textContent = "";
   el("record").showModal();

@@ -11,8 +11,17 @@
 </head>
 <body class="workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M8 15h3"/></svg>Fuel bills</a><a href="/trial" aria-current="page"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M6 16v-4m6 4V5m6 11V9"/></svg>Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
-<main><div class="page-heading"><div><p class="eyebrow">Simulated loads</p><h1>Sample loads</h1></div></div>
-    <div class="trial-summary"><div><h2>Estimated fees saved</h2><strong class="display" id="total">—</strong></div><p>Across <span id="trial-count">the</span> sample loads, compared with the cheapest option each carrier had without the fuel reserve.</p></div>
+<main class="sample-desk">
+  <div class="bill-jacket">
+    <header class="bill-heading"><div class="document-id"><h1>Sample loads</h1><span class="load-ref">Simulation</span></div></header>
+    <section class="trial-summary" aria-labelledby="savings-title">
+      <div><h2 id="savings-title">Estimated fees saved</h2><strong class="display" id="total">—</strong></div>
+      <div class="sample-comparison"><p>Across <b id="trial-count">all</b> sample loads, compared with the cheapest way each carrier could cover fuel without a reserve.</p>
+        <div class="sample-key"><span><i></i>Used reserve</span><strong id="reserve-count">—</strong></div>
+        <div class="sample-key"><span><i></i>Paid without reserve</span><strong id="outside-count">—</strong></div>
+      </div>
+    </section>
+  </div>
     <div class="trial-workspace">
     <section class="matrix-panel" aria-labelledby="map-title">
       <h2 id="map-title">Load index</h2><p id="context"></p>
@@ -20,7 +29,7 @@
       <div class="legend"><span><i class="used"></i>Used reserve</span><span><i></i>No reserve payment</span></div>
     </section>
     <section class="card case" aria-labelledby="load-title">
-      <div class="actionhead"><strong id="load-title">Load detail</strong></div>
+      <h2 id="load-title">Load detail</h2>
       <div class="inside"><label for="case">Sample load</label><select id="case" disabled></select>
         <dl id="case-facts" class="facts"></dl><p id="outcome" role="status"></p>
         <button id="receipt" class="secondary" hidden>Download signed receipt</button>
@@ -37,5 +46,5 @@
   </div>
   <p role="status" id="status"></p><button class="plain" id="retry" hidden>Try again</button>
 </main>
-<footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Solana local fork</span><span>Signed receipts record test payments.</span></div></footer>
+<footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Test payments</span><span>All amounts in US dollars. Demo funds only.</span></div></footer>
 </body></html>
