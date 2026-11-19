@@ -1,6 +1,6 @@
 import { el, facts, money, request } from "./common.js";
 
-const form = el("trip-form");
+const form = el("trip-cover-form");
 const result = el("trip-result");
 let current;
 let revision = 0;

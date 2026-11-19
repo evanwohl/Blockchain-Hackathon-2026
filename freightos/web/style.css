@@ -796,3 +796,5 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .trip-outcome small { display: block; margin-bottom: .35rem; }
 #trip-check { background: #dceda4; color: #24301a; }
 #trip-check:hover:enabled { background: #c9de88; }
+.trip-fields label:last-child { grid-column: 1 / -1; }
+#trip-cover-form button { width: 100%; min-height: 44px; }
