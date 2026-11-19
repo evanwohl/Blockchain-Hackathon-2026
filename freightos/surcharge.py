@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 from freightos.funding import demo_plans, priced_plan
-from hedging.invoice_policy import invoice_choices, invoice_policy, reserve_limit
+from hedging.invoice_policy import invoice_choices, invoice_policy, minimum_capacity, reserve_limit
 from hedging.quick_pay import integer, price_calendar
 
 
@@ -110,3 +110,24 @@ def offer_decision(cents, day, regular_day, fee, capacity, scenario):
              "early_cost_cents": early[scenario]["cost_cents"], "wait_cost_cents": waiting[scenario]["cost_cents"],
              "least_saved_cents": savings, "take_offer": take_offer}
     return (early, early_policy, offer) if take_offer else (waiting, wait_policy, offer)
+
+
+def larger_offer_budget(cents, day, regular_day, fee, cap, available, scenario):
+    early, policy = surcharge_plans(cents, day, available, fee, regular_day)
+    current_wait, _ = surcharge_plans(cents, regular_day, cap)
+    limits = {key: plan["cost_cents"] - 1 for key, plan in current_wait.items()}
+    minimum = None
+    if min(limits.values()) >= 0:
+        for invoices in invoice_choices(early):
+            cases = {key: {**plan["calendar"], "invoices": invoices} for key, plan in early.items()}
+            need = minimum_capacity(cases, limits)
+            if need is not None and (minimum is None or need < minimum):
+                minimum = need
+    for target in dict.fromkeys((minimum, policy["peak_reserve_cents"])):
+        if target is None or target <= cap:
+            continue
+        chosen, revised_policy, offer = offer_decision(cents, day, regular_day, fee, target, scenario)
+        if offer["take_offer"] and all(plan["cost_cents"] <= limits[key] for key, plan in chosen.items()):
+            return {"limit_cents": target, "minimum_to_beat_current": target == minimum,
+                    "peak_reserve_cents": revised_policy["peak_reserve_cents"], "early_cost_cents": offer["early_cost_cents"],
+                    "wait_cost_cents": offer["wait_cost_cents"], "least_saved_cents": offer["least_saved_cents"]}

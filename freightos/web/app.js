@@ -630,7 +630,7 @@ async function sync(restore = false) {
     el("open-invoice-delay").click();
   }
   if (["surcharge", "surcharge-offer"].includes(choice.get("view")) && !el("open-surcharge").hidden)
-    openSurcharge(choice.get("view") === "surcharge-offer");
+    openSurcharge(choice.get("view") === "surcharge-offer", choice);
   if (choice.get("view") === "next-trip" && !el("expense-note").hidden) el("expense-note").click();
   if (restore && (state.review || reopenPayment) && !el("payment").open) el("payment").showModal();
   reopenPayment = false;

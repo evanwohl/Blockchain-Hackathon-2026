@@ -12,10 +12,10 @@ from uuid import uuid4
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, devnet, public_offer, reserve_return
-from freightos.surcharge import offer_decision, standard_terms_threshold, surcharge_plans
+from freightos.surcharge import larger_offer_budget, offer_decision, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
-from hedging.quick_pay import price_calendar
+from hedging.quick_pay import integer, price_calendar
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
 ASSETS = Path(__file__).with_name("web")
@@ -111,11 +111,12 @@ class LoadSettlement:
         self.plans, self.edges, self.policies = plans.copy(), edges.copy(), policies.copy()
         self.surcharge_profile = None
         self.applied_quote = None
+        self.surcharge_limit = None
 
     def clear_surcharge(self):
         for group in (self.plans, self.edges, self.policies):
             group.pop(self.surcharge_profile, None)
-        self.surcharge_profile = self.applied_quote = None
+        self.surcharge_profile = self.applied_quote = self.surcharge_limit = None
         self.quote_balances = None
 
     def quote_surcharge(self, data):
@@ -129,7 +130,9 @@ class LoadSettlement:
             raise ValueError("Select a fuel estimate")
         wallet = self.fork.balance(self.fork.cash)
         cap = self.fork.available_after_deposit(wallet // 10000) // 10000
-        cap = min(cap, base["calendar"]["funding"][0]["net_capacity_cents"])
+        available = min(cap, base["calendar"]["funding"][0]["net_capacity_cents"])
+        limit = integer(data["reserve_limit_cents"], "reserve limit") if "reserve_limit_cents" in data else None
+        cap = available if limit is None else min(available, limit)
         cents, day = data.get("cents"), data.get("day")
         due = base["calendar"]["bills"][0]["day"]
         offer = None
@@ -138,6 +141,8 @@ class LoadSettlement:
             if regular is None:
                 raise ValueError("Enter the regular payment day")
             plans, policy, offer = offer_decision(cents, day, regular, data.get("fee_cents"), cap, scenario)
+            if cap < available and not offer["take_offer"]:
+                offer["larger_budget"] = larger_offer_budget(cents, day, regular, data["fee_cents"], cap, available, scenario)
             other_day = regular if offer["take_offer"] else day
             other_cost = offer["wait_cost_cents"] if offer["take_offer"] else offer["early_cost_cents"]
         else:
@@ -152,10 +157,19 @@ class LoadSettlement:
                  "comparison_cost_cents": other_cost,
                  "setup_cents": self.fork.deposit_quote(policy["peak_reserve_cents"]),
                  "threshold_cents": standard_terms_threshold(cap),
+                 "requested_limit_cents": limit, "available_reserve_cents": available,
                  "budget_count": len(plans),
                  "full_invoices": all(o == "standard" for o in policy["elections"].values()),
                  "record_version": self.record_version}
         if offer is not None:
+            alternative = offer.get("larger_budget")
+            if alternative:
+                try:
+                    alternative["setup_cents"] = self.fork.deposit_quote(alternative["peak_reserve_cents"])
+                except VaultExecutionError:
+                    offer["larger_budget"] = None
+                else:
+                    alternative["extra_setup_cents"] = alternative["setup_cents"] - quote["setup_cents"]
             quote["offer"] = offer
         return {"id": bill.commitment(quote).hex(), **quote}
 
@@ -213,6 +227,7 @@ class LoadSettlement:
                 "manual_payment": self.manual_payment,
                 "record_version": self.record_version,
                 "surcharge_profile": self.surcharge_profile,
+                "surcharge_limit_cents": self.surcharge_limit,
                 "receipt": self.fork.receipts.get(LOAD),
                 "review": review,
                 "plans": self.plans["quick pay"],
@@ -282,6 +297,7 @@ class LoadSettlement:
                 key = quote["profile"]
                 self.plans[key], self.edges[key], self.policies[key] = plans, edges, policy
                 self.surcharge_profile, self.applied_quote = key, quote["id"]
+                self.surcharge_limit = quote["requested_limit_cents"]
                 self.record_version = uuid4().hex
                 return {"profile": key}
             if action == "return-quote":
