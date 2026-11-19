@@ -57,14 +57,15 @@ export function oilOptions(select, plans) {
 
 export const usesCredit = profile => profile === "credit line" || profile === "road cash";
 
-export function cashPriority(state, funding, scenario) {
+export function cashPriority(state, funding, scenario, late = false) {
   const field = document.querySelector(".cash-choice");
   field.hidden = !usesCredit(funding);
   if (field.hidden) return funding;
-  const selected = field.querySelector(":checked").value;
+  const resolve = key => late ? state.pairing_values[key][scenario].invoice_delay.alternative : key;
+  const selected = resolve(field.querySelector(":checked").value);
   const quoted = Object.hasOwn(state.setup_cents, selected);
   for (const input of field.querySelectorAll("input")) {
-    const profile = input.value;
+    const profile = resolve(input.value);
     const fee = state.funding_plans[profile][scenario].cost_cents;
     const available = quoted && state.setup_cents[profile] != null;
     const cash = available ? money(state.wallet_usdc_raw / 10000 - state.setup_cents[profile]) : "—";
@@ -74,10 +75,11 @@ export function cashPriority(state, funding, scenario) {
     input.setAttribute("aria-label", row.querySelector("span").textContent + ", " + money(fee)
       + " estimated fees" + (available ? ", " + cash + " left in wallet" : ""));
   }
-  const delta = state.setup_cents["credit line"] - state.setup_cents["road cash"];
-  const premium = state.funding_plans["road cash"][scenario].cost_cents - state.funding_plans["credit line"][scenario].cost_cents;
+  const credit = resolve("credit line"), road = resolve("road cash");
+  const delta = state.setup_cents[credit] - state.setup_cents[road];
+  const premium = state.funding_plans[road][scenario].cost_cents - state.funding_plans[credit][scenario].cost_cents;
   field.querySelector(".cash-note").textContent = !quoted ? "Reserve setup is closed for this bill. You can still compare estimated fees."
-    : state.setup_cents["credit line"] === null || state.setup_cents["road cash"] === null ? "A dash means the reserve is unavailable for that option."
+    : state.setup_cents[credit] === null || state.setup_cents[road] === null ? "A dash means the reserve is unavailable for that option."
     : delta > 0 ? "After setup, keep " + money(delta) + " more available for tolls or repairs for " + money(premium) + " in extra fees."
     : "The plans leave the same wallet balance after setup. In the bill, check unused money to see what you can move back to your wallet.";
   return selected;

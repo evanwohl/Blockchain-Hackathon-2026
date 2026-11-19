@@ -13,9 +13,9 @@ from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
 from freightos import bill, devnet, reserve_return
 from freightos.live import reserve_observation
-from freightos.funding import DATA, LOAD, demo_plans, funding_plan
+from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan
 from hedging.quick_pay import price_calendar
-from hedging.payment_timing import reserve_deadline
+from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, reserve_deadline
 
 ASSETS = Path(__file__).with_name("web")
 
@@ -48,10 +48,19 @@ def stressed_trial():
     _, cases = trial_data()
     comparisons = {"conventional": [], "composition": []}
     timing = {"misses": 0, "shortfall_cents": 0, "replanning_fee_cents": 0}
+    freight_delay = {"days": DELAY_DAYS, "short_cases": 0, "peak_gaps_cents": 0, "replanning_fee_cents": 0}
     for row in cases.values():
         case = row["case"]
         reserve = case["funding"][0]
         selected = row["decision"]
+        gap = invoice_delay_gap(case, selected["payments"], selected["funding"], "primary load", DELAY_DAYS)
+        if gap["extra_cash_cents"]:
+            revised = price_calendar(late_invoice_calendar(case, "primary load", DELAY_DAYS))
+            if revised["status"] != "funded":
+                raise ValueError("No delayed-freight plan covers this trial load")
+            freight_delay["short_cases"] += 1
+            freight_delay["peak_gaps_cents"] += gap["extra_cash_cents"]
+            freight_delay["replanning_fee_cents"] += revised["cost_cents"] - selected["cost_cents"]
         cutoff = reserve_deadline(case, selected["payments"], selected["funding"], reserve["id"])
         if cutoff and cutoff["arrival_day"] + 1 > cutoff["last_day"]:
             timing["misses"] += 1
@@ -76,7 +85,7 @@ def stressed_trial():
         k = (len(values) + 9) // 10
         counts[name] = {"savings_cents": sum(values), "positive_cases": sum(x > 0 for x in values),
                         "replaced_cases": k, "worst_mix_cents": sum(sorted(values)[:-k]) + k * min(values)}
-    return {**counts, "one_day_delay": timing}
+    return {**counts, "one_day_delay": timing, "late_freight": freight_delay}
 
 
 class LoadSettlement:
@@ -94,11 +103,17 @@ class LoadSettlement:
         balances = self.fork.balance(self.fork.cash), self.fork.balance(self.fork.shares)
         if balances != self.quote_balances:
             quotes = {}
+            by_target = {}
             for profile in self.plans:
+                target = self.reserve_target(profile)
+                if target in by_target:
+                    quotes[profile] = by_target[target]
+                    continue
                 try:
-                    quotes[profile] = self.fork.deposit_quote(self.reserve_target(profile))
+                    quotes[profile] = self.fork.deposit_quote(target)
                 except VaultExecutionError:
                     quotes[profile] = None
+                by_target[target] = quotes[profile]
             self.quotes = quotes
             self.quote_balances = balances
         return self.quotes

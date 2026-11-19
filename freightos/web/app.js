@@ -40,13 +40,19 @@ function dayLabel(day) {
   return date ? shortDate.format(date) : "Day " + day;
 }
 
+function regularProfile(plan) {
+  const normal = plan.backup_for ? state.funding_plans[plan.backup_for][plan.scenario] : plan;
+  return normal.late_freight?.regular_profile || normal.profile;
+}
+
 function scheduleEvents(plan) {
   const bill = plan.calendar.bills[0];
   return [
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true, outgoing: true },
     ...plan.invoice_elections.map(item => ({
       day: item.day, label: item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
-      note: item.option === "standard" ? "Scheduled payment" : "Early payment", amount: item.receipt_cents
+      note: item.option === "standard" ? "Scheduled payment" : "Early payment after a "
+        + money(plan.calendar.invoices.find(i => i.id === item.invoice).face_cents - item.receipt_cents) + " discount", amount: item.receipt_cents
     })),
     ...plan.funding.flatMap(item => {
       const terms = plan.calendar.funding.find(source => source.id === item.source);
@@ -72,6 +78,7 @@ function renderCalendar(plan) {
     : "FreightOS compares funding that arrives by day " + bill.day + " and prices the fees through repayment.";
   el("invoice-day").textContent = dayLabel(primary.day);
   renderDeadline(plan);
+  renderInvoiceDelay(plan);
   const gap = primary.day - bill.day;
   el("day-gap").textContent = "View dates →";
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
@@ -126,16 +133,21 @@ el("trip-form").onsubmit = event => {
 function explainChoice(plan) {
   const primary = plan.calendar.invoices.find(invoice => invoice.id === "primary load");
   if (plan.backup_for) {
-    if (plan.backup_for === "quick pay") {
+    if (regularProfile(plan) === "quick pay") {
       const early = plan.invoice_elections.find(item => item.invoice === primary.id);
       return ["Use early pay on the main load", "Arrange early pay on the " + money(primary.face_cents) + " invoice. It releases "
         + money(early.receipt_cents) + " on " + dayLabel(early.day) + ". Use " + money(plan.bill_cents) + " of that money for fuel."];
     }
     return ["Use the bank line for fuel", "Draw " + money(plan.bill_cents) + " from the sample bank line and pay the fuel company directly. Repayment including fees is "
-      + money(plan.bill_cents + plan.cost_cents) + "."];
+      + money(plan.bill_cents + plan.funding.find(d => d.source === "approved bank line").cost_cents) + "."];
   }
   if (plan.profile === "cash on hand") {
     return ["Use the cash you have", "You have enough to pay for fuel on time. Collect both invoices on their usual dates."];
+  }
+  if (plan.late_freight) {
+    const early = plan.invoice_elections.find(i => i.invoice === primary.id);
+    return ["Bring the freight payment forward", "Choose the " + dayLabel(early.day) + " early-pay offer before booking the invoice terms. You receive "
+      + money(early.receipt_cents) + " on the main load, enough to rebuild the fuel reserve on schedule."];
   }
   if (plan.profile === "road cash") {
     const bank = plan.funding.find(s => s.source === "approved bank line");
@@ -215,7 +227,11 @@ function renderPlan(plan) {
   const reserve = plan.funding.find(item => item.source === "reserve redemption");
   const sources = [];
   if (reserve) sources.push(["Money set aside for fuel", reserve.net_proceeds_cents, reserve.cost_cents]);
-  sources.push([profile.source, plan.other_funds_cents, plan.cost_cents - (reserve?.cost_cents || 0)]);
+  const main = plan.calendar.invoices.find(i => i.id === "primary load");
+  const mainPaid = plan.invoice_elections.find(i => i.invoice === main.id);
+  const laterFee = mainPaid.day > plan.calendar.bills[0].day ? main.face_cents - mainPaid.receipt_cents : 0;
+  sources.push([profile.source, plan.other_funds_cents, plan.cost_cents - (reserve?.cost_cents || 0) - laterFee]);
+  if (laterFee) sources.push(["Earlier freight payment after fuel is due", 0, laterFee]);
   el("sources").replaceChildren(...sources.map(([name, amount, cost]) => {
     const row = document.createElement("tr");
     const label = document.createElement("th");
@@ -242,7 +258,7 @@ function renderPlan(plan) {
 
 function renderFuelPolicy(plan) {
   const edge = state.pairing_values[plan.profile][plan.scenario];
-  const options = usesCredit(plan.profile) ? "Bank credit and return-invoice options" : "Return-invoice options";
+  const options = usesCredit(regularProfile(plan)) ? "Bank credit and return-invoice options" : "Return-invoice options";
   facts(el("pair-fees"), [
     ["Main invoice and existing cash", money(edge.base_cents)],
     ["Add only the fuel reserve", money(edge.reserve_only_cents)],
@@ -313,7 +329,7 @@ function renderDeadline(plan) {
     : "If the money hasn’t cleared when fuel is due on " + dayLabel(cutoff.last_day) + ", this plan falls " + money(cutoff.shortfall_cents) + " short.";
   el("normal-fee").textContent = money(state.funding_plans[normal][plan.scenario].cost_cents);
   el("backup-fee").textContent = money(backup.cost_cents);
-  el("backup-copy").textContent = (normal === "quick pay" ? "Arrange early pay on the main invoice" : "Arrange a draw on your approved bank line")
+  el("backup-copy").textContent = (regularProfile(plan) === "quick pay" ? "Arrange early pay on the main invoice" : "Arrange a draw on your approved bank line")
     + " before committing to invoice terms. Paying directly adds " + money(cutoff.extra_fee_cents) + " in estimated fees.";
   el("backup-detail").querySelector("summary").textContent = late ? "Compare with the reserve plan" : "What if the reserve runs late?";
   el("switch-timing").textContent = late ? "Use the reserve plan" : "Use this backup plan";
@@ -322,6 +338,39 @@ function renderDeadline(plan) {
   el("switch-timing").hidden = locked;
   el("backup-lock").hidden = !locked;
   el("backup-lock").textContent = state.review ? "Cancel the pending approval to change plans." : "A payment is recorded. This comparison is for reference.";
+}
+
+function renderInvoiceDelay(plan) {
+  const locked = Boolean(state.review || state.receipt || state.manual_payment);
+  const delay = state.pairing_values[plan.profile][plan.scenario].invoice_delay;
+  el("invoice-delay").hidden = !delay;
+  if (!delay) return;
+  const regular = state.funding_plans[delay.regular][plan.scenario];
+  const protectedPlan = state.funding_plans[delay.alternative][plan.scenario];
+  const original = regular.invoice_elections.find(i => i.invoice === "primary load");
+  const early = protectedPlan.invoice_elections.find(i => i.invoice === "primary load");
+  el("delay-bill-date").textContent = dayLabel(regular.calendar.bills[0].day);
+  el("delay-refill-date").textContent = dayLabel(regular.calendar.funding.find(s => s.id === "reserve redemption").restore_day);
+  el("delay-freight-date").textContent = dayLabel(original.day + delay.days);
+  el("delay-gap").textContent = delay.extra_cash_cents ? "Fuel is covered. If the freight payment slips a week, the usual plan needs "
+    + money(delay.extra_cash_cents) + " in extra cash on " + dayLabel(delay.first_short_day)
+    + " to rebuild the reserve and cover modeled funding costs." : "The usual plan covers its scheduled payments even with the late freight receipt.";
+  el("delay-normal-fee").textContent = money(regular.cost_cents);
+  el("delay-safe-fee").textContent = money(protectedPlan.cost_cents);
+  el("delay-terms").textContent = "The early-pay offer brings in " + money(early.receipt_cents) + " on " + dayLabel(early.day)
+    + ". It costs " + money(protectedPlan.cost_cents - regular.cost_cents) + " extra and assumes the quoted date holds.";
+  const deposit = state.setup_cents[delay.regular];
+  const wallet = Math.floor(state.wallet_usdc_raw / 10000);
+  el("delay-wallet").textContent = Number.isInteger(deposit)
+    ? "Keeping the usual terms leaves " + money(wallet - deposit) + " in the wallet after setup. Using it would bring the remaining gap to "
+      + money(Math.max(0, delay.extra_cash_cents - wallet + deposit)) + "."
+    : "The reserve replenishment date is your target for the next trip.";
+  const active = Boolean(plan.late_freight);
+  el("switch-invoice").textContent = active ? "Use usual invoice terms" : "Use earlier freight payment";
+  el("switch-invoice").value = active ? delay.regular : delay.alternative;
+  el("switch-invoice").hidden = locked;
+  el("invoice-lock").hidden = !locked;
+  el("invoice-lock").textContent = state.review ? "Cancel the pending approval to change terms." : "Invoice choices are locked for this payment record.";
 }
 
 function paymentView(plan) {
@@ -368,7 +417,7 @@ function render() {
   const unavailable = state.setup_cents[profile] === null && !review && !receipt && !state.manual_payment;
   walletState(state, profile, busy);
   const entry = state.manual_payment;
-  el("switch-timing").disabled = busy;
+  el("switch-timing").disabled = el("switch-invoice").disabled = busy;
   el("policy-rows").inert = busy;
   const separate = profiles[profile].source.toLowerCase();
   el("reserve-ticket").classList.toggle("settled", Boolean(receipt));
@@ -450,6 +499,13 @@ function render() {
 async function sync(restore = false) {
   const previousApproval = state?.review?.id;
   state = await request("/api/state");
+  for (const [key, choices] of Object.entries(state.funding_plans)) {
+    if (profiles[key]) continue;
+    const plan = choices["oil stress"];
+    const base = regularProfile(plan);
+    profiles[key] = plan.backup_for && base === "quick pay" ? profiles["invoice backup"] : profiles[base];
+    if (!plan.backup_for && usesCredit(base)) profiles[key] = { ...profiles[base], fallback: "Bank and earlier freight payment without the reserve" };
+  }
   oilOptions(el("scenario"), state.plans);
   if (previousApproval && state.receipt?.approval === previousApproval) el("status").textContent = "";
   const locked = (state.receipt || state.review)?.decision || state.manual_payment;
@@ -492,6 +548,12 @@ async function sync(restore = false) {
   }, Math.ceil(state.review.expires_in_seconds * 1000) + 100);
   render();
   delete el("desk").dataset.loading;
+  if (choice.get("view") === "late-freight" && !locked && state.pairing_values[profile][scenario].invoice_delay) {
+    openBillTab("dates-tab");
+    el("invoice-delay").open = true;
+    el("invoice-delay").querySelector("summary").focus();
+    el("invoice-delay").scrollIntoView({ block: "center" });
+  }
   if (restore && (state.review || reopenPayment) && !el("payment").open) el("payment").showModal();
   reopenPayment = false;
 }
@@ -592,7 +654,10 @@ function draftProfile() {
   const funding = el("profile").querySelector(":checked").value;
   const omit = el("no-reserve").checked && funding !== "cash on hand";
   el("no-reserve-field").hidden = funding === "cash on hand";
-  const normal = cashPriority(state, funding, el("scenario").value);
+  el("late-freight-field").hidden = funding === "cash on hand";
+  const late = funding !== "cash on hand" && el("late-freight").checked;
+  const key = cashPriority(state, funding, el("scenario").value, late);
+  const normal = late && funding === "quick pay" ? state.pairing_values[key][el("scenario").value].invoice_delay.alternative : key;
   if (!omit) return normal;
   document.querySelector(".cash-choice").hidden = true;
   return state.pairing_values[normal][el("scenario").value].timing?.backup_profile || normal;
@@ -601,7 +666,9 @@ function draftProfile() {
 function previewSettings() {
   const choice = draftProfile();
   for (const input of el("profile").querySelectorAll("input")) {
-    const key = usesCredit(choice) && usesCredit(input.value) ? choice : input.value;
+    const fuel = el("scenario").value;
+    const primary = input.value === "credit line" ? document.querySelector(".cash-choice input:checked").value : input.value;
+    const key = el("late-freight").checked ? state.pairing_values[primary][fuel].invoice_delay?.alternative || primary : primary;
     const timing = state.pairing_values[key][el("scenario").value].timing;
     const estimate = state.funding_plans[el("no-reserve").checked && timing ? timing.backup_profile : key][el("scenario").value];
     input.labels[0].querySelector("small").textContent = money(estimate.cost_cents) + " plan fee";
@@ -629,7 +696,9 @@ el("day-gap").onclick = () => {
 };
 el("plan-jump").onclick = () => openBillTab("fees-tab");
 el("configure").onclick = () => {
-  const normal = displayedPlan.backup_for || profile;
+  const regular = displayedPlan.backup_for ? state.funding_plans[displayedPlan.backup_for][scenario] : displayedPlan;
+  const normal = regularProfile(displayedPlan);
+  el("late-freight").checked = Boolean(regular.late_freight);
   for (const input of el("profile").querySelectorAll("input")) input.checked = input.value === (usesCredit(normal) ? "credit line" : normal);
   for (const radio of document.querySelectorAll(".cash-choice input")) radio.checked = radio.value === (normal === "road cash" ? normal : "credit line");
   el("scenario").value = scenario;
@@ -651,12 +720,12 @@ el("policy-rows").onclick = event => {
   usePlan(profile, button.value);
   el("policy-rows").querySelector('[aria-pressed="true"]').focus({ preventScroll: true });
 };
-el("switch-timing").onclick = () => {
+el("switch-timing").onclick = el("switch-invoice").onclick = event => {
   if (pending || state.review || state.receipt || state.manual_payment) return;
-  usePlan(el("switch-timing").value, scenario);
+  usePlan(event.currentTarget.value, scenario);
   el("action-title").focus();
 };
-el("scenario").onchange = el("profile").onchange = el("no-reserve").onchange = previewSettings;
+el("scenario").onchange = el("profile").onchange = el("no-reserve").onchange = el("late-freight").onchange = previewSettings;
 document.querySelector(".cash-choice").onchange = previewSettings;
 el("apply").onclick = () => {
   usePlan(draftProfile(), el("scenario").value);
