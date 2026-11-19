@@ -142,6 +142,11 @@ class LoadSettlement:
                 if plan["payment_cents"] and not receipt:
                     raise ValueError("Complete the reserve payment first")
                 entry = {"profile": profile, "scenario": scenario, "cents": plan["other_funds_cents"]}
+                reference = data.get("reference", "")
+                if not isinstance(reference, str) or len(reference) > 80 or (reference and not reference.isprintable()):
+                    raise ValueError("Use up to 80 printable characters for the payment reference")
+                if reference.strip():
+                    entry["reference"] = reference.strip()
                 if self.manual_payment and self.manual_payment != entry:
                     raise ValueError("An outside payment is already recorded")
                 self.manual_payment = entry
@@ -239,7 +244,9 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(200, self.server.settlement.state())
             return
         assets = {
-            "/": ("index.html", "text/html; charset=utf-8"),
+            "/": ("overview.html", "text/html; charset=utf-8"),
+            "/overview.js": ("overview.js", "text/javascript"),
+            "/bill": ("index.html", "text/html; charset=utf-8"),
             "/trial": ("trial.html", "text/html; charset=utf-8"),
             "/trial.js": ("trial.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),

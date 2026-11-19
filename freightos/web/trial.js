@@ -2,6 +2,7 @@ import { downloadReceipt, el, facts, money, request } from "./common.js";
 
 let selection;
 let row;
+let loads = [];
 
 async function showCase() {
   for (const cell of el("load-map").children) {
@@ -9,6 +10,7 @@ async function showCase() {
     cell.setAttribute("aria-pressed", String(selected));
     cell.tabIndex = selected ? 0 : -1;
   }
+  history.replaceState(null, "", "#" + el("case").value);
   selection?.abort();
   selection = new AbortController();
   const signal = selection.signal;
@@ -25,6 +27,7 @@ async function showCase() {
     facts(el("case-facts"), [
       ["Fuel bill", money(row.case.bills[0].cents)],
       ["Paid from reserve", money(row.reserve_payment_cents)],
+      ["Estimated savings", money(row.conventional.cost_cents - row.decision.cost_cents)],
       ["Cost with FreightOS", money(row.decision.cost_cents)],
       ["Lowest cost without a fuel reserve", money(row.conventional.cost_cents)],
       ["Cost using the reserve with early invoice pay", money(row.same_access_simple.cost_cents)]
@@ -74,7 +77,16 @@ async function load() {
   el("composition").textContent = "Combining funding sources saved " + money(report.composition_savings.total_cents) + " versus the simpler reserve strategy. A driver making the same choices manually could match these costs.";
   el("adverse").textContent = "With an extra $5 fee, half a percentage point in term costs and a one-day delay, choosing a new plan leaves " + money(report.adverse_savings.total_cents) + " in total modeled savings. If the original plan is already locked, " + report.surprise_delay_misses + " bills miss their deadline.";
   el("assumptions").textContent = report.assumptions;
-  el("load-map").replaceChildren(...report.loads.map(item => {
+  loads = report.loads;
+  await filterLoads(location.hash.slice(1));
+}
+
+function filterLoads(previous = el("case").value) {
+  const query = el("case-search").value.trim().toLowerCase();
+  const method = el("case-filter").value;
+  const matches = loads.filter(item => item.load.toLowerCase().includes(query)
+    && (method === "all" || item.used_reserve === (method === "reserve")));
+  el("load-map").replaceChildren(...matches.map(item => {
     const cell = document.createElement("button");
     cell.type = "button";
     cell.value = item.load;
@@ -83,9 +95,21 @@ async function load() {
     cell.setAttribute("aria-label", cell.title);
     return cell;
   }));
-  el("case").replaceChildren(...report.loads.map(item => new Option(item.load + (item.used_reserve ? " · Used reserve" : " · No reserve payment"), item.load)));
-  el("case").disabled = false;
-  await showCase();
+  el("case").replaceChildren(...matches.map(item => new Option(item.load + (item.used_reserve ? " · Used reserve" : " · No reserve payment"), item.load)));
+  el("case-detail").closest("section").hidden = !matches.length;
+  el("clear-filters").hidden = !query && method === "all";
+  el("match-count").textContent = matches.length ? matches.length + (matches.length === 1 ? " matching load" : " matching loads") : "No matching loads. Clear the search or change the payment method.";
+  el("case").disabled = !matches.length;
+  if (!matches.length) {
+    selection?.abort();
+    row = null;
+    el("status").textContent = "";
+    el("retry").hidden = true;
+    history.replaceState(null, "", location.pathname);
+    return;
+  }
+  if (matches.some(item => item.load === previous)) el("case").value = previous;
+  return showCase();
 }
 function showError(error) {
   el("status").textContent = error.message;
@@ -94,11 +118,27 @@ function showError(error) {
 el("retry").onclick = () => (el("case").disabled ? load() : showCase()).catch(showError);
 el("receipt").onclick = () => downloadReceipt(row.load, row.fork_receipt);
 el("case").onchange = showCase;
+el("clear-filters").onclick = () => {
+  el("case-search").value = "";
+  el("case-filter").value = "all";
+  filterLoads();
+  el("case-search").focus();
+};
+el("case-search").oninput = el("case-filter").onchange = () => filterLoads();
+window.addEventListener("hashchange", () => {
+  const key = location.hash.slice(1);
+  if (loads.some(item => item.load === key)) {
+    el("case-search").value = "";
+    el("case-filter").value = "all";
+    filterLoads(key);
+  }
+});
 el("load-map").onclick = event => {
   const cell = event.target.closest("button");
   if (!cell) return;
   el("case").value = cell.value;
   showCase();
+  if (event.detail && window.matchMedia("(max-width: 650px)").matches) el("case").focus();
 };
 el("load-map").onkeydown = event => {
   const cells = Array.from(el("load-map").children);

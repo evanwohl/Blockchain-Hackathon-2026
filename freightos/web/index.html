@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head>
 <body class="workspace">
-<header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/" aria-current="page"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18M8 15h3"/></svg>Fuel bills</a><a href="/trial"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M6 16v-4m6 4V5m6 11V9"/></svg>Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
+<header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill" aria-current="page">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
 <main class="desk" id="desk" data-loading>
   <div id="load-status"><p role="status" id="load-message">Loading your fuel plan…</p><button class="secondary" id="reconnect" hidden>Check again</button></div>
   <div class="bill-jacket">
@@ -80,7 +80,14 @@
       <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p><p id="terms"></p></details>
     </section>
     <div class="schedule-column">
-    <details class="ledger" id="schedule"><summary class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><span>Payment schedule</span></summary><p id="timing"></p><ol id="timeline" aria-label="Planned cash movements"></ol></details>
+    <details class="ledger" id="schedule"><summary class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><span>Payment schedule</span></summary><p id="timing"></p><ol id="timeline" aria-label="Planned cash movements"></ol>
+      <details class="calendar-export"><summary>Use my trip dates</summary>
+        <form id="trip-form"><label for="trip-start">First day of the trip</label>
+        <input id="trip-start" type="date" min="1900-01-01" max="9998-12-31" required>
+        <button class="secondary" type="submit">Save calendar file</button></form>
+        <p>Includes the planned bill and funding dates. Open the file in your calendar.</p>
+      </details>
+    </details>
   <details class="market-note">
     <summary><span>How we estimate fuel</span><span id="market-assumption"></span></summary>
     <div><p id="signal"></p><a href="/evidence/gemini" target="_blank" rel="noopener">See the Gemini oil contracts</a></div>
@@ -91,6 +98,8 @@
     <div class="dialog-head"><p class="eyebrow">Outside payment</p><button type="button" class="close" aria-label="Close payment record" data-dismiss>×</button></div>
     <h2 id="record-title"></h2><p id="record-help"></p>
     <div class="amount-slip outside"><dl class="facts" id="record-facts"></dl><svg class="slip-seal" viewBox="-39 -39 78 78" aria-hidden="true" focusable="false"><use href="#engraving"/><circle r="12" fill="var(--slip-stock)"/><path class="seal-arrow" d="M-5 0H5M1-4l4 4-4 4"/><path class="seal-check" d="m-5 0 3 3 7-7"/></svg></div>
+    <label id="reference-field" for="payment-reference">Payment reference (optional)<input id="payment-reference" type="text" maxlength="80" autocomplete="off"></label>
+    <button class="secondary" id="statement" hidden>Save bill statement</button>
     <button id="save-record" class="primary"></button><p id="record-error" role="status"></p>
   </div></dialog>
   <dialog id="settings" aria-labelledby="settings-title"><div class="sheet">

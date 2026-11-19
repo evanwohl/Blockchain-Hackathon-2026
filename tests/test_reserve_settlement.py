@@ -278,3 +278,17 @@ def test_cash_record_and_reset_without_a_transfer():
     assert app.state()["manual_payment"] is None
     with pytest.raises(ValueError, match="bill has changed"):
         app.act("record-payment", request)
+
+
+def test_outside_payment_reference_is_optional_and_bound_to_the_entry():
+    app = LoadSettlement()
+    request = {"profile": "cash on hand", "scenario": "fuel budget", "version": app.record_version}
+    for reference in ("bad\nreference", "x" * 81, 47):
+        with pytest.raises(ValueError, match="printable characters"):
+            app.act("record-payment", {**request, "reference": reference})
+    assert app.state()["manual_payment"] is None
+    entry = app.act("record-payment", {**request, "reference": "  ACH-17 "})
+    assert entry["reference"] == "ACH-17"
+    assert app.act("record-payment", {**request, "reference": "ACH-17"}) == entry
+    with pytest.raises(ValueError, match="already recorded"):
+        app.act("record-payment", {**request, "reference": "ACH-18"})

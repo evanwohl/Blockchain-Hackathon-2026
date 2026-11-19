@@ -1,4 +1,4 @@
-import { downloadReceipt, el, facts, money, request, tokenUnits } from "./common.js";
+import { downloadReceipt, el, facts, money, request, saveFile, tokenUnits } from "./common.js";
 
 const roundedDollars = cents => money(cents).replace(/\.00$/, "");
 
@@ -19,18 +19,25 @@ el("schedule").open = window.matchMedia("(min-width: 761px)").matches;
 let profile = sessionStorage.getItem("funding-profile") || "quick pay";
 let scenario = sessionStorage.getItem("fuel-scenario") || "oil stress";
 
-function renderCalendar(plan) {
+const tripStart = el("trip-start");
+tripStart.value = sessionStorage.getItem("trip-start") || "";
+const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+
+function tripDate(day) {
+  const date = tripStart.valueAsDate;
+  if (!date || !tripStart.validity.valid) return null;
+  date.setUTCDate(date.getUTCDate() + day - 1);
+  return date;
+}
+
+function dayLabel(day) {
+  const date = tripDate(day);
+  return date ? shortDate.format(date) : "Day " + day;
+}
+
+function scheduleEvents(plan) {
   const bill = plan.calendar.bills[0];
-  const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
-  el("load-id").textContent = plan.load;
-  el("bill-due").textContent = "Day " + bill.day;
-  el("method").textContent = "FreightOS checks which money will arrive by day " + bill.day + ". It chooses the lowest-cost way to cover the fuel bill while keeping the cash you need on hand.";
-  el("invoice-day").textContent = "Day " + primary.day;
-  const gap = primary.day - bill.day;
-  el("day-gap").textContent = gap ? Math.abs(gap) + "-day gap" : "Same-day schedule";
-  el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
-    : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
-  const events = [
+  return [
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true },
     ...plan.invoice_elections.map(item => ({
       day: item.day, label: item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
@@ -41,8 +48,21 @@ function renderCalendar(plan) {
       label: item.source === "reserve redemption" ? "Reserve available" : "Bank credit available",
       note: "Planned funding", amount: item.net_proceeds_cents
     }))
-  ];
-  el("timeline").replaceChildren(...events.sort((a, b) => a.day - b.day).map(event => {
+  ].sort((a, b) => a.day - b.day);
+}
+
+function renderCalendar(plan) {
+  const bill = plan.calendar.bills[0];
+  const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
+  el("load-id").textContent = plan.load;
+  el("bill-due").textContent = dayLabel(bill.day);
+  el("method").textContent = "FreightOS checks which money will arrive by day " + bill.day + ". It chooses the lowest-cost way to cover the fuel bill while keeping the cash you need on hand.";
+  el("invoice-day").textContent = dayLabel(primary.day);
+  const gap = primary.day - bill.day;
+  el("day-gap").textContent = gap ? Math.abs(gap) + "-day gap" : "Same-day schedule";
+  el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
+    : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
+  el("timeline").replaceChildren(...scheduleEvents(plan).map(event => {
     const row = document.createElement("li");
     const day = document.createElement("span");
     const pin = document.createElement("i");
@@ -52,7 +72,7 @@ function renderCalendar(plan) {
     day.className = "day";
     pin.className = "pin";
     label.className = "event-label";
-    day.textContent = "Day " + event.day;
+    day.textContent = dayLabel(event.day);
     label.textContent = event.label;
     note.textContent = event.note;
     amount.textContent = money(event.amount);
@@ -62,6 +82,26 @@ function renderCalendar(plan) {
     return row;
   }));
 }
+
+tripStart.onchange = () => {
+  sessionStorage.setItem("trip-start", tripStart.validity.valid ? tripStart.value : "");
+  if (displayedPlan) renderCalendar(displayedPlan);
+};
+
+el("trip-form").onsubmit = event => {
+  event.preventDefault();
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//FreightOS//Load schedule//EN", "CALSCALE:GREGORIAN"];
+  for (const item of scheduleEvents(displayedPlan)) {
+    const date = tripDate(item.day).toISOString().slice(0, 10).replaceAll("-", "");
+    const key = item.label.toLowerCase().replaceAll(" ", "-");
+    lines.push("BEGIN:VEVENT", "UID:" + displayedPlan.load + "-" + key + "@freightos.local",
+      "DTSTAMP:" + stamp, "DTSTART;VALUE=DATE:" + date, "SUMMARY:" + displayedPlan.load + " - " + item.label,
+      "DESCRIPTION:Planned demo amount " + money(item.amount).replaceAll(",", "\\,") + ".", "END:VEVENT");
+  }
+  lines.push("END:VCALENDAR", "");
+  saveFile(displayedPlan.load + "-schedule.ics", lines.join("\r\n"), "text/calendar;charset=utf-8");
+};
 
 function explainChoice(plan) {
   const primary = plan.calendar.invoices.find(invoice => invoice.id === "primary load");
@@ -274,6 +314,18 @@ async function sync(restore = false) {
   state = await request("/api/state");
   if (previousApproval && state.receipt?.approval === previousApproval) el("status").textContent = "";
   const locked = (state.receipt || state.review)?.decision || state.manual_payment;
+  const choice = new URLSearchParams(location.hash.slice(1));
+  if (choice.has("plan")) {
+    const requested = choice.get("plan");
+    const fuel = choice.get("fuel");
+    if (!locked && Object.hasOwn(state.funding_plans, requested) && Object.hasOwn(state.funding_plans[requested], fuel)) {
+      profile = requested;
+      scenario = fuel;
+      sessionStorage.setItem("funding-profile", profile);
+      sessionStorage.setItem("fuel-scenario", scenario);
+    }
+    history.replaceState(null, "", location.pathname);
+  }
   if (locked) {
     scenario = locked.scenario;
     profile = locked.profile;
@@ -426,7 +478,12 @@ function openRecord(plan) {
   el("record-title").textContent = undo ? "Recorded outside payment" : "Record your payment";
   el("record-help").textContent = undo ? "You marked this amount as paid outside FreightOS. Undoing the entry reopens that balance."
     : "Confirm you already paid the fuel vendor outside FreightOS. This updates the bill record only.";
-  facts(el("record-facts"), [[undo ? "Recorded by you" : "Paid by you outside FreightOS", money(plan.other_funds_cents)], ["Source", profiles[profile].source], ["Load", plan.load]]);
+  const rows = [[undo ? "Recorded by you" : "Paid by you outside FreightOS", money(plan.other_funds_cents)], ["Source", profiles[profile].source], ["Load", plan.load]];
+  if (state.manual_payment?.reference) rows.push(["Reference", state.manual_payment.reference]);
+  facts(el("record-facts"), rows);
+  el("reference-field").hidden = undo;
+  el("payment-reference").value = "";
+  el("statement").hidden = !undo;
   el("save-record").textContent = undo ? "Undo payment entry" : "I paid " + money(plan.other_funds_cents);
   el("record-error").textContent = "";
   el("record").showModal();
@@ -434,10 +491,34 @@ function openRecord(plan) {
 
 el("save-record").onclick = async () => {
   const { undo, body } = recordRequest;
+  if (!undo) body.reference = el("payment-reference").value.trim();
   await run("Updating bill…", () => request(undo ? "/api/undo-record" : "/api/record-payment", body), el("record-error"));
-  if (state && (undo ? !state.manual_payment : state.manual_payment?.profile === body.profile && state.manual_payment?.scenario === body.scenario)) {
+  if (state && (undo ? !state.manual_payment : state.manual_payment?.profile === body.profile && state.manual_payment?.scenario === body.scenario && (state.manual_payment.reference || "") === body.reference)) {
     el("record").close();
     el("open-payment").focus();
+  }
+};
+el("statement").onclick = async () => {
+  const expected = recordRequest.body;
+  const feedback = el("record-error");
+  try {
+    const latest = await request("/api/state");
+    const entry = latest.manual_payment;
+    if (!entry || latest.record_version !== expected.version || entry.profile !== expected.profile || entry.scenario !== expected.scenario) {
+      throw new Error("This bill changed. Reopen the current payment entry.");
+    }
+    const plan = latest.funding_plans[entry.profile][entry.scenario];
+    const received = (latest.receipt?.vendor_received_usdc_raw || 0) / 10000;
+    const lines = ["FreightOS · Demo bill statement", "Load " + plan.load, "",
+      "Fuel bill: " + money(plan.bill_cents), "Received by fuel company from reserve: " + money(received),
+      "Outside payment recorded by driver: " + money(entry.cents), "Source: " + profiles[entry.profile].source];
+    if (entry.reference) lines.push("Payment reference: " + entry.reference);
+    lines.push("Remaining bill balance: " + money(plan.bill_cents - received - entry.cents),
+      "", "Estimated plan fees: " + money(plan.cost_cents), "Estimated savings: " + money(plan.savings_cents));
+    saveFile(plan.load + "-bill-statement.txt", lines.join("\r\n") + "\r\n", "text/plain;charset=utf-8");
+    feedback.textContent = "Bill statement downloaded.";
+  } catch (error) {
+    feedback.textContent = error.message;
   }
 };
 el("return-bill").onclick = () => { el("payment").close(); el("open-payment").focus(); };
@@ -459,7 +540,12 @@ el("new-demo").onclick = el("reset").onclick = () => run("Starting over…", asy
   scenario = "oil stress";
   sessionStorage.removeItem("funding-profile");
   sessionStorage.removeItem("fuel-scenario");
+  sessionStorage.removeItem("trip-start");
+  tripStart.value = "";
   el("payment").close();
 });
 el("proof").ontoggle = () => { el("details").textContent = el("proof").open && currentStep ? JSON.stringify(currentStep, null, 2) : ""; };
+window.addEventListener("hashchange", () => {
+  if (!pending && new URLSearchParams(location.hash.slice(1)).has("plan")) sync(true).catch(showRetry);
+});
 sync(true).catch(showRetry);
