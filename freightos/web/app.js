@@ -59,7 +59,7 @@ function scheduleEvents(plan) {
   return [
     { day: bill.day, label: "Fuel bill due", note: "Vendor payment deadline", amount: bill.cents, bill: true, outgoing: true },
     ...plan.invoice_elections.map(item => ({
-      day: item.day, label: item.invoice === "fuel surcharge" ? "Customer fuel surcharge" : item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
+      day: item.day, label: item.invoice === "fuel surcharge" ? "Customer fuel surcharge" : item.invoice === "remaining surcharge" ? "Remaining customer surcharge" : item.invoice === "backhaul" ? "Return-load invoice" : "Freight invoice",
       note: item.invoice === "fuel surcharge" && plan.surcharge?.regular_day
         ? "Early customer payment after a " + money(plan.surcharge.fee_cents) + " fee"
         : item.option === "standard" ? (plan.refill_policy && item.invoice === "primary load" ? "Late freight estimate" : "Scheduled payment") : "Early payment after a "
@@ -154,7 +154,8 @@ function explainChoice(plan) {
     const invoice = early ? " Take early pay on the " + (early.invoice === "backhaul" ? "return load" : "main load")
       + " for " + money(early.receipt_cents) + "." : " Collect both freight invoices in full.";
     const offer = s.regular_day ? " Arrange " + dayLabel(s.day) + " payment with the customer for the agreed " + money(s.fee_cents) + " fee." : "";
-    return [title, timing + invoice + offer];
+    const balance = s.advance_cents ? " The remaining " + money(s.cents - s.advance_cents) + " pays in full on " + dayLabel(s.regular_day) + "." : "";
+    return [title, timing + invoice + offer + balance];
   }
   if (plan.backup_for) {
     if (regularProfile(plan) === "quick pay") {
@@ -894,8 +895,9 @@ el("statement").onclick = async () => {
       "Fuel bill: " + money(plan.bill_cents), "Received by fuel company from reserve: " + money(received),
       "Outside payment recorded by driver: " + money(entry.cents), "Source: " + outsideSource(plan)];
     if (plan.surcharge) lines.push("Customer surcharge face amount: " + money(plan.surcharge.cents),
-      "Expected customer proceeds: " + money(plan.surcharge.cents - (plan.surcharge.fee_cents || 0)) + " on trip day " + plan.surcharge.day,
+      "Expected customer proceeds: " + money((plan.surcharge.advance_cents ?? plan.surcharge.cents) - (plan.surcharge.fee_cents || 0)) + " on trip day " + plan.surcharge.day,
       "Customer surcharge allocated to fuel: " + money(plan.surcharge.for_fuel_cents));
+    if (plan.surcharge?.advance_cents) lines.push("Remaining customer surcharge: " + money(plan.surcharge.cents - plan.surcharge.advance_cents) + " on trip day " + plan.surcharge.regular_day);
     if (plan.surcharge?.regular_day) lines.push("Customer early-payment fee: " + money(plan.surcharge.fee_cents),
       "Regular customer payment due on trip day " + plan.surcharge.regular_day);
     if (entry.reference) lines.push("Payment reference: " + entry.reference);

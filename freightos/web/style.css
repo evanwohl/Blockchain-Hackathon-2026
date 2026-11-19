@@ -693,7 +693,7 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 #surcharge-before, #surcharge-result { border-top: 1px solid var(--line); padding-top: .85rem; }
 .surcharge-work h3 { margin: 0; font: 600 1.65rem/1.1 var(--display); }
 #surcharge-result .primary { width: 100%; }
-#surcharge-facts:not([data-wait="true"]) > div:nth-last-child(2), #surcharge-facts[data-wait="true"] > div:last-child { color: #344e24; font-weight: 650; }
+#surcharge-facts .chosen-cost { color: #344e24; font-weight: 650; }
 @media (min-width: 761px) {
   #surcharge { width: min(52rem, calc(100% - 3rem)); }
   .surcharge-work { display: grid; grid-template-columns: .95fr 1.05fr; gap: 2rem; margin-top: 1.2rem; }
@@ -728,3 +728,9 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .budget-option .secondary { margin-top: .45rem; }
 #offer-sources { margin: .3rem 0; border-block-end: 1px solid var(--line); }
 #offer-sources summary { min-height: 44px; }
+
+#partial-dates { display: grid; grid-template-columns: 1fr 1fr; margin: .65rem 0 .8rem; border-block: 1px solid var(--line); }
+#partial-dates div { padding: .6rem .25rem .65rem 0; }
+#partial-dates div + div { border-left: 1px solid var(--line); padding-left: .8rem; }
+#partial-dates dt { font-size: .82rem; }
+#partial-dates dd { margin: .18rem 0 0; font: 600 1.75rem/1.05 var(--display); }

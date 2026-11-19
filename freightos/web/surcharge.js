@@ -6,6 +6,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
   const amount = el("surcharge-amount");
   const day = el("surcharge-day");
   const offer = el("has-surcharge-offer");
+  const partial = el("allow-partial");
   const regular = el("regular-pay-day");
   const discount = el("customer-fee");
   const budget = el("reserve-limit");
@@ -28,8 +29,10 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
   function updateOfferFields() {
     el("reserve-limit-field").querySelector("summary").textContent = budget.value !== "" && budget.validity.valid
       ? "Fuel reserve limit · " + money(Math.round(budget.valueAsNumber * 100)) : "Set a fuel reserve limit";
+    partial.disabled = el("partial-field").hidden = !offer.checked;
     regular.disabled = discount.disabled = el("offer-fields").hidden = !offer.checked;
     el("surcharge-date-label").textContent = offer.checked ? "Early pay day" : "Trip day it clears";
+    el("customer-fee-label").textContent = partial.checked ? "Fee on the full amount" : "Fee they keep";
     regular.min = Number.isFinite(day.valueAsNumber) ? day.valueAsNumber + 1 : 2;
     discount.max = amount.value;
   }
@@ -48,12 +51,15 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     amount.value = terms ? (terms.cents / 100).toFixed(2) : "180";
     day.value = terms?.day || "5";
     offer.checked = sampleOffer || Boolean(terms?.regular_day);
+    partial.checked = Boolean(terms?.advance_cents) || (sampleOffer && preset.get("partial") === "1");
     regular.value = terms?.regular_day || "28";
-    discount.value = sampleOffer ? "5.00" : terms?.regular_day ? (terms.fee_cents / 100).toFixed(2) : "";
+    discount.value = sampleOffer ? "5.00" : terms?.regular_day ? ((terms.full_fee_cents ?? terms.fee_cents) / 100).toFixed(2) : "";
     const presetCents = name => {
       const value = preset.get(name);
       return sampleOffer && /^\d{1,12}$/.test(value || "") ? Number(value) : null;
     };
+    const face = presetCents("surcharge_cents");
+    if (face > 0) amount.value = (face / 100).toFixed(2);
     const fee = presetCents("offer_fee_cents");
     if (fee !== null) discount.value = (fee / 100).toFixed(2);
     const limit = sampleOffer ? presetCents("reserve_limit_cents") : terms ? state.surcharge_limit_cents : null;
@@ -79,6 +85,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
       cents: Math.round(amount.valueAsNumber * 100), day: day.valueAsNumber };
     if (budget.value !== "") body.reserve_limit_cents = Math.round(budget.valueAsNumber * 100);
     if (offer.checked) {
+      if (partial.checked) body.allow_partial = true;
       body.regular_day = regular.valueAsNumber;
       body.fee_cents = Math.round(discount.valueAsNumber * 100);
     }
@@ -88,6 +95,8 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
       const quote = await request("/api/quote-surcharge", body);
       if (revision !== token) return;
       const decision = quote.offer;
+      const split = decision?.partial;
+      el("partial-dates").hidden = !split;
       const sources = [
         ["Fuel bill due on " + dayLabel(quote.due), money(quote.bill_cents)],
         ["From the customer for this bill", money(quote.for_fuel_cents)],
@@ -110,11 +119,32 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
         el("budget-tradeoff").textContent = lead + "Estimated fees are " + money(alternative.early_cost_cents)
           + " for early pay or " + money(alternative.wait_cost_cents) + " for waiting. " + setup;
       }
-      el("surcharge-facts").dataset.wait = String(decision?.take_offer === false);
       el("offer-sources").hidden = !decision;
       if (decision) {
+        el("offer-limit-label").textContent = split ? "Ask the customer to advance" : "Highest fee worth paying";
         facts(el("offer-source-rows"), sources);
         el("offer-sources").querySelector("summary").textContent = "How the " + money(quote.bill_cents) + " fuel bill gets paid";
+      }
+      if (split) {
+        heading.textContent = "Take only part early";
+        el("offer-limit-value").textContent = money(split.gross_cents);
+        rows.push(
+          ["Total fees taking part early", money(quote.cost_cents)],
+          ["Total fees taking all early", money(split.full_cost_cents)],
+          ["Total fees waiting", money(decision.wait_cost_cents)]);
+        facts(el("partial-dates"), [
+          [dayLabel(quote.day) + " · After fee", money(split.gross_cents - quote.fee_cents)],
+          [dayLabel(quote.regular_day) + " · In full", money(split.balance_cents)]
+        ]);
+        status.textContent = "The customer keeps " + money(quote.fee_cents) + " on the early portion. This plan saves at least "
+          + money(Math.min(split.min_savings_cents.full, split.min_savings_cents.waiting))
+          + " in fees across the tested fuel estimates compared with either whole-payment option.";
+        const extra = split.setup_difference_cents > 0 ? " Set aside " + money(split.setup_difference_cents)
+          + " more than the better whole-payment plan." : "";
+        boundary.textContent = "This is the smallest advance that keeps both freight invoices in full across all "
+          + quote.budget_count + " fuel estimates." + extra + " After setup, " + money(split.wallet_after_cents) + " stays in your wallet.";
+        apply.textContent = "Use the partial-payment plan";
+      } else if (decision) {
         heading.textContent = decision.take_offer ? "Take the early payment" : "Keep the regular payment date";
         rows.push(["Total cost with the early offer", money(decision.early_cost_cents)],
           ["Total cost if you wait", money(decision.wait_cost_cents)]);
@@ -132,6 +162,9 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
           status.textContent = "Collect the full " + money(quote.cents) + " on " + dayLabel(decision.regular_day) + ". " + reason;
         }
         apply.textContent = decision.take_offer ? "Use the early-payment plan" : "Use the regular payment date";
+        if (decision.partial_checked) {
+          boundary.textContent += " A smaller advance that keeps both freight invoices in full did not beat both choices across every estimate.";
+        }
       } else {
         heading.textContent = quote.full_invoices ? "Keep both freight invoices in full" : "Early invoice pay still helps cover fuel";
         rows.push(["Estimated cost with your dates", money(quote.cost_cents)],
@@ -146,7 +179,10 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
       }
       if (quote.requested_limit_cents > quote.available_reserve_cents)
         boundary.textContent += " Your wallet and vault can cover up to " + money(quote.available_reserve_cents) + " of the requested limit.";
-      facts(el("surcharge-facts"), rows);
+      const comparison = el("surcharge-facts");
+      facts(comparison, rows);
+      const chosenRow = decision ? (decision.take_offer ? 0 : 1) : rows.length - 2;
+      comparison.children[chosenRow].classList.add("chosen-cost");
       el("surcharge-before").hidden = true;
       el("surcharge-result").hidden = false;
       checked = { ...body, id: quote.id };
@@ -184,7 +220,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     if (!checked || apply.disabled) return;
     const body = checked;
     const token = revision;
-    apply.disabled = check.disabled = amount.disabled = day.disabled = budget.disabled = offer.disabled = regular.disabled = discount.disabled = true;
+    apply.disabled = check.disabled = amount.disabled = day.disabled = budget.disabled = offer.disabled = partial.disabled = regular.disabled = discount.disabled = true;
     status.textContent = "Updating the bill plan…";
     try {
       const result = await request("/api/apply-surcharge", body);

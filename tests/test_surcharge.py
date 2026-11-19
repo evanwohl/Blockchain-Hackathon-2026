@@ -173,3 +173,47 @@ def test_optional_budget_accepts_zero_and_never_exceeds_wallet_capacity():
     assert zero["capacity_cents"] == zero["reserve_cents"] == zero["setup_cents"] == 0
     high = app.act("quote-surcharge", {**data, "reserve_limit_cents": 70000})
     assert high["capacity_cents"] == 59999 and high["requested_limit_cents"] == 70000
+
+
+def test_partial_advance_fits_all_fuel_estimates_and_replays_only_the_reserve_leg():
+    app = LoadSettlement()
+    data = {"version": app.record_version, "cents": 50000, "scenario": "oil stress",
+            "day": 5, "fee_cents": 1500, "regular_day": 28, "reserve_limit_cents": 58500}
+    whole = app.act("quote-surcharge", data)
+    assert not whole["offer"]["take_offer"]
+    data["allow_partial"] = True
+    quote = app.act("quote-surcharge", data)
+    partial = quote["offer"]["partial"]
+    gross = partial["gross_cents"]
+    assert gross == 18042 and quote["fee_cents"] == 542
+    assert gross - quote["fee_cents"] == quote["for_fuel_cents"] == 17500
+    assert (gross - 1) * (50000 - 1500) // 50000 == 17499
+    assert gross + partial["balance_cents"] == 50000
+    assert partial["min_savings_cents"] == {"full": 877, "waiting": 454}
+    assert partial["setup_difference_cents"] == 1500
+    assert partial["wallet_after_cents"] == 1499
+    with pytest.raises(ValueError, match="again"):
+        app.act("apply-surcharge", {**data, "allow_partial": False, "id": quote["id"]})
+    chosen = app.act("apply-surcharge", {**data, "id": quote["id"]})
+    for plan in app.plans[chosen["profile"]].values():
+        rows = {row["invoice"]: row for row in plan["invoice_elections"]}
+        assert (rows["remaining surcharge"]["day"], rows["remaining surcharge"]["receipt_cents"]) == (28, 31958)
+        assert plan["payment_cents"] <= 58500
+        assert all(row["option"] == "standard" for row in rows.values())
+        assert plan["cost_cents"] == 542 + sum(f["cost_cents"] for f in plan["funding"])
+    pay = {**chosen, "scenario": data["scenario"], "version": app.record_version}
+    app.act("deposit", {**pay, "max_cents": quote["setup_cents"]})
+    review = app.act("review", pay)
+    receipt = app.act("approve", {"approval": review["id"]})
+    assert receipt["decision"]["surcharge"]["full_fee_cents"] == 1500
+    assert app.act("verify", {})["vendor_received_usdc_raw"] == 570000000
+    assert app.act("record-payment", pay)["cents"] == 17500
+
+
+@pytest.mark.parametrize(("cents", "day", "fee", "limit"), [
+    (18000, 5, 500, 58500), (50000, 6, 1500, 58500), (18000, 5, 0, 58500), (18000, 5, 18000, 59999),
+])
+def test_partial_permission_does_not_force_a_split(cents, day, fee, limit):
+    from freightos.surcharge import partial_offer
+
+    assert partial_offer(cents, day, 28, fee, limit, "oil stress") is None
