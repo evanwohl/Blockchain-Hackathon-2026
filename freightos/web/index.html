@@ -61,6 +61,10 @@
       </section>
     </div>
   </div>
+  <section class="wallet-strip" id="wallet-strip" aria-labelledby="wallet-title" hidden>
+    <div><h2 id="wallet-title">Your fuel reserve</h2><p id="wallet-summary"></p></div>
+    <div class="wallet-actions"><button class="secondary" id="open-return">Check unused money</button><button class="plain" id="last-return" hidden>View wallet receipt</button></div>
+  </section>
   <div class="bill-work">
     <section class="funding-panel" aria-labelledby="plan-head">
       <p class="panel-label">Recommended plan</p>
@@ -98,6 +102,16 @@
   </details>
     </div>
   </div>
+  <dialog id="wallet-dialog" aria-labelledby="wallet-head"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Fuel reserve</p><button type="button" class="close" aria-label="Close wallet details" data-dismiss>×</button></div>
+    <h2 id="wallet-head" tabindex="-1">Money for the road</h2><p id="wallet-copy"></p>
+    <div class="wallet-amount" id="wallet-outcome" hidden><span id="wallet-label"></span><strong id="wallet-amount"></strong></div>
+    <dl class="facts" id="wallet-facts"></dl>
+    <button class="primary" id="confirm-return" hidden>Return to my wallet</button>
+    <button class="secondary" id="retry-return" hidden>Check again</button>
+    <div class="receipt-tools" id="wallet-tools" hidden><button class="secondary" id="verify-return">Verify return</button><button class="secondary" id="download-return">Download receipt</button></div>
+    <p id="wallet-status" role="status"></p>
+  </div></dialog>
   <dialog id="record" aria-labelledby="record-title"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Outside payment</p><button type="button" class="close" aria-label="Close payment record" data-dismiss>×</button></div>
     <h2 id="record-title"></h2><p id="record-help"></p>

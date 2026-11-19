@@ -1,4 +1,4 @@
-import { cashPriority, el, money, oilOptions, request, usesCredit } from "./common.js";
+import { cashPriority, el, money, oilOptions, request, usesCredit, verifySample } from "./common.js";
 
 let state;
 
@@ -7,9 +7,12 @@ function displayQuote() {
   const profile = cashPriority(state, el("quote-profile").value, scenario);
   const plan = state.funding_plans[profile][scenario];
   const locked = state.review || state.receipt || state.manual_payment;
-  const source = { "quick pay": "You pay from the return invoice", "credit line": "You pay with bank credit", "cash on hand": "You pay with cash" };
+  const source = { "quick pay": "You pay with early pay from the return trip", "credit line": "You pay with bank credit", "cash on hand": "You pay with cash" };
   const due = plan.calendar.bills[0].day;
   const paid = plan.invoice_elections.find(item => item.invoice === "primary load").day;
+  const main = plan.calendar.invoices.find(item => item.id === "primary load");
+  el("driver-story").textContent = "A driver owes " + money(plan.bill_cents) + " for diesel on day " + due
+    + ". The customer pays " + money(main.face_cents) + " on day " + paid + ". FreightOS compares the cost of covering those weeks with savings, early invoice pay, or credit.";
   el("window-due").textContent = "Day " + due;
   el("window-paid").textContent = "Day " + paid;
   el("window-gap").textContent = Math.abs(paid - due) + "-day gap";
@@ -21,13 +24,37 @@ function displayQuote() {
   el("quote-outside").textContent = money(plan.other_funds_cents);
   el("outside-source").textContent = source[usesCredit(profile) ? "credit line" : profile];
   el("quote-result").style.setProperty("--reserve-share", (100 * plan.payment_cents / plan.bill_cents) + "%");
-  el("quote-fees").textContent = money(plan.cost_cents) + " estimated fees";
-  const alternative = usesCredit(profile) ? "Bank credit alone" : "Early pay on the main invoice";
+  el("quote-fees").textContent = money(plan.cost_cents);
+  el("compare-cell").hidden = profile === "cash on hand";
+  el("compare-name").textContent = usesCredit(profile) ? "Bank credit alone" : "Early pay on main invoice";
+  el("compare-price").textContent = money(plan.alternative_cost_cents);
   el("quote-compare").textContent = plan.savings_cents
-    ? alternative + " costs " + money(plan.alternative_cost_cents) + ". You save an estimated " + money(plan.savings_cents) + "."
+    ? "You keep an estimated " + money(plan.savings_cents) + " more of this load’s earnings."
     : "Available cash covers the bill with no financing fee.";
   el("quote-open").href = locked ? "/bill" : "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario });
-  el("quote-open").textContent = locked ? "Return to current bill" : "Review this bill";
+  el("quote-open").textContent = locked ? "Return to current bill" : "Walk through this bill";
+  el("quote-scope").textContent = plan.payment_cents ? "Test dollars on a local copy of Solana. No wallet setup needed." : "Cash covers this bill. You can record your direct payment in the demo.";
+  const original = state.plans["fuel budget"].bill_cents;
+  el("mechanism-fuel").textContent = "Start with " + money(original) + " for " + plan.gemini.gallons
+    + " gallons. " + (scenario === "fuel budget"
+      ? "This plan uses the original bill. Higher oil prices from recorded Gemini contracts are also tested when sizing the reserve."
+      : "Testing oil at $" + plan.gemini.stress_level + " a barrel adds " + money(plan.bill_cents - original) + " to the fuel budget. That threshold comes from a recorded Gemini oil contract.");
+  if (profile === "quick pay") {
+    const invoice = plan.calendar.invoices.find(i => i.id === "backhaul");
+    const early = plan.invoice_elections.find(i => i.invoice === invoice.id);
+    el("mechanism-choice-title").textContent = "Collect the smaller invoice early";
+    el("mechanism-choice").textContent = "Early pay on the " + money(invoice.face_cents) + " return load costs "
+      + money(invoice.face_cents - early.receipt_cents) + ". Use its proceeds with the reserve and collect the full "
+      + money(main.face_cents) + " on the main load.";
+  } else {
+    el("mechanism-choice-title").textContent = usesCredit(profile) ? "Borrow the balance" : "Use available cash";
+    el("mechanism-choice").textContent = usesCredit(profile)
+      ? "Borrow " + money(plan.other_funds_cents) + " from the bank and cover the rest from the reserve. Both freight invoices can pay on their usual dates."
+      : "The driver has enough cash for fuel. Both freight invoices can pay on their usual dates and the financing fee is zero.";
+  }
+  el("mechanism-pay-title").textContent = plan.payment_cents ? "Send " + money(plan.payment_cents) + " to the fuel company" : "Record the direct payment";
+  el("mechanism-pay").textContent = plan.payment_cents ? "The reserve holds digital dollars in Kamino, a lending vault on Solana. On approval, the payment program checks the fuel company and amount. The driver pays " + money(plan.other_funds_cents) + " separately."
+    : "The driver pays the fuel company directly and records the payment. This cash plan needs no blockchain transaction.";
   el("quote-status").textContent = locked ? "Your bill already has a payment record or pending approval. These comparisons are previews." : "";
 }
 
@@ -56,3 +83,5 @@ request("/api/trial").then(report => {
   el("trial-proof-copy").textContent = "With the same reserve available to both strategies, FreightOS cost less on "
     + edge.positive_cases + " of " + report.cases + " simulated loads. The other " + edge.ties + " tied.";
 }).catch(() => {});
+
+el("replay-sample").onclick = () => verifySample("SYN-004", el("replay-sample"), el("sample-result"));

@@ -66,17 +66,33 @@ export function cashPriority(state, funding, scenario) {
   for (const input of field.querySelectorAll("input")) {
     const profile = input.value;
     const fee = state.funding_plans[profile][scenario].cost_cents;
-    const cash = quoted ? money(state.wallet_usdc_raw / 10000 - state.setup_cents[profile]) : "—";
+    const available = quoted && state.setup_cents[profile] != null;
+    const cash = available ? money(state.wallet_usdc_raw / 10000 - state.setup_cents[profile]) : "—";
     const row = input.labels[0];
     row.querySelector("b").textContent = money(fee);
     row.querySelector("strong").textContent = cash;
     input.setAttribute("aria-label", row.querySelector("span").textContent + ", " + money(fee)
-      + " estimated fees" + (quoted ? ", " + cash + " left in wallet" : ""));
+      + " estimated fees" + (available ? ", " + cash + " left in wallet" : ""));
   }
   const delta = state.setup_cents["credit line"] - state.setup_cents["road cash"];
   const premium = state.funding_plans["road cash"][scenario].cost_cents - state.funding_plans["credit line"][scenario].cost_cents;
   field.querySelector(".cash-note").textContent = !quoted ? "Reserve setup is closed for this bill. You can still compare estimated fees."
+    : state.setup_cents["credit line"] === null || state.setup_cents["road cash"] === null ? "A dash means the reserve is unavailable for that option."
     : delta > 0 ? "After setup, keep " + money(delta) + " more available for tolls or repairs for " + money(premium) + " in extra fees."
-    : "The plans leave the same wallet balance after setup. Previously deposited funds stay in the reserve.";
+    : "The plans leave the same wallet balance after setup. In the bill, check unused money to see what you can move back to your wallet.";
   return selected;
+}
+
+export async function verifySample(load, button, result, signal) {
+  button.disabled = true;
+  result.textContent = "Checking the signed transfer against the saved Solana state…";
+  try {
+    const proof = await request("/api/trial/" + encodeURIComponent(load) + "/verify", undefined, signal);
+    if (!signal?.aborted) result.textContent = "Verified. The fuel company received " + money(proof.vendor_received_usdc_raw / 10000)
+      + " in demo dollars on " + load + ". The replay checked " + proof.verified_signatures + " signed transactions.";
+  } catch {
+    if (!signal?.aborted) result.textContent = "The payment could not be verified. Try checking it again.";
+  } finally {
+    if (!signal?.aborted) button.disabled = false;
+  }
 }

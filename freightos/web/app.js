@@ -1,4 +1,5 @@
 import { cashPriority, downloadReceipt, el, facts, money, oilOptions, request, saveFile, tokenUnits, usesCredit } from "./common.js";
+import { bindWallet, walletState } from "./wallet.js";
 
 const roundedDollars = cents => money(cents).replace(/\.00$/, "");
 
@@ -308,6 +309,8 @@ function render() {
   const { review, receipt } = state;
   const view = paymentView(plan);
   const busy = Boolean(pending);
+  const unavailable = state.setup_cents[profile] === null && !review && !receipt && !state.manual_payment;
+  walletState(state, profile, busy);
   const entry = state.manual_payment;
   const separate = profiles[profile].source.toLowerCase();
   el("reserve-ticket").classList.toggle("settled", Boolean(receipt));
@@ -338,6 +341,12 @@ function render() {
     : "Your fuel reserve will cover " + roundedDollars(plan.payment_cents) + " after approval. Pay the other "
       + roundedDollars(plan.other_funds_cents) + " with " + separate + ".";
   el("plan-jump").textContent = plan.savings_cents ? "See how this saves " + money(plan.savings_cents) : "See why this plan costs " + money(plan.cost_cents);
+  if (unavailable) {
+    el("open-payment").disabled = true;
+    el("open-label").textContent = "Reserve unavailable";
+    el("action-title").textContent = "Choose another funding option";
+    el("payment-scope").textContent = "The reserve cannot cover this plan right now. Open Payment options to compare another source.";
+  }
   renderSource("reserve-part", receipt ? "Received by fuel company" : "Through FreightOS",
     receipt ? delivered : plan.payment_cents, receipt ? "This amount reached the fuel company in demo dollars. Open the receipt to check the payment."
       : "This is the part FreightOS sends from your fuel reserve when you approve the payment.");
@@ -445,6 +454,7 @@ async function run(label, action, feedback = el("status")) {
 }
 
 function showRetry() {
+  el("wallet-dialog").close();
   el("record").close();
   clearTimeout(expiryTimer);
   clearInterval(clockTimer);
@@ -641,4 +651,5 @@ el("proof").ontoggle = () => { el("details").textContent = el("proof").open && c
 window.addEventListener("hashchange", () => {
   if (!pending && new URLSearchParams(location.hash.slice(1)).has("plan")) sync(true).catch(showRetry);
 });
+bindWallet(run, sync);
 sync(true).catch(showRetry);

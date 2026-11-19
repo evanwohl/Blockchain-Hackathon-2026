@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
+from freightos import bill, reserve_return
 from freightos.funding import DATA, LOAD, demo_plans, funding_plan
 from hedging.quick_pay import price_calendar
 
@@ -28,6 +29,16 @@ def trial_data():
         for load, row in cases.items()
     ]
     return report, cases
+
+
+def verified_sample(load):
+    from freightos.verify_receipt import replay
+
+    case = trial_data()[1].get(load)
+    if case is None or not case["fork_receipt"]:
+        raise ValueError("This sample has no signed reserve payment")
+    proof = replay(case["fork_receipt"])
+    return {"load": load, "signature": case["fork_receipt"]["signature"], **proof}
 
 
 @cache
@@ -64,17 +75,18 @@ class LoadSettlement:
         self.manual_payment = None
         self.record_version = uuid4().hex
         self.quote_balances = None
+        self.returns = {}
         self.plans, self.edges, self.levels, self.policies = demo_plans()
 
     def setup_quotes(self):
         balances = self.fork.balance(self.fork.cash), self.fork.balance(self.fork.shares)
         if balances != self.quote_balances:
             quotes = {}
-            for profile, plans in self.plans.items():
-                target = max(p["payment_cents"] for p in plans.values())
-                if self.policies.get(profile):
-                    target = max(target, self.policies[profile]["peak_reserve_cents"])
-                quotes[profile] = self.fork.deposit_quote(target)
+            for profile in self.plans:
+                try:
+                    quotes[profile] = self.fork.deposit_quote(self.reserve_target(profile))
+                except VaultExecutionError:
+                    quotes[profile] = None
             self.quotes = quotes
             self.quote_balances = balances
         return self.quotes
@@ -88,6 +100,7 @@ class LoadSettlement:
                 "wallet_usdc_raw": self.fork.balance(self.fork.cash),
                 "setup_cents": {} if self.manual_payment or LOAD in self.fork.receipts else self.setup_quotes(),
                 "deposit": self.deposit_receipt,
+                "last_return": self.latest_return(),
                 "manual_payment": self.manual_payment,
                 "record_version": self.record_version,
                 "receipt": self.fork.receipts.get(LOAD),
@@ -99,6 +112,32 @@ class LoadSettlement:
                 "invoice_policies": self.policies,
             }
 
+    def latest_return(self):
+        if self.returns:
+            receipt = next(reversed(self.returns.values()))
+            return {k: receipt[k] for k in ("signature", "quote", "wallet_after_raw")}
+
+    def return_quote(self, data):
+        profile = data.get("profile")
+        if data.get("version") != self.record_version or profile not in self.plans:
+            raise ValueError("This bill changed. Check the available amount again.")
+        if self.fork.pending_review():
+            raise ValueError("Finish or cancel the pending vendor payment first")
+        settled = self.fork.receipts.get(LOAD)
+        entry = self.manual_payment
+        locked = settled["decision"] if settled else entry
+        if locked and locked["profile"] != profile:
+            raise ValueError("Use the funding plan on this bill")
+        target = 0 if locked else self.reserve_target(profile)
+        quote = reserve_return.return_quote(self.fork, target, {
+            "profile": profile, "load": LOAD, "version": self.record_version,
+            "payment_signature": settled["signature"] if settled else None})
+        return {"id": bill.commitment(quote).hex(), **quote}
+
+    def reserve_target(self, profile):
+        target = max(p["payment_cents"] for p in self.plans[profile].values())
+        return max(target, self.policies.get(profile, {}).get("peak_reserve_cents", 0))
+
     def act(self, action, data):
         with self.lock:
             if action == "reset":
@@ -109,8 +148,29 @@ class LoadSettlement:
                 self.fork = ReserveFork()
                 self.deposit_receipt = None
                 self.manual_payment = None
+                self.returns.clear()
+                self.quote_balances = None
                 self.record_version = uuid4().hex
                 return {"reset": True}
+            if action == "return-quote":
+                return self.return_quote(data)
+            if action == "return-reserve":
+                key = data.get("id")
+                if key in self.returns:
+                    return self.returns[key]
+                quote = self.return_quote(data)
+                if quote.pop("id") != key or not quote["return_shares_raw"]:
+                    raise ValueError("Review the available return before moving money")
+                receipt = reserve_return.execute(self.fork, quote)
+                self.returns[key] = receipt
+                self.record_version = uuid4().hex
+                return receipt
+            if action in ("return-receipt", "verify-return"):
+                latest = self.latest_return()
+                if not latest or data.get("signature") != latest["signature"]:
+                    raise ValueError("Reopen the latest wallet return")
+                receipt = next(reversed(self.returns.values()))
+                return receipt if action == "return-receipt" else reserve_return.replay_return(receipt)
             if action in ("record-payment", "undo-record"):
                 if data.get("version") != self.record_version:
                     raise ValueError("This bill has changed. Review its current balance.")
@@ -152,6 +212,8 @@ class LoadSettlement:
                     if LOAD in self.fork.receipts:
                         raise ValueError("This load is already settled")
                     amount = self.setup_quotes()[profile]
+                    if amount is None:
+                        raise ValueError("Reserve setup is unavailable for this funding plan")
                     if amount > cap:
                         raise ValueError("Reserve setup exceeds the approved amount")
                     if amount:
@@ -246,7 +308,14 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(200, trial_data()[0])
             return
         if self.path.startswith("/api/trial/"):
-            row = trial_data()[1].get(self.path.removeprefix("/api/trial/"))
+            key = self.path.removeprefix("/api/trial/")
+            if key.endswith("/verify"):
+                try:
+                    self.respond(200, verified_sample(key.removesuffix("/verify")))
+                except ValueError as exc:
+                    self.respond(400, {"error": str(exc)})
+                return
+            row = trial_data()[1].get(key)
             if row is None:
                 self.respond(404, {"error": "Unknown load"})
             else:
@@ -281,6 +350,7 @@ class Handler(BaseHTTPRequestHandler):
             "/trial.js": ("trial.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
             "/app.js": ("app.js", "text/javascript"),
+            "/wallet.js": ("wallet.js", "text/javascript"),
             "/media/freightos-mark.svg": ("media/freightos-mark.svg", "image/svg+xml"),
             "/media/instrument-serif-latin-400-italic.woff2": ("media/instrument-serif-latin-400-italic.woff2", "font/woff2"),
             "/media/barlow-condensed-latin-600-normal.woff2": ("media/barlow-condensed-latin-600-normal.woff2", "font/woff2"),
@@ -321,6 +391,10 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/reset",
                 "/api/record-payment",
                 "/api/undo-record",
+                "/api/return-quote",
+                "/api/return-reserve",
+                "/api/verify-return",
+                "/api/return-receipt",
             ):
                 self.respond(404, {"error": "Action unavailable"})
                 return
