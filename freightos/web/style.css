@@ -719,3 +719,12 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 @media (max-width: 720px) {
   .offer-spread .public-slip { grid-row: 1; }
 }
+
+#reserve-limit-field { margin-top: .35rem; }
+#reserve-limit-field summary { min-height: 44px; }
+#reserve-limit-field label { margin-block: .25rem; }
+#reserve-limit-help, #budget-tradeoff { font-size: .88rem; line-height: 1.45; }
+.budget-option { border-block: 1px solid var(--line); padding-block: .6rem; margin-block: .65rem; }
+.budget-option .secondary { margin-top: .45rem; }
+#offer-sources { margin: .3rem 0; border-block-end: 1px solid var(--line); }
+#offer-sources summary { min-height: 44px; }

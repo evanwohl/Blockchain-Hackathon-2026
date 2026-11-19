@@ -62,3 +62,13 @@ def test_repricing_and_live_receipt_checks():
     run["decision"]["highest_fee_cents"] += 1
     with pytest.raises(ValueError, match="priced offer"):
         public_offer.verify(run)
+
+
+def test_public_fees_reconcile_and_distinguish_the_planned_reserve_from_available_capacity():
+    proof = public_offer.verify(recorded())
+    comparison = proof["cost_comparison"]
+    assert comparison["early"] == {"customer_fee_cents": 500, "invoice_fees_cents": 0, "reserve_cost_cents": 349}
+    assert comparison["wait"] == {"customer_fee_cents": 0, "invoice_fees_cents": 1000, "reserve_cost_cents": 345}
+    assert sum(comparison["wait"].values()) - sum(comparison["early"].values()) == proof["decision"]["least_saved_cents"] == 496
+    assert comparison["planned_cents"] == 58500 and comparison["planned_fee_ceiling_cents"] == 500
+    assert comparison["available_cents"] == 59999 and comparison["available_fee_ceiling_cents"] == 994

@@ -30,13 +30,12 @@ def reserve_limit(case, capacity):
     ]}
 
 
-def _minimum_capacity(cases, plans, allowance):
+def minimum_capacity(cases, cost_limits):
     # With fixed invoice terms, each fuel outcome has its own draw. Their maximum
     # is the least common capacity that satisfies every scenario's fee limit.
     minimum = 0
     for key, case in cases.items():
-        limit = plans[key]["cost_cents"] + allowance
-        outcome = price_calendar(case, minimize_source=RESERVE, fee_limit_cents=limit)
+        outcome = price_calendar(case, minimize_source=RESERVE, fee_limit_cents=cost_limits[key])
         if outcome["status"] != "funded":
             return None
         minimum = max(minimum, _reserve_draw(outcome))
@@ -47,11 +46,12 @@ def invoice_policy(plans, *, fee_allowance_cents=None, comparison_costs=None):
     """Choose common invoice terms before fuel is known and size draws after each outcome."""
     if fee_allowance_cents is not None:
         integer(fee_allowance_cents, "fee allowance")
+        limits = {key: plan["cost_cents"] + fee_allowance_cents for key, plan in plans.items()}
     best = None
     for invoices in invoice_choices(plans):
         cases = {k: {**p["calendar"], "invoices": invoices} for k, p in plans.items()}
         if fee_allowance_cents is not None:
-            minimum = _minimum_capacity(cases, plans, fee_allowance_cents)
+            minimum = minimum_capacity(cases, limits)
             if minimum is None:
                 continue
             cases = {k: reserve_limit(case, minimum) for k, case in cases.items()}

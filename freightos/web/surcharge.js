@@ -8,6 +8,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
   const offer = el("has-surcharge-offer");
   const regular = el("regular-pay-day");
   const discount = el("customer-fee");
+  const budget = el("reserve-limit");
   const check = el("check-surcharge");
   const apply = el("apply-surcharge");
   const status = el("surcharge-status");
@@ -21,16 +22,19 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     el("surcharge-before").hidden = false;
     status.textContent = "";
     check.disabled = false;
+    el("offer-sources").open = false;
   }
 
   function updateOfferFields() {
+    el("reserve-limit-field").querySelector("summary").textContent = budget.value !== "" && budget.validity.valid
+      ? "Fuel reserve limit · " + money(Math.round(budget.valueAsNumber * 100)) : "Set a fuel reserve limit";
     regular.disabled = discount.disabled = el("offer-fields").hidden = !offer.checked;
     el("surcharge-date-label").textContent = offer.checked ? "Early pay day" : "Trip day it clears";
     regular.min = Number.isFinite(day.valueAsNumber) ? day.valueAsNumber + 1 : 2;
     discount.max = amount.value;
   }
 
-  function open(sampleOffer = false) {
+  function open(sampleOffer = false, preset = new URLSearchParams()) {
     clear();
     const { state, plan } = context();
     const terms = sampleOffer ? null : plan.surcharge;
@@ -46,6 +50,15 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     offer.checked = sampleOffer || Boolean(terms?.regular_day);
     regular.value = terms?.regular_day || "28";
     discount.value = sampleOffer ? "5.00" : terms?.regular_day ? (terms.fee_cents / 100).toFixed(2) : "";
+    const presetCents = name => {
+      const value = preset.get(name);
+      return sampleOffer && /^\d{1,12}$/.test(value || "") ? Number(value) : null;
+    };
+    const fee = presetCents("offer_fee_cents");
+    if (fee !== null) discount.value = (fee / 100).toFixed(2);
+    const limit = sampleOffer ? presetCents("reserve_limit_cents") : terms ? state.surcharge_limit_cents : null;
+    budget.value = limit == null ? "" : (limit / 100).toFixed(2);
+    el("reserve-limit-field").open = budget.value !== "";
     updateOfferFields();
     dialog.showModal();
     amount.focus();
@@ -64,6 +77,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     const { state, plan } = context();
     const body = { version: state.record_version, scenario: plan.scenario,
       cents: Math.round(amount.valueAsNumber * 100), day: day.valueAsNumber };
+    if (budget.value !== "") body.reserve_limit_cents = Math.round(budget.valueAsNumber * 100);
     if (offer.checked) {
       body.regular_day = regular.valueAsNumber;
       body.fee_cents = Math.round(discount.valueAsNumber * 100);
@@ -74,30 +88,49 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
       const quote = await request("/api/quote-surcharge", body);
       if (revision !== token) return;
       const decision = quote.offer;
-      const rows = [
+      const sources = [
         ["Fuel bill due on " + dayLabel(quote.due), money(quote.bill_cents)],
         ["From the customer for this bill", money(quote.for_fuel_cents)],
         ["From the fuel reserve", money(quote.reserve_cents)],
         ["From early invoice pay", money(quote.bill_cents - quote.for_fuel_cents - quote.reserve_cents)]
       ];
+      const rows = decision ? [] : sources;
       const heading = el("surcharge-outcome");
       const boundary = el("surcharge-boundary");
       el("public-offer-example").hidden = !decision;
       el("offer-limit").hidden = !decision;
+      const alternative = decision?.larger_budget;
+      el("budget-option").hidden = !alternative;
+      if (alternative) {
+        el("compare-budget").value = String(alternative.limit_cents);
+        el("compare-budget").textContent = "Check a " + money(alternative.limit_cents) + " reserve limit";
+        const setup = alternative.extra_setup_cents > 0 ? "This takes " + money(alternative.extra_setup_cents) + " more from your wallet."
+          : "Your current setup budget covers this option.";
+        const lead = alternative.minimum_to_beat_current ? money(alternative.limit_cents) + " is the lowest reserve limit that beats your current waiting plan in every estimate. " : "You could allow " + money(alternative.limit_cents) + " from your reserve. ";
+        el("budget-tradeoff").textContent = lead + "Estimated fees are " + money(alternative.early_cost_cents)
+          + " for early pay or " + money(alternative.wait_cost_cents) + " for waiting. " + setup;
+      }
       el("surcharge-facts").dataset.wait = String(decision?.take_offer === false);
+      el("offer-sources").hidden = !decision;
       if (decision) {
+        facts(el("offer-source-rows"), sources);
+        el("offer-sources").querySelector("summary").textContent = "How the " + money(quote.bill_cents) + " fuel bill gets paid";
         heading.textContent = decision.take_offer ? "Take the early payment" : "Keep the regular payment date";
         rows.push(["Total cost with the early offer", money(decision.early_cost_cents)],
           ["Total cost if you wait", money(decision.wait_cost_cents)]);
         el("offer-limit-value").textContent = decision.highest_fee_cents === null ? "None" : money(decision.highest_fee_cents);
         boundary.textContent = decision.highest_fee_cents === null
           ? "Waiting stays competitive in at least one estimate even if early payment is free."
-          : "This limit leaves you ahead after fees in every tested fuel budget, using the same invoice terms throughout.";
-        status.textContent = decision.take_offer
-          ? "Arrange " + money(quote.cents - decision.fee_cents) + " on " + dayLabel(decision.early_day) + " with the customer. After the fee, you save at least "
-            + money(decision.least_saved_cents) + " across the " + quote.budget_count + " fuel estimates."
-          : "Collect the full " + money(quote.cents) + " on " + dayLabel(decision.regular_day)
-            + ". The offered fee leaves at least one fuel estimate as expensive as waiting.";
+          : "With " + money(quote.capacity_cents) + " of reserve access, this is the highest fee that saves money across all " + quote.budget_count + " fuel estimates.";
+        if (decision.take_offer) {
+          status.textContent = "Arrange " + money(quote.cents - decision.fee_cents) + " on " + dayLabel(decision.early_day)
+            + " with the customer. After the fee, you save at least " + money(decision.least_saved_cents) + " across the " + quote.budget_count + " estimates.";
+        } else {
+          const extra = decision.early_cost_cents - decision.wait_cost_cents;
+          const reason = extra > 0 ? "Early pay costs " + money(extra) + " extra on this bill."
+            : extra === 0 ? "Both choices cost the same on this bill." : "Early pay saves money on this bill, but loses its advantage in another estimate.";
+          status.textContent = "Collect the full " + money(quote.cents) + " on " + dayLabel(decision.regular_day) + ". " + reason;
+        }
         apply.textContent = decision.take_offer ? "Use the early-payment plan" : "Use the regular payment date";
       } else {
         heading.textContent = quote.full_invoices ? "Keep both freight invoices in full" : "Early invoice pay still helps cover fuel";
@@ -111,6 +144,8 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
         status.textContent = difference ? timing + " Clearing on " + dayLabel(cheaperDay) + " saves " + money(difference) + " in estimated fees." : timing;
         apply.textContent = "Use this plan";
       }
+      if (quote.requested_limit_cents > quote.available_reserve_cents)
+        boundary.textContent += " Your wallet and vault can cover up to " + money(quote.available_reserve_cents) + " of the requested limit.";
       facts(el("surcharge-facts"), rows);
       el("surcharge-before").hidden = true;
       el("surcharge-result").hidden = false;
@@ -136,11 +171,20 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
     }
   }
 
+  el("compare-budget").onclick = event => {
+    if (!checked || apply.disabled) return;
+    budget.value = (Number(event.currentTarget.value) / 100).toFixed(2);
+    el("reserve-limit-field").open = true;
+    clear();
+    updateOfferFields();
+    form.requestSubmit();
+  };
+
   apply.onclick = async () => {
     if (!checked || apply.disabled) return;
     const body = checked;
     const token = revision;
-    apply.disabled = check.disabled = amount.disabled = day.disabled = offer.disabled = regular.disabled = discount.disabled = true;
+    apply.disabled = check.disabled = amount.disabled = day.disabled = budget.disabled = offer.disabled = regular.disabled = discount.disabled = true;
     status.textContent = "Updating the bill plan…";
     try {
       const result = await request("/api/apply-surcharge", body);
@@ -154,7 +198,7 @@ export function bindSurcharge(context, dayLabel, useSelection, refresh) {
         await reconcile();
       }
     } finally {
-      apply.disabled = check.disabled = amount.disabled = day.disabled = offer.disabled = false;
+      apply.disabled = check.disabled = amount.disabled = day.disabled = budget.disabled = offer.disabled = false;
       updateOfferFields();
     }
   };

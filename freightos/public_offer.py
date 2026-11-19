@@ -12,7 +12,7 @@ from solders.pubkey import Pubkey
 from freightos import devnet
 from freightos.capture import ROOT
 from freightos.reserve import TOKEN, associated
-from freightos.surcharge import offer_decision
+from freightos.surcharge import offer_decision, surcharge_plans
 
 SAMPLE = devnet.SAMPLE.with_name("offer.json")
 SETTLEMENT_SIGNATURE = "2MAefNg3M2xFj27U82XEg2bwBQDhnmSUD24Ta4s7o47nN4hu5T1dMTKwyhAtHRZR9TQpFa2rAVa1yrNPx1QTGzvc"
@@ -26,6 +26,35 @@ def price_offer():
         if hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != digest:
             raise ValueError("The fuel or reserve evidence has changed")
     return plan, policy, offer
+
+
+def fee_breakdown(plan):
+    faces = {i["id"]: i["face_cents"] for i in plan["calendar"]["invoices"]}
+    discounts = {row["invoice"]: faces[row["invoice"]] - row["receipt_cents"] for row in plan["invoice_elections"]}
+    costs = {"customer_fee_cents": discounts.pop("fuel surcharge"),
+             "invoice_fees_cents": sum(discounts.values()),
+             "reserve_cost_cents": sum(row["cost_cents"] for row in plan["funding"])}
+    if sum(costs.values()) != plan["cost_cents"]:
+        raise ValueError("The funding costs do not add up")
+    return costs
+
+
+@lru_cache(maxsize=1)
+def compare_costs():
+    plan, policy, offer = price_offer()
+    terms = plan["surcharge"]
+    cents, day, regular = terms["cents"], terms["day"], terms["regular_day"]
+    capacity = terms["capacity_cents"]
+    planned = policy["peak_reserve_cents"]
+    waiting = surcharge_plans(cents, regular, capacity)[0][plan["scenario"]]
+    _, _, limited = offer_decision(cents, day, regular, terms["fee_cents"], planned, plan["scenario"])
+    if (not limited["take_offer"] or limited["early_cost_cents"] != plan["cost_cents"]
+            or limited["wait_cost_cents"] != waiting["cost_cents"]):
+        raise ValueError("The reserve budgets do not reproduce the published cost comparison")
+    return {"early": fee_breakdown(plan), "wait": fee_breakdown(waiting),
+            "wait_draw_cents": waiting["payment_cents"], "early_draw_cents": plan["payment_cents"],
+            "planned_cents": planned, "planned_fee_ceiling_cents": limited["highest_fee_cents"],
+            "available_cents": capacity, "available_fee_ceiling_cents": offer["highest_fee_cents"]}
 
 
 def decision_for(customer, vendor):
@@ -110,7 +139,7 @@ def verify(run, rpc=None):
     if receipt["context"]["slot"] < slot:
         raise ValueError("The public receipt predates settlement")
     payment.check_receipt(receipt["value"], 2)
-    return {"decision": run["decision"], "received_raw": received, "customer_paid_raw": before - after,
+    return {"decision": run["decision"], "cost_comparison": compare_costs(), "received_raw": received, "customer_paid_raw": before - after,
             "customer_kept_raw": after, "reserve_paid_raw": reserve_paid, "shares_burned_raw": burned,
             "receipt": str(payment.receipt), "steps": steps, "source": "public-rpc" if rpc else "saved-receipt"}
 

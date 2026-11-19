@@ -127,3 +127,49 @@ def test_fee_ceiling_moves_when_reserve_access_or_the_surcharge_changes():
     assert just_worth_it["take_offer"] and not too_much["take_offer"]
     _, _, limited = offer_decision(18000, 5, 28, 0, 38000, "oil stress")
     assert limited["highest_fee_cents"] is None and not limited["take_offer"]
+
+
+def test_driver_can_compare_and_commit_to_a_reserve_limit_without_moving_money():
+    app = LoadSettlement()
+    data = {"version": app.record_version, "scenario": "oil stress", "cents": 18000,
+            "day": 5, "regular_day": 28, "fee_cents": 800, "reserve_limit_cents": 58500}
+    shares = app.fork.balance(app.fork.shares)
+    quote = app.act("quote-surcharge", data)
+    assert quote["capacity_cents"] == 58500 and quote["available_reserve_cents"] == 59999
+    assert quote["offer"]["highest_fee_cents"] == 500
+    assert not quote["offer"]["take_offer"] and quote["cost_cents"] == 1345
+    alternative = quote["offer"]["larger_budget"]
+    assert alternative == {"limit_cents": 58800, "minimum_to_beat_current": True, "peak_reserve_cents": 58800, "early_cost_cents": 1149, "wait_cost_cents": 1345, "least_saved_cents": 195,
+                           "setup_cents": 58801, "extra_setup_cents": 1800}
+    short = app.act("quote-surcharge", {**data, "reserve_limit_cents": alternative["limit_cents"] - 1})
+    assert not short["offer"]["take_offer"] and short["cost_cents"] == quote["cost_cents"]
+    larger = {**data, "reserve_limit_cents": alternative["limit_cents"]}
+    with pytest.raises(ValueError, match="again"):
+        app.act("apply-surcharge", {**larger, "id": quote["id"]})
+    revised = app.act("quote-surcharge", larger)
+    assert revised["offer"]["take_offer"] and revised["offer"]["highest_fee_cents"] == 800
+    assert revised["cost_cents"] == 1149 and revised["reserve_cents"] == 57300
+    key = app.act("apply-surcharge", {**larger, "id": revised["id"]})["profile"]
+    assert app.state()["surcharge_limit_cents"] == 58800
+    assert max(p["payment_cents"] for p in app.plans[key].values()) == 58800
+    assert app.fork.balance(app.fork.shares) == shares
+    pay = {"profile": key, "scenario": "oil stress", "version": app.record_version}
+    app.act("deposit", {**pay, "max_cents": revised["setup_cents"]})
+    approval = app.act("review", pay)
+    receipt = app.act("approve", {"approval": approval["id"]})
+    assert receipt["decision"]["surcharge"]["capacity_cents"] == 58800
+    assert app.act("verify", {})["vendor_received_usdc_raw"] == 573_000_000
+    app.act("reset", {"version": app.record_version})
+    assert app.surcharge_limit is None
+
+
+def test_optional_budget_accepts_zero_and_never_exceeds_wallet_capacity():
+    app = LoadSettlement()
+    data = {"version": app.record_version, "scenario": "oil stress", "cents": 18000, "day": 5}
+    for invalid in (-1, True, 2.5, None):
+        with pytest.raises(ValueError, match="reserve limit"):
+            app.act("quote-surcharge", {**data, "reserve_limit_cents": invalid})
+    zero = app.act("quote-surcharge", {**data, "reserve_limit_cents": 0})
+    assert zero["capacity_cents"] == zero["reserve_cents"] == zero["setup_cents"] == 0
+    high = app.act("quote-surcharge", {**data, "reserve_limit_cents": 70000})
+    assert high["capacity_cents"] == 59999 and high["requested_limit_cents"] == 70000

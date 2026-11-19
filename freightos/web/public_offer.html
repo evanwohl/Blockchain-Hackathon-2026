@@ -18,6 +18,14 @@
       <div class="receipt-cost"><h2>Why take the offer?</h2>
         <p>The customer offered to pay a $180 fuel surcharge on day 5 for a $5 fee. That puts $175 toward fuel when it’s due. The driver keeps both freight invoices on regular terms.</p>
         <dl id="offer-costs" hidden></dl><p id="offer-savings"></p>
+        <details id="cost-proof" class="public-fuel" hidden><summary>Compare the fees line by line</summary>
+          <table class="reference-prices"><caption>Same fuel bill and funding options</caption>
+            <thead><tr><th scope="col">Estimated cost</th><th scope="col">Take offer</th><th scope="col">Wait</th></tr></thead>
+            <tbody id="cost-proof-rows"></tbody>
+          </table>
+          <p id="cost-proof-draw"></p><p id="cost-proof-limits"></p>
+          <a id="try-reserve-limit" class="ledger-back" href="/bill">Try an $8 offer with the planned reserve →</a>
+        </details>
       </div>
       <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer">Try a different fee or payment date →</a>
     </section>

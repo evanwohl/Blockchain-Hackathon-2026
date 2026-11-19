@@ -139,6 +139,10 @@
         <label>Regular pay day<span class="expense-input"><input id="regular-pay-day" type="number" inputmode="numeric" step="1" min="2" max="365" value="28" disabled required></span></label>
         <label>Fee they keep<span class="expense-input"><span aria-hidden="true">$</span><input id="customer-fee" type="number" inputmode="decimal" step=".01" min="0" disabled required></span></label>
       </div>
+      <details id="reserve-limit-field"><summary>Set a fuel reserve limit</summary>
+        <label>Most I’ll use for fuel<span class="expense-input"><span aria-hidden="true">$</span><input id="reserve-limit" type="number" min="0" max="10000000000" step=".01" inputmode="decimal" aria-describedby="reserve-limit-help"></span></label>
+        <p id="reserve-limit-help">Applies to each fuel estimate. Leave blank to use the available reserve.</p>
+      </details>
       <button type="submit" class="secondary" id="check-surcharge">Check plan</button>
     </form>
     <p id="surcharge-status" role="status"></p></div>
@@ -147,7 +151,9 @@
       <h3 id="surcharge-outcome" tabindex="-1"></h3>
       <div id="offer-limit" hidden><span>Highest fee worth paying</span><strong id="offer-limit-value"></strong></div>
       <dl class="facts" id="surcharge-facts"></dl>
+      <details id="offer-sources" hidden><summary>How the fuel bill gets paid</summary><dl class="facts" id="offer-source-rows"></dl></details>
       <p id="surcharge-boundary"></p>
+      <div class="budget-option" id="budget-option" hidden><p id="budget-tradeoff"></p><button class="secondary" id="compare-budget" type="button">Compare this limit</button></div>
       <button class="primary" id="apply-surcharge" type="button">Use this plan</button>
       <a class="offer-receipt-link" href="/public-offer" id="public-offer-example" hidden>View the $5 sample offer’s paid receipt →</a>
     </section></div>
