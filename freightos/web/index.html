@@ -109,6 +109,7 @@
   <dialog id="settings" aria-labelledby="settings-title"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Load plan</p><button type="button" class="close" aria-label="Close settings" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
     <h2 id="settings-title">Payment options</h2>
+    <div class="settings-scroll">
     <fieldset class="funding-options" id="profile" aria-describedby="access-help">
       <legend>Which situation fits this sample load?</legend>
       <label><input type="radio" name="funding" value="quick pay" checked><span>I can get invoices paid early</span><small></small></label>
@@ -117,8 +118,16 @@
     </fieldset>
     <p id="access-help"></p>
     <label for="scenario">Fuel budget</label><select id="scenario"><option value="oil stress">Allow for higher fuel prices</option><option value="fuel budget">Original fuel estimate</option></select>
-    <dl class="facts draft"><div><dt>Fuel bill due</dt><dd id="draft-bill">—</dd></div><div><dt>Estimated fees</dt><dd id="draft-cost">—</dd></div></dl>
-    <button class="primary" id="apply">Update plan</button>
+    <fieldset class="cash-choice" hidden>
+        <legend>What matters more on this trip?</legend>
+        <div class="cash-labels" aria-hidden="true"><span></span><span>Fees</span><span>Cash left</span></div>
+        <label><input type="radio" name="cash-priority" value="credit line" checked><span>Lowest fees</span><b></b><strong></strong></label>
+        <label><input type="radio" name="cash-priority" value="road cash"><span>Keep road cash</span><b></b><strong></strong></label>
+        <p class="cash-note"></p>
+      </fieldset>
+    </div>
+    <footer class="settings-confirm"><dl><div><dt>Fuel bill</dt><dd id="draft-bill">—</dd></div><div><dt>Est. fees</dt><dd id="draft-cost">—</dd></div></dl>
+      <button class="primary" id="apply">Update plan</button></footer>
   </div></dialog>
   <dialog id="payment" aria-labelledby="title"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Demo payment <span class="sheet-load" id="receipt-load"></span></p><button type="button" class="close" aria-label="Close payment" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>

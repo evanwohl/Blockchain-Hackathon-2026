@@ -476,3 +476,27 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .trial-proof p { max-width: 60ch; }
 .trial-proof a { flex: none; }
 @media (max-width: 650px) { .trial-proof { display: grid; } }
+
+.cash-choice { min-width: 0; margin: .9rem 0 .4rem; padding: .5rem 0 0; border: 0; }
+.cash-choice legend { padding: 0; color: var(--ink); font: 600 1.45rem/1.1 var(--display); }
+.cash-choice label, .cash-labels { display: grid; grid-template-columns: auto minmax(0,1fr) minmax(3rem,auto) minmax(4.5rem,auto); align-items: center; column-gap: .45rem; padding-inline: .5rem; }
+.cash-labels { margin-bottom: .2rem; color: var(--muted); font: 500 .75rem/1.5 Inter,sans-serif; }
+.cash-labels span:first-child { grid-column: span 2; }
+.cash-labels span, .cash-choice b, .cash-choice strong { text-align: right; font-variant-numeric: tabular-nums; }
+.cash-choice label { margin: 0; min-height: 44px; border-top: 1px solid #bcc3ab; font: 500 .86rem/1.25 Inter,sans-serif; cursor: pointer; }
+.cash-choice label:last-of-type { border-bottom: 1px solid #bcc3ab; }
+.cash-choice label:has(:checked) { background: #e6ecd4; box-shadow: inset 2px 0 #566841; }
+.cash-choice label:focus-within { outline: 2px solid #516634; outline-offset: -2px; }
+.cash-choice input { width: 16px; height: 16px; margin: 0; accent-color: #465d32; }
+.cash-choice strong { font-size: 1rem; }
+.cash-note { margin: .5rem 0 0; color: var(--muted); font-size: .81rem; line-height: 1.45; }
+
+#settings .sheet { display: flex; flex-direction: column; max-height: inherit; padding-bottom: 0; }
+.settings-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.settings-scroll .cash-choice { padding-inline: 2px; }
+.settings-scroll #scenario { width: calc(100% - 4px); margin-inline: 2px; }
+.settings-confirm { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .7rem; padding: .8rem 0 max(.85rem,env(safe-area-inset-bottom)); margin-top: .65rem; border-top: 1px solid #a3ac92; }
+.settings-confirm dl { display: flex; gap: .95rem; }
+.settings-confirm dt { font-size: .77rem; color: var(--muted); }
+.settings-confirm dd { font: 600 1.45rem/1.2 var(--display); }
+.settings-confirm .primary { width: auto; padding-inline: 1rem; }

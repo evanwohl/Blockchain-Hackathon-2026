@@ -15,7 +15,7 @@
   <div class="overview-hero">
     <section class="overview-copy" aria-labelledby="intro-title">
       <h1 id="intro-title">Fuel is due.<br><em>Freight pays later.</em></h1>
-      <p>Getting a whole invoice paid early can be expensive. FreightOS checks whether you can cover fuel for less using money you’ve set aside, early invoice pay, bank credit, or cash.</p>
+      <p>See how much to set aside for fuel, which invoice to collect early, and what you can keep for the road. Compare the fees before you move a dollar.</p>
       <div class="cash-window" id="cash-window" aria-label="Sample payment dates" hidden>
         <span>Fuel due<b id="window-due"></b></span><span id="window-gap"></span><span>Freight pays<b id="window-paid"></b></span>
       </div>
@@ -28,6 +28,13 @@
       <fieldset disabled id="quote-inputs"><legend class="visually-hidden">Compare funding options</legend>
         <label>What can you use?<select id="quote-profile"><option value="quick pay">Early pay on an invoice</option><option value="credit line">Bank credit and early pay</option><option value="cash on hand">Cash for the bill</option></select></label>
         <label>Fuel budget<select id="quote-scenario"><option value="oil stress">Higher fuel estimate</option><option value="fuel budget">Original estimate</option></select></label>
+      </fieldset>
+      <fieldset class="cash-choice" hidden>
+        <legend>What matters more on this trip?</legend>
+        <div class="cash-labels" aria-hidden="true"><span></span><span>Fees</span><span>Cash left</span></div>
+        <label><input type="radio" name="cash-priority" value="credit line" checked><span>Lowest fees</span><b></b><strong></strong></label>
+        <label><input type="radio" name="cash-priority" value="road cash"><span>Keep road cash</span><b></b><strong></strong></label>
+        <p class="cash-note"></p>
       </fieldset>
       <div id="quote-result" hidden>
         <div class="quote-total"><span>Fuel bill due</span><strong id="quote-bill"></strong></div>

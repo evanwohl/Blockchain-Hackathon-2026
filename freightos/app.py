@@ -11,14 +11,10 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos.fuel_markets import fuel_levels
-from hedging.invoice_policy import invoice_policy
-from hedging.quick_pay import capacity_boundary, price_calendar
+from freightos.funding import DATA, LOAD, demo_plans, funding_plan
+from hedging.quick_pay import price_calendar
 
-LOAD = "FOS-2048"
 ASSETS = Path(__file__).with_name("web")
-DATA = ROOT / "artifacts/quick_pay"
-PROFILES = ("quick pay", "credit line", "cash on hand")
 
 
 @cache
@@ -58,102 +54,6 @@ def stressed_trial():
         counts[name] = {"savings_cents": sum(values), "positive_cases": sum(x > 0 for x in values),
                         "replaced_cases": k, "worst_mix_cents": sum(sorted(values)[:-k]) + k * min(values)}
     return counts
-
-
-def funding_plan(sample, evidence, scenario, profile):
-    g = evidence["gemini"]
-    bill = sample["bills"][0]
-    base_cents = bill["cents"] - g["extra_fuel_cents_interval"][1]
-    if scenario == "fuel budget":
-        amount = base_cents
-    elif scenario == "oil stress":
-        amount = bill["cents"]
-    elif isinstance(scenario, str) and scenario.startswith("wti-") and scenario[4:] in fuel_levels(evidence):
-        g = {**g, **fuel_levels(evidence)[scenario[4:]]}
-        amount = base_cents + g["extra_fuel_cents_interval"][1]
-    else:
-        raise ValueError("Unknown fuel scenario")
-    if profile not in PROFILES:
-        raise ValueError("Unknown funding option")
-    reserve = {**sample["funding"][0], "net_capacity_cents": 59999}
-    alternatives = []
-    if profile == "credit line":
-        alternatives.append(
-            {
-                "id": "approved bank line",
-                "available_day": 1,
-                "restore_day": 28,
-                "net_capacity_cents": 80000,
-                "fixed_cost_cents": 0,
-                "term_cost_bps": 100,
-            }
-        )
-    case = {
-        **sample,
-        "bills": [{**bill, "cents": amount}],
-        "opening_cash_cents": amount if profile == "cash on hand" else 0,
-    }
-    decision = price_calendar({**case, "funding": [reserve, *alternatives]})
-    fallback = price_calendar({**case, "funding": alternatives})
-    draw = sum(
-        d["net_proceeds_cents"]
-        for d in decision["funding"]
-        if d["source"] == reserve["id"]
-    )
-    return {
-        "load": LOAD,
-        "profile": profile,
-        "scenario": scenario,
-        "bill_cents": amount,
-        "payment_cents": draw,
-        "other_funds_cents": amount - draw,
-        "cost_cents": decision["cost_cents"],
-        "alternative_cost_cents": fallback["cost_cents"],
-        "savings_cents": fallback["cost_cents"] - decision["cost_cents"],
-        "funding": decision["funding"],
-        "invoice_elections": decision["payments"],
-        "gemini": g,
-        "input_sha256": evidence["input_sha256"],
-        "calendar": {**case, "funding": [reserve, *alternatives]},
-    }
-
-
-def pairing_value(plan):
-    case = plan["calendar"]
-    reserve = next(source for source in case["funding"] if source["id"] == "reserve redemption")
-    standard_return = [
-        {**invoice, "options": [o for o in invoice["options"] if o["name"] == "standard"]}
-        if invoice["id"] == "backhaul" else invoice for invoice in case["invoices"]
-    ]
-    restricted = {**case, "invoices": standard_return}
-    base = price_calendar({**restricted, "funding": []})["cost_cents"]
-    reserve_only = price_calendar({**restricted, "funding": [reserve]})["cost_cents"]
-    outside = plan["alternative_cost_cents"]
-    best = min(reserve_only, outside)
-    gain = best - plan["cost_cents"]
-    boundary = None
-    if gain > 0:
-        boundary = capacity_boundary(case, reserve["id"], plan["payment_cents"],
-                                     {"cost_cents": plan["cost_cents"]}, {"cost_cents": outside},
-                                     {"cost_cents": best})
-    return {"base_cents": base, "reserve_only_cents": reserve_only, "outside_only_cents": outside,
-            "joint_cents": plan["cost_cents"], "pairing_savings_cents": gain, "boundary": boundary}
-
-
-@cache
-def demo_plans():
-    evidence = json.loads((DATA / "case_report.json").read_bytes())
-    sample = json.loads((DATA / "sample_calendar.json").read_bytes())
-    levels = fuel_levels(evidence)
-    anchor = evidence["gemini"]["stress_level"]
-    if levels[anchor]["extra_fuel_cents_interval"] != evidence["gemini"]["extra_fuel_cents_interval"]:
-        raise ValueError("Gemini threshold does not reproduce the original fuel budget")
-    scenarios = ["fuel budget", "oil stress", *("wti-" + level for level in levels if level != anchor)]
-    plans = {profile: {scenario: funding_plan(sample, evidence, scenario, profile) for scenario in scenarios}
-             for profile in PROFILES}
-    edges = {profile: {key: pairing_value(plan) for key, plan in choices.items()} for profile, choices in plans.items()}
-    policies = {profile: invoice_policy(choices) for profile, choices in plans.items() if profile != "cash on hand"}
-    return plans, edges, levels, policies
 
 
 class LoadSettlement:
@@ -247,7 +147,7 @@ class LoadSettlement:
                 if data:
                     profile = data.get("profile")
                     cap = data.get("max_cents")
-                    if profile not in PROFILES or type(cap) is not int or cap < 0 or data.get("version") != self.record_version:
+                    if profile not in self.plans or type(cap) is not int or cap < 0 or data.get("version") != self.record_version:
                         raise ValueError("Review the current reserve amount")
                     if LOAD in self.fork.receipts:
                         raise ValueError("This load is already settled")

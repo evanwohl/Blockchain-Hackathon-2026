@@ -48,6 +48,9 @@ def test_fixed_invoice_choice_pays_positive_regret_when_hindsight_switches():
     policy = invoice_policy(plans)
     assert policy["elections"] == {"main": "early"}
     assert policy["worst_regret_cents"] == 250
+    assert invoice_policy(plans, fee_allowance_cents=249) is None
+    flexible = invoice_policy(plans, fee_allowance_cents=250)
+    assert flexible["peak_reserve_cents"] == 0 and flexible["elections"] == {"main": "early"}
 
 
 def test_market_budget_replays_and_trial_baselines_reconcile():
@@ -84,7 +87,7 @@ def test_guarded_reserve_setup_keeps_wallet_cash_and_can_top_up():
     app.act("deposit", topup)
     approval = app.act("review", {"scenario": "wti-93", "profile": "credit line"})
     paid = app.act("approve", {"approval": approval["id"]})
-    assert replay(paid)["vendor_received_usdc_raw"] == 599_990_000
+    assert replay(paid)["vendor_received_usdc_raw"] == 599_000_000
 
 
 def test_public_observation_checks_custody_identity_and_uses_one_confirmed_slot():
@@ -120,3 +123,54 @@ def test_stress_comparison_reprices_both_sides():
     assert stress["conventional"]["savings_cents"] == report["adverse_savings"]["total_cents"]
     same = stress["composition"]
     assert same == {"savings_cents": 55493, "positive_cases": 16, "replaced_cases": 13, "worst_mix_cents": 190}
+
+
+def test_minimum_reserve_matches_independent_cent_search_for_all_fuel_budgets():
+    choices, _, _, policies = demo_plans()
+    for profile, allowance in (("credit line", 0), ("road cash", 100)):
+        policy = policies[profile]
+        assert set(policy["elections"].values()) == {"standard"}
+        # With the lowest bill, even the cheapest early-invoice fee alone exceeds the limit.
+        assert 600 > choices["credit line"]["fuel budget"]["cost_cents"] + allowance
+        minimums = []
+        for key, plan in choices[profile].items():
+            bill = plan["bill_cents"]
+            cap = choices["credit line"][key]["cost_cents"] + allowance
+            def fee(draw):
+                bank = (bill - draw + 99) // 100
+                reserve = 200 + (draw * 26 + 9999) // 10000 if draw else 0
+                return reserve + bank
+            minimums.append(next(draw for draw in range(60000) if fee(draw) <= cap))
+            result = policy["outcomes"][key]
+            assert plan["payment_cents"] == result["reserve_cents"]
+            assert fee(plan["payment_cents"]) == plan["cost_cents"] == result["cost_cents"] <= cap
+        assert max(minimums) == policy["peak_reserve_cents"]
+
+
+def test_road_cash_approval_and_old_credit_payment_both_replay():
+    import json
+    from freightos.app import DATA, LOAD, funding_plan
+
+    app = LoadSettlement()
+    state = app.state()
+    assert state["setup_cents"]["credit line"] == 59901
+    assert state["setup_cents"]["road cash"] == 46401
+    data = {"profile": "road cash", "scenario": "oil stress", "version": state["record_version"]}
+    app.act("deposit", {**data, "max_cents": 46401})
+    assert app.state()["wallet_usdc_raw"] == 135_990_000
+    review = app.act("review", data)
+    assert review["decision"]["cash_policy"]["fee_allowance_cents"] == 100
+    receipt = app.act("approve", {"approval": review["id"]})
+    verified = replay(receipt)
+    assert verified["vendor_received_usdc_raw"] == 464_000_000
+    assert verified["wallet_usdc_raw"] == 135_990_000
+    assert app.act("record-payment", data)["cents"] == 28100
+
+    app = LoadSettlement()
+    app.act("deposit", {})
+    old = funding_plan(json.loads((DATA / "sample_calendar.json").read_bytes()),
+                       json.loads((DATA / "case_report.json").read_bytes()), "oil stress", "credit line")
+    assert "cash_policy" not in old
+    review = app.fork.review(LOAD, old["payment_cents"] * 10000, old)
+    receipt = app.act("approve", {"approval": review["id"]})
+    assert replay(receipt)["vendor_received_usdc_raw"] == 599_990_000

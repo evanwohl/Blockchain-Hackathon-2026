@@ -18,7 +18,7 @@ def delay_bound(row, expected_key, latest_key):
     return latest
 
 
-def price_calendar(case):
+def price_calendar(case, *, minimize_source=None, fee_limit_cents=None):
     """Prices a single USD payment rail. Each step settles receipts before its bills."""
     opening = integer(case["opening_cash_cents"], "opening cash")
     floor = integer(case["reserve_floor_cents"], "cash reserve")
@@ -135,6 +135,23 @@ def price_calendar(case):
             raise ArithmeticError("Integer cash-flow reconstruction failed")
         return answer
 
+    if minimize_source is not None:
+        if minimize_source not in {s["id"] for s in sources}:
+            raise ValueError("Unknown funding source to minimize")
+        limit = integer(fee_limit_cents, "fee limit")
+        constraints.append(({j: c for j, c in enumerate(costs) if c}, 0, limit))
+        objective = [0] * len(columns)
+        for name, x, _, _ in draws:
+            if name == minimize_source:
+                objective[x] = 1
+        minimum = optimize(objective) if columns else []
+        if minimum is None:
+            return {"status": "unfunded"}
+        for j, weight in enumerate(objective):
+            if weight:
+                constraints.append(({j: 1}, minimum[j], minimum[j]))
+    elif fee_limit_cents is not None:
+        raise ValueError("Select a funding source when setting a fee limit")
     answer = optimize(costs) if columns else []
     if answer is None or (not columns and opening - bills_to_date[-1] < floor):
         return {"status": "unfunded"}

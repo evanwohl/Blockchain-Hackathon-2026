@@ -54,3 +54,29 @@ export function oilOptions(select, plans) {
   }
   if (group.children.length) select.append(group);
 }
+
+export const usesCredit = profile => profile === "credit line" || profile === "road cash";
+
+export function cashPriority(state, funding, scenario) {
+  const field = document.querySelector(".cash-choice");
+  field.hidden = !usesCredit(funding);
+  if (field.hidden) return funding;
+  const selected = field.querySelector(":checked").value;
+  const quoted = Object.hasOwn(state.setup_cents, selected);
+  for (const input of field.querySelectorAll("input")) {
+    const profile = input.value;
+    const fee = state.funding_plans[profile][scenario].cost_cents;
+    const cash = quoted ? money(state.wallet_usdc_raw / 10000 - state.setup_cents[profile]) : "—";
+    const row = input.labels[0];
+    row.querySelector("b").textContent = money(fee);
+    row.querySelector("strong").textContent = cash;
+    input.setAttribute("aria-label", row.querySelector("span").textContent + ", " + money(fee)
+      + " estimated fees" + (quoted ? ", " + cash + " left in wallet" : ""));
+  }
+  const delta = state.setup_cents["credit line"] - state.setup_cents["road cash"];
+  const premium = state.funding_plans["road cash"][scenario].cost_cents - state.funding_plans["credit line"][scenario].cost_cents;
+  field.querySelector(".cash-note").textContent = !quoted ? "Reserve setup is closed for this bill. You can still compare estimated fees."
+    : delta > 0 ? "After setup, keep " + money(delta) + " more available for tolls or repairs for " + money(premium) + " in extra fees."
+    : "The plans leave the same wallet balance after setup. Previously deposited funds stay in the reserve.";
+  return selected;
+}
