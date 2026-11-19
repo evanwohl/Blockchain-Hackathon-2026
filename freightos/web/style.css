@@ -68,16 +68,22 @@ button { border: 0; border-radius: 12px; min-height: 45px; font-size: .88rem; fo
 .overview, .analysis-grid, .trial-workspace { display: grid; grid-template-columns: var(--columns); gap: var(--gutter); }
 .bill-card, .card, .trial-summary { border-radius: 21px; overflow: hidden; }
 .bill-card { container-type: inline-size; display: flex; flex-direction: column; background: #09382c; color: white; }
-.bill-face { flex: 1; display: flex; align-items: center; position: relative; isolation: isolate; overflow: hidden; }
-.bill-face img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: right center; z-index: -2; }
-.bill-body { min-height: clamp(12rem, 21vh, 18rem); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: clamp(22px,2.6vw,36px); }
-.bill-body h2 { display: flex; align-items: center; gap: 8px; font-size: .93rem; letter-spacing: 0; font-weight: 530; }
-.bill-body h2 .icon { color: var(--citron); }
+.bill-face {
+  flex: 1;
+  min-height: clamp(12rem, 21vh, 18rem);
+  padding: clamp(1rem, 2.4cqw, 1.6rem) clamp(1.25rem, 4.8cqw, 2.75rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+}
+.bill-balance h2, .bill-deadline dt { color: #d7e6da; font: 520 .95rem/1.3 Inter, sans-serif; letter-spacing: 0; }
+.bill-deadline { border-inline-start: 1px solid #476759; padding-inline: clamp(.95rem, 3.2cqw, 2.25rem) .15rem; }
+.bill-deadline dd { margin-top: .42rem; font-size: clamp(1.45rem, 4.5cqw, 2.8rem); line-height: 1.08; font-weight: 500; letter-spacing: -.04em; color: var(--citron); text-align: left; white-space: nowrap; }
 .display { display: block; font-size: clamp(3.6rem,5.9vw,5.6rem); font-weight: 470; letter-spacing: -.054em; line-height: 1.04; }
 #bill { margin: 13px 0 9px; }
 #bill small { font-size: .59em; letter-spacing: -.028em; vertical-align: .40em; margin-left: .035em; }
-.due { color: #e5f1e7; font-size: .82rem; }
-#bill-scenario::before { content: " · "; }
+#bill-scenario { font-size: .84rem; color: #d7e6da; }
 .bill-stub { position: relative; display: flex; justify-content: space-between; gap: 12px; border-top: 1px dashed #879b70; background: #e8efdb; color: #173c2d; padding: 12px clamp(22px,2.6vw,36px) 14px; }
 .bill-stub::before, .bill-stub::after { content: ""; position: absolute; top: -8px; width: 15px; height: 15px; border-radius: 50%; background: var(--paper); }
 .bill-stub::before { left: -8px; }
@@ -206,7 +212,7 @@ pre { max-height: 230px; white-space: pre-wrap; overflow-wrap: anywhere; overflo
 .case .secondary { width: 100%; margin: 12px 0; }
 @media (min-width: 1000px) and (max-height: 850px) {
   .desk .page-heading { padding-block: .85rem; }
-  .bill-body { min-height: 10.5rem; padding-block: 1rem; }
+  .bill-face { min-height: 10.5rem; padding-block: 1rem; }
   .funding { padding-block: 1rem; }
   .funding .mix { margin-block: .7rem; }
   .funding .split { margin-bottom: 1rem; }
@@ -225,19 +231,12 @@ pre { max-height: 230px; white-space: pre-wrap; overflow-wrap: anywhere; overflo
   .funding { justify-content: space-evenly; }
 }
 @container (max-width: 510px) {
-  .bill-face { background: #07382e; }
-  .bill-face img { inset: auto 0 0 auto; width: 93%; height: auto; mask-image: linear-gradient(180deg, transparent, #000 35%), linear-gradient(90deg, transparent, #000 35%); mask-composite: intersect; }
-  .bill-body { min-height: clamp(160px,44cqw,210px); padding: 16px 20px; justify-content: flex-start; }
+  .bill-face { min-height: 9.25rem; padding: 1.2rem; gap: .65rem; }
+  .bill-balance h2, .bill-deadline dt, #bill-scenario { font-size: .78rem; }
   .bill-stub { padding: 10px 20px 12px; }
   .bill-stub dt { font-size: .62rem; }
   .bill-stub dd { font-size: .86rem; }
-  .due { font-size: .75rem; }
-  #bill-scenario { display: block; }
-  #bill-scenario::before { content: none; }
-  .bill-body h2 { font-size: .84rem; }
-  .bill-body h2 .icon { width: 16px; height: 16px; }
-  #bill { font-size: clamp(2.8rem,14cqw,3.55rem); }
-  #bill { margin: 8px 0 3px; }
+  #bill { font-size: clamp(2.6rem,13cqw,3.8rem); margin: .45rem 0 .3rem; }
 }
 @media (max-width: 800px) {
   .overview { grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); gap: 14px; }
@@ -288,7 +287,6 @@ pre { max-height: 230px; white-space: pre-wrap; overflow-wrap: anywhere; overflo
   :root { --page-gutter: 12px; }
   nav a { padding-inline: 7px; }
   h1 { font-size: 1.85rem; }
-  .bill-face img { width: 87%; }
   #load-map { --columns: 10; }
 }
 @media (prefers-reduced-motion: no-preference) {

@@ -17,7 +17,7 @@ function renderCalendar(plan) {
   const bill = plan.calendar.bills[0];
   const primary = plan.invoice_elections.find(item => item.invoice === "primary load");
   el("load-id").textContent = plan.load;
-  el("bill-due").textContent = "Due day " + bill.day;
+  el("bill-due").textContent = "Day " + bill.day;
   el("bill-scenario").textContent = plan.scenario === "oil stress" ? "Higher fuel estimate" : "Original fuel estimate";
   el("invoice-value").textContent = money(primary.receipt_cents);
   el("invoice-day").textContent = "Day " + primary.day;

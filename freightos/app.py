@@ -189,7 +189,6 @@ class Handler(BaseHTTPRequestHandler):
             "/trial.js": ("trial.js", "text/javascript"),
             "/style.css": ("style.css", "text/css"),
             "/app.js": ("app.js", "text/javascript"),
-            "/media/fleet.webp": ("media/fleet.webp", "image/webp"),
             "/media/freightos-mark.svg": ("media/freightos-mark.svg", "image/svg+xml"),
             "/media/instrument-serif-latin-400-italic.woff2": ("media/instrument-serif-latin-400-italic.woff2", "font/woff2"),
             "/media/inter-latin-wght-normal.woff2": ("media/inter-latin-wght-normal.woff2", "font/woff2"),
