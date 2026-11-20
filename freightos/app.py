@@ -747,6 +747,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/fuel-desk": ("fuel_desk.html", "text/html; charset=utf-8"),
+            "/fuel-desk.js": ("fuel_desk.js", "text/javascript"),
+            "/fuel-desk.css": ("fuel_desk.css", "text/css"),
+            "/funding_mix.js": ("funding_mix.js", "text/javascript"),
             "/fuel-stop": ("fuel_stop.html", "text/html; charset=utf-8"),
             "/fuel-stop.js": ("fuel_stop.js", "text/javascript"),
             "/fuel-stop.css": ("fuel_stop.css", "text/css"),
@@ -794,7 +798,13 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(404, {"error": "Page unavailable"})
             return
         name, mime = assets[self.path]
-        self.reply(200, mime, (ASSETS / name).read_bytes(), static=True)
+        content = (ASSETS / name).read_bytes()
+        if mime.startswith("text/html"):
+            for fragment in ("funding_fields", "loan_receipt"):
+                marker = ("{{" + fragment + "}}").encode()
+                if marker in content:
+                    content = content.replace(marker, (ASSETS / (fragment + ".html")).read_bytes())
+        self.reply(200, mime, content, static=True)
 
     def do_POST(self):
         host = self.headers.get("Host", "")

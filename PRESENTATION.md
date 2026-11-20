@@ -1,5 +1,8 @@
 # FreightOS judge walkthrough
 
+**One-minute driver walkthrough.** Start on Overview and open **Compare funding for a $190 fuel stop**. The customer offers $90 now for a $3 fee. The driver brings $75 and needs $25 from the wallet. Toggle **No new loan** to see $2.06 left on payday, below the $3 target. Toggle **Borrowing allowed** to see how a $4.57 loan leaves $6.92 at the $150 SOL stress. Open the lower-price comparison to show the tradeoff, then save the driver's funding sheet. On the same screen, **Inspect a settled loan on Devnet** has both signed transactions from a separate $7 example. The $190 plan is a recorded mainnet estimate.
+
+
 Allow two minutes. Use one narrator and one person at the keyboard. The other two teammates can cover the funding model and settlement questions after the demo.
 
 | Time | Show | Say |

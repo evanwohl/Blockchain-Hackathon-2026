@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#233b2c"><title>Fuel funding desk · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/fuel-stop.css"><link rel="stylesheet" href="/fuel-desk.css">
+  <script type="module" src="/fuel-desk.js"></script>
+</head>
+<body class="driver-desk">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" width="38" height="38" alt="">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/fuel-desk" aria-current="page">Funding desk</a><a href="/bill">Fuel bill</a></nav></div></header>
+<main>
+  <header class="desk-banner"><div class="desk-wrap">
+    <div><p class="desk-kicker">FOS-2048 · Sample fuel stop</p><h1>Fuel funding <em>desk.</em></h1><p>Cover today’s diesel bill and see what you keep when freight pays.</p></div>
+    <dl class="desk-dates"><div><dt>Fuel due today</dt><dd>$190<span>.00</span></dd></div><div><dt>Freight invoice · Day 30</dt><dd>$200<span>.00</span></dd></div></dl>
+  </div></header>
+  <div class="desk-wrap desk-grid">
+    <aside class="desk-side">
+      <details id="desk-terms"><summary><span>Your funding terms</span><strong id="desk-offer-line">$90 early · $3 fee</strong></summary>
+        <form id="desk-form">
+          <label for="terms">What will the customer pay early?</label>
+          <select id="terms"><option value="counter">A specific amount</option><option value="partial">Any amount up to $99</option><option value="none">Nothing before the stop</option></select>
+          <div class="desk-pair" id="fixed-offer"><label>Cash they send ($)<input id="advance" type="number" inputmode="decimal" min=".01" max="200" step=".01" value="90.00" required></label><label>Fee they keep ($)<input id="discount" type="number" inputmode="decimal" min="0" max="200" step=".01" value="3.00" required></label></div>
+          <label id="scaled-offer" hidden>Customer fee per $99 ($)<input id="fee" type="number" inputmode="decimal" min="0" max="100" step=".01" value="1.00" required disabled></label>
+          <div class="desk-pair"><label>Cash I can bring ($)<input id="cash" type="number" min="0" max="1000000" step=".01" value="75.00" inputmode="decimal" required></label><label>SOL I can use ($)<input id="budget" type="number" min="0" max="1000000" step=".01" value="80.00" inputmode="decimal" required></label></div>
+          <label>Cash I need left on payday ($)<input id="target" type="number" min="0" max="1000000" step=".01" value="3.00" inputmode="decimal" required></label>
+          <button type="submit" class="desk-secondary">Review my plan</button>
+        </form>
+      </details>
+      <a class="desk-receipt-jump" href="#signed-loan">Inspect a settled loan on Devnet</a>
+    </aside>
+    <section class="desk-decision" aria-labelledby="plan-heading">
+      <header class="desk-plan-heading"><p class="desk-kicker">Recorded mainnet estimate</p><h2 id="plan-heading" tabindex="-1">Your payment plan</h2><p id="desk-split" hidden></p></header>
+      <p id="desk-status" role="status">Pricing the fuel bill…</p><button id="desk-retry" type="button" class="desk-secondary" hidden>Try pricing again</button>
+      <div id="mix" class="funding-slip" hidden><span class="visually-hidden" id="mix-preview"></span>
+        {{funding_fields}}
+        <div class="desk-actions"><button type="button" id="desk-save">Save my funding sheet</button><button type="button" id="mix-request">Download customer request</button></div>
+      </div>
+    </section>
+    <section class="desk-receipt" id="signed-loan" aria-labelledby="receipt-heading">
+      <div class="desk-proof-heading"><p class="desk-kicker">Public Solana Devnet</p><h2 id="receipt-heading">A fuel loan that settled.</h2><p>This separate $7 example uses test funds. Kamino lent to the driver, the fuel vendor received payment, and repayment released the collateral.</p></div>
+      <div class="desk-proof-body">{{loan_receipt}}</div>
+    </section>
+  </div>
+</main></body></html>

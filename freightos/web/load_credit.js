@@ -6,7 +6,7 @@ const chain = "solana:devnet";
 const explorer = signature => "https://explorer.solana.com/tx/" + encodeURIComponent(signature) + "?cluster=devnet";
 const write = (id, text) => { el(id).textContent = text; };
 
-async function showCycle(live) {
+export async function showCycle(live) {
   const button = el("cycle-verify");
   button.disabled = true;
   write("cycle-status", live ? "Checking both finalized transactions on Devnet…" : "Checking saved evidence…");

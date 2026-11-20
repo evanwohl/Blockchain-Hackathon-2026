@@ -235,3 +235,8 @@
 #cash-splits th { font-size: .8rem; line-height: 1.25; vertical-align: bottom; }
 #cash-splits th:first-child, #cash-splits td:first-child { text-align: start; padding-inline-start: 0; }
 #cash-splits .chosen-split { background: #e7ecd8; font-weight: 650; }
+
+.overview-copy .desk-entry { display: inline-grid; gap: .25rem; border-left: 4px solid #cbdb97; padding: .75rem 1.1rem; background: #29442f; color: #f7f8e8; text-decoration: none; }
+.desk-entry span { font-weight: 650; }
+.desk-entry small { color: #e0e9d1; font-size: .8rem; }
+.overview-copy .desk-entry:hover { background: #36563b; }

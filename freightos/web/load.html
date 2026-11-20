@@ -105,9 +105,7 @@
     <header><p class="load-kicker">Secured fuel credit · Solana Devnet</p><h2 id="credit-title">Borrow for the fuel gap.</h2>
       <p>Keep your road cash. Use test SOL you already own as collateral. Kamino lends the missing test USDC, and the same transaction pays the fuel vendor. Repay the loan to release the pledge.</p></header>
     <section class="credit-cycle" aria-label="Repaid public loan">
-      <h3>A fuel loan that settled</h3><p id="cycle-status" role="status">Checking the two signed transactions…</p>
-      <ol id="cycle-steps"></ol><p id="cycle-outcome"></p><div id="cycle-links" hidden><a id="cycle-open" target="_blank" rel="noopener">Vendor payment ↗</a> <a id="cycle-close" target="_blank" rel="noopener">Loan payoff ↗</a></div>
-      <details><summary>Check the costs and evidence</summary><p id="cycle-cost"></p><p>Orca supplied the test USDC used for repayment from sponsored test SOL. Both transactions settled seconds apart. Interest through a future freight payday is a projection.</p><button id="cycle-verify" type="button" class="secondary">Verify both on public Solana</button> <a href="/evidence/settled-credit" download="FreightOS-Kamino-credit.json">Download signed evidence</a></details><a href="/fuel-credit#one-payment">Use spare reserve money and borrow the rest in one payment ↗</a> · <a href="/fuel-stop#market=loan">Compare borrowing with selling at mainnet prices →</a>
+      <h3>A fuel loan that settled</h3>{{loan_receipt}}<a href="/fuel-credit#one-payment">Use spare reserve money and borrow the rest in one payment ↗</a> · <a href="/fuel-stop#market=loan">Compare borrowing with selling at mainnet prices →</a>
     </section>
     <section class="credit-desk"><h3>Price this load</h3><p id="credit-calendar" aria-live="polite">Checking your cash calendar…</p><p class="credit-scale">Each test cent covers $1 of the sample shortfall. This loan would replace a bank or reserve draw.</p>
       <button id="credit-example" type="button" class="secondary">Use the $7 example in my load</button><label>Maximum test SOL to pledge<input id="credit-cap" type="number" step=".001" min=".001" max="10" value=".100"></label>
