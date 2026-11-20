@@ -190,3 +190,89 @@ def test_recorded_midwest_minimum_for_five_more_dollars_at_the_stop():
 def test_pump_money_requires_whole_nonnegative_cents(amount):
     with pytest.raises(ValueError):
         tc.validate({**tc.EXAMPLE, "pump_cash_cents": amount})
+
+
+def test_debt_free_comparison_reconciles_every_settlement_band_and_increment():
+    trip = {**tc.EXAMPLE, "region": "midwest", "pump_cash_cents": 500, "spend_limit_cents": 300}
+    reserve = {"available_cents": 3002, "road_cents": 2500}
+    target = tc.analyze(tc.recorded(), trip, reserve=reserve)["pump_target"]
+    change = target["protection_change"]
+    assert change["total_cents"] == 555 and change["extra_cents"] == 255 and target["after"]["short_cents"] == 292
+    other = tc.analyze(tc.recorded(), {**trip, "spend_limit_cents": 555}, reserve=reserve)["pump_target"]
+    assert other["after"]["short_cents"] == 0 and other["protection_change"] is None
+    for row in change["outcomes"]:
+        def payout(plan):
+            return sum(leg["lots"] for leg in plan["legs"] if row["from_strike"] and float(leg["strike"]) <= float(row["from_strike"]))
+        assert row["extra_payout_cents"] == payout(other["plan"]) - payout(target["plan"])
+    assert change["market_value"] == {"low_cents": 239, "high_cents": 252}
+    assert 0 <= change["draw_low_cents"] <= change["draw_high_cents"] <= target["after"]["short_cents"]
+    assert max(row["max_draw_cents"] for row in change["outcomes"]) == 292
+    assert all(0 <= row["min_draw_cents"] <= row["max_draw_cents"] for row in change["outcomes"])
+
+
+@pytest.mark.parametrize("changes", [[11, -8, 37], [-100, 12, -24], [1, 0, 0]])
+def test_nested_quote_bounds_match_independent_enumeration(changes):
+    offers = [{"bid": 3, "price": 8}, {"bid": 1, "price": 7}, {"bid": 4, "price": 6}]
+    possible = [sum(p*q for p, q in zip(prices, changes)) for prices in product(*(range(o["bid"], o["price"]+1) for o in offers))
+                if prices[0] >= prices[1] >= prices[2]]
+    assert tc.market_value_range(offers, changes) == {"low_cents": min(possible)//100, "high_cents": -(-max(possible)//100)}
+    assert tc.market_value_range([{"bid": 1, "price": 2}, {"bid": 3, "price": 4}], [1, 1]) is None
+
+
+@pytest.mark.parametrize("bad", ["0.82", "0.98", "NaN"])
+def test_unverified_bid_suppresses_mark_but_keeps_executable_ask(bad):
+    snapshot = deepcopy(tc.recorded())
+    snapshot["books"]["GEMI-WTI2611202200-HI81"]["levels"]["bids"][0]["price"] = bad
+    result = tc.analyze(snapshot, {**tc.EXAMPLE, "region": "midwest", "pump_cash_cents": 500, "spend_limit_cents": 300},
+                        reserve={"available_cents": 3002, "road_cents": 2500})
+    change = result["pump_target"]["protection_change"]
+    assert change["total_cents"] == 555 and change["market_value"] is None
+
+
+def test_draw_value_keeps_within_band_uncertainty_and_price_order():
+    offers = [{"strike": "1", "bid": 50, "price": 50}, {"strike": "2", "bid": 20, "price": 20}]
+    selected = {"upfront_cents": 1, "legs": [{"strike": "1", "lots": 10}]}
+    larger = {"upfront_cents": 2, "legs": [{"strike": "1", "lots": 11}, {"strike": "2", "lots": 5}]}
+    change = tc.protection_change(offers, [20, 40, 60], 10, selected, larger)
+    assert [(o["min_draw_cents"], o["max_draw_cents"]) for o in change["outcomes"]] == [(0, 10), (0, 20), (20, 40)]
+    assert (change["draw_low_cents"], change["draw_high_cents"]) == (4, 19)
+
+
+@pytest.mark.parametrize("peak", [10, 13, 18])
+def test_robust_funding_risk_and_peak_tiebreak_match_every_hedge(peak):
+    offers = [{"strike": "1", "bid": 47, "price": 52, "depth": 14},
+              {"strike": "2", "bid": 23, "price": 35, "depth": 13}]
+    gaps = [3, 12, 24]
+    cash, spend = 7, 10
+    candidates = []
+    for a, b in product(range(15), range(14)):
+        residuals = [3, 12-a, 24-a-b]
+        premium = sum(tc.cost(a, offers[0])) + sum(tc.cost(b, offers[1]))
+        if max(residuals) <= peak and premium <= spend:
+            hit = [int(v > cash) for v in residuals]
+            weight = max((100-x)*hit[0] + (x-y)*hit[1] + y*hit[2] for x, y in product([47, 52], [23, 35]))
+            candidates.append((weight, max(residuals)))
+    args = dict(fuel_cash=peak, spend_limit=spend, risk_capacity=cash)
+    first = tc.portfolio(offers, gaps, **args)
+    if not candidates:
+        assert first is None
+        return
+    optimal_weight, optimal_peak = min(candidates)
+    best = tc.portfolio(offers, gaps, risk_limit=optimal_weight, **args)
+    for solution in (first, best):
+        lots = {leg["strike"]: leg["lots"] for leg in solution["legs"]}
+        assert tc.funding_weight(offers, gaps, [lots.get("1", 0), lots.get("2", 0)], cash) == optimal_weight
+        assert solution["upfront_cents"] <= spend
+    assert best["residual_cents"] == optimal_peak
+
+
+def test_four_fill_expected_shortfall_uses_fractional_tail_and_excludes_gaps():
+    from datetime import date, timedelta
+    from fractions import Fraction
+    start = date(2025, 2, 3)
+    rows = [((start + timedelta(weeks=i)).isoformat(), Fraction(i)) for i in range(15)]
+    rows.append(((start + timedelta(weeks=16)).isoformat(), Fraction(1000)))
+    stress = tc.regional_diesel.consecutive_fill_stress(rows, 5)
+    assert stress["windows"] == 12 and stress["overruns"] == 9
+    assert Fraction(stress["tail_cents_per_weekly_gallon"]) == (30 + Fraction(26, 5)) / Fraction(6, 5)
+    assert tc.regional_diesel.consecutive_fill_stress(rows[:3], 5) is None
