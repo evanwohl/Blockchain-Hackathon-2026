@@ -632,6 +632,7 @@ class Handler(BaseHTTPRequestHandler):
             "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
             "/fuel_credit.js": ("fuel_credit.js", "text/javascript"),
             "/trip-cover": ("trip_cover.html", "text/html; charset=utf-8"),
+            "/trip_credit.js": ("trip_credit.js", "text/javascript"),
             "/trip_cover.js": ("trip_cover.js", "text/javascript"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
             "/next_stop.js": ("next_stop.js", "text/javascript"),
@@ -678,6 +679,33 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/trip-credit":
+                gap, cap = data.get("gap_cents"), data.get("pledge_millis")
+                drop, days = data.get("drop"), data.get("days")
+                freight_credit.terms(drop, days)
+                integer(gap, "fuel gap", 100_000_000)
+                integer(cap, "SOL pledge limit", 1_000_000)
+                offer = data.get("offer_cents")
+                if offer is not None:
+                    integer(offer, "other financing fee", 100_000_000)
+                source = data.get("source", "live")
+                if source not in ("live", "recorded"):
+                    raise ValueError("Unknown loan source")
+                if gap == 0:
+                    raise ValueError("The trip has no fuel shortfall")
+                if not self.server.trip_credit_lock.acquire(blocking=False):
+                    self.respond(503, {"error": "Another loan check is running. Try again shortly."})
+                    return
+                try:
+                    quote = freight_credit.trip_draw(gap, cap, drop, days, recorded=source == "recorded")
+                    self.respond(200, {**quote, "comparison": freight_credit.compare_fee(quote, offer), "source": source})
+                except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError, RuntimeError):
+                    reason = ("No saved check matches these terms." if source == "recorded" else
+                              "Devnet could not verify this loan and vendor payment. Your fuel gap is still open.")
+                    self.respond(503, {"error": reason})
+                finally:
+                    self.server.trip_credit_lock.release()
+                return
             if self.path == "/api/fuel-credit":
                 drop, days, source = data.get("drop"), data.get("days"), data.get("source")
                 freight_credit.terms(drop, days)
@@ -769,6 +797,7 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
+    server.trip_credit_lock = Lock()
     server.credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: freight_credit.capture(d, t))
                             for drop in (20, 40, 60) for days in (23, 30)}
     server.trip_books = PublicCheck(trip_cover.capture)

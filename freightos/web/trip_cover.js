@@ -1,5 +1,7 @@
 import { el, facts, money, request } from "./common.js";
 
+import { setFuelGap } from "./trip_credit.js";
+
 const form = el("trip-cover-form");
 const result = el("trip-result");
 let current;
@@ -142,6 +144,7 @@ function render() {
     plan = d.reserve ? reserveBudget(d, later) : generalBudget(d, later);
     showSpendingLimit(d, later);
   }
+  setFuelGap(d.pump_target ? (later ? d.pump_target.after : d.pump_target.before).short_cents : 0);
   const region = d.regional;
   el("regional-evidence").hidden = !region;
   if (region) {
@@ -207,6 +210,7 @@ async function compare(source, submitted = false) {
 form.oninput = () => {
   revision++;
   el("trip-road").disabled = el("trip-road-fields").hidden = !el("use-trip-reserve").checked;
+  setFuelGap(0);
   current = null;
   result.hidden = el("trip-recorded").hidden = true;
   el("trip-check").disabled = el("trip-pending").hidden = false;
@@ -232,6 +236,7 @@ function openExample() {
   el("use-trip-reserve").checked = includeReserve;
   el("trip-road").disabled = el("trip-road-fields").hidden = !includeReserve;
   document.querySelector('input[name="timing"][value="before"]').checked = true;
+  setFuelGap(0);
   current = null;
   result.hidden = el("trip-recorded").hidden = true;
   el("trip-pending").hidden = true;

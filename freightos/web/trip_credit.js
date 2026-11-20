@@ -1,0 +1,80 @@
+import { el, facts, money, request, tokenUnits } from "./common.js";
+
+let gap = 0;
+let revision = 0;
+
+function clear() {
+  revision++;
+  el("gap-answer").hidden = el("gap-saved").hidden = true;
+  el("gap-status").textContent = "";
+  el("gap-check").disabled = false;
+}
+
+export function setFuelGap(cents) {
+  clear();
+  gap = cents;
+  el("gap-credit").hidden = !gap;
+  if (!gap) el("gap-credit").open = false;
+  el("gap-title").textContent = "Could a loan cover the " + money(gap) + " fuel gap?";
+}
+
+function show(data) {
+  const q = data.loan;
+  if (!q) {
+    el("gap-status").textContent = "This pledge limit cannot cover a cent of the fuel gap. You still need " + money(gap) + ".";
+    return;
+  }
+  el("gap-verdict").textContent = data.remaining_cents ? money(q.advance_cents) + " for fuel · " + money(data.remaining_cents) + " still needed" : "The loan could cover all " + money(q.advance_cents);
+  facts(el("gap-facts"), [
+    ["SOL held until repayment", (q.pledge_millis / 1000).toLocaleString("en-US") + " SOL"],
+    ["Estimated borrowing cost", money(q.cost_cents)],
+    ["Amount to repay in " + q.days + " days", money(q.repay_cents)],
+    ["Cash for setup and network fee at entry", money(q.entry_cash_cents)]
+  ]);
+  const comparison = data.comparison;
+  let verdict = "Compare fees once the rest of the fuel payment is funded.";
+  if (comparison) {
+    const room = comparison.room_cents;
+    verdict = room == null ? "Your other offer would need to cost more than " + money(comparison.entry_and_financing_cents) + " to leave any room for savings."
+      : room > 0 ? "Your quoted fee leaves " + money(room) + " for repayment, conversion and the cost of locking up SOL before the loan loses its cost advantage."
+      : room < 0 ? "Your other offer uses " + money(-room) + " less cash in fees and setup at these terms."
+      : "Both choices use the same amount in fees and setup before exit costs.";
+  }
+  el("gap-comparison").textContent = verdict + " This counts all first-use setup cash upfront and assumes no refund.";
+  el("gap-risk").textContent = "If SOL falls " + q.drop + "%, the estimated debt reaches " + (q.stress_ltv_bps / 100).toFixed(1)
+    + "% of the pledge. At " + q.liquidation_pct + "% Kamino could sell collateral. You still owe the loan if freight pays late.";
+  el("gap-sale").textContent = "At the observed SOL price of $" + q.sol_price + ", selling enough for " + money(q.advance_cents)
+    + " and buying that SOL back on payday would use less cash if the buyback price is below about " + money(q.buyback_break_even_cents)
+    + ". Above that price, borrowing could cost less. This assumes the loan stays open, setup uses separate cash, and swaps, taxes and exit costs are zero. The sale price is a reference estimate.";
+  el("gap-proof").textContent = "Simulated at Devnet slot " + q.slot.toLocaleString("en-US") + ". The demo vendor received "
+    + tokenUnits(q.advance_raw) + " test USDC against " + tokenUnits(q.collateral_lamports / 1000) + " test SOL in the simulation. "
+    + "Trip amounts use " + q.model_ratio + "× the test loan and collateral. Entry uses the observed test SOL outlay at $" + q.sol_price
+    + " per SOL, without scaling fixed costs. Repayment assumes $1 per USDC and a steady " + (q.rate_bps / 100).toFixed(2) + "% annual rate.";
+  el("gap-answer").hidden = false;
+  const time = new Date(q.checked_at).toLocaleString("en-US", {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"});
+  el("gap-status").textContent = (data.source === "recorded" ? "Saved Devnet simulation" : "Public Devnet simulation") + " · " + time + " UTC. No funds moved.";
+}
+
+async function check(source) {
+  clear();
+  const attempt = revision;
+  const body = { gap_cents: gap, pledge_millis: Math.round(el("gap-cap").valueAsNumber * 1000),
+    days: Number(el("gap-days").value), drop: Number(el("gap-drop").value), source };
+  if (el("gap-offer").value !== "") body.offer_cents = Math.round(el("gap-offer").valueAsNumber * 100);
+  el("gap-check").disabled = true;
+  el("gap-status").textContent = source === "live" ? "Checking the loan and fuel payment on Solana…" : "Opening the saved loan check…";
+  try {
+    const data = await request("/api/trip-credit", body, AbortSignal.timeout(45000));
+    if (attempt === revision) show(data);
+  } catch (error) {
+    if (attempt !== revision) return;
+    el("gap-status").textContent = error.name === "TimeoutError" ? "The network took too long. Try again." : error.message;
+    el("gap-saved").hidden = !(source === "live" && [2430, 292].includes(gap) && [100, 1000].includes(body.pledge_millis) && body.days === 23 && body.drop === 40);
+  } finally {
+    if (attempt === revision) el("gap-check").disabled = false;
+  }
+}
+
+el("gap-form").oninput = clear;
+el("gap-form").onsubmit = event => { event.preventDefault(); check("live"); };
+el("gap-saved").onclick = () => check("recorded");
