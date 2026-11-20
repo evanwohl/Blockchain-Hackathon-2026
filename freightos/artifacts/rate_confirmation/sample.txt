@@ -1,0 +1,21 @@
+LONGHORN FREIGHT BROKERAGE LLC
+CARRIER RATE CONFIRMATION
+Load #: LFB-20481
+Broker: Longhorn Freight Brokerage LLC
+Carrier: Lone Star Haulers Inc (MC 123456)
+
+PICKUP
+Shipper: Gulf Coast Foods, Houston TX
+Pickup Date: 11/05/2026 08:00
+
+DELIVERY
+Consignee: Mountain Grocers, Denver CO
+Delivery Date: 11/07/2026 14:00
+Loaded Miles: 1,300 mi
+
+RATES
+Line Haul        $3,000.00
+Fuel Surcharge   $180.00
+Total Carrier Pay  $3,180.00
+
+Payment terms: Net 21 from receipt of signed POD and invoice.

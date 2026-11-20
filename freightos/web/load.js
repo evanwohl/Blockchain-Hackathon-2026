@@ -160,6 +160,49 @@ function schedule() {
   timer = setTimeout(update, 180);
 }
 form.addEventListener("input", schedule);
+
+const ratecon = document.querySelector("#ratecon");
+const rateconStatus = document.querySelector("#ratecon-status");
+const rateconFound = document.querySelector("#ratecon-found");
+ratecon.addEventListener("change", async () => {
+  const file = ratecon.files[0];
+  rateconFound.hidden = true;
+  rateconFound.replaceChildren();
+  if (!file) return;
+  const type = file.type || (file.name.toLowerCase().endsWith(".txt") ? "text/plain" : "application/octet-stream");
+  rateconStatus.textContent = "Reading " + file.name + "…";
+  try {
+    const response = await fetch("/api/rate-confirmation", {method: "POST", headers: {"Content-Type": type}, body: file});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "The document could not be read");
+    for (const [name, value] of Object.entries(result.fields)) {
+      const el = form.elements[name];
+      if (!el) continue;
+      el.value = value;
+      el.closest("details")?.setAttribute("open", "");
+    }
+    for (const item of result.evidence) {
+      const row = document.createElement("li");
+      row.textContent = item.label + ": " + item.value + " — from “" + item.line + "”";
+      rateconFound.append(row);
+    }
+    for (const note of result.notes) {
+      const row = document.createElement("li");
+      row.textContent = "Assumption: " + note;
+      rateconFound.append(row);
+    }
+    const opening = form.elements.opening_date;
+    if (result.fields.fuel_date && opening.value > result.fields.fuel_date) opening.value = result.fields.fuel_date;
+    rateconFound.hidden = false;
+    const who = [result.load_id && "load " + result.load_id, result.parties.broker && "from " + result.parties.broker]
+      .filter(Boolean).join(" ");
+    rateconStatus.textContent = "Filled " + result.evidence.length + " fields" + (who ? " for " + who : "") +
+      ". Check them below." + (result.missing.length ? " Not found: " + result.missing.join(", ") + "." : "");
+    form.dispatchEvent(new Event("input"));
+  } catch (error) {
+    rateconStatus.textContent = error.message + ". You can still enter the values by hand.";
+  }
+});
 form.addEventListener("submit", event => { event.preventDefault(); clearTimeout(timer); update(); });
 schedule();
 
