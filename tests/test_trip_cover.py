@@ -112,3 +112,48 @@ def test_diesel_allowance_uses_only_prior_complete_weeks():
     assert (stats["training_weeks"], stats["test_weeks"]) == (1, 1)
     assert stats["cents_per_gallon"] == 3
     assert stats["allowance_misses"] == 1 and stats["worst_miss_cents"] == 67
+
+
+@pytest.mark.parametrize("cap", [0, 1, 2, 3, 8, 50])
+def test_all_in_spend_limit_matches_exhaustive_positions(cap):
+    offers = [{"price": 37, "depth": 12}, {"price": 9, "depth": 19}]
+    gaps = [2, 11, 24]
+    admissible = []
+    for a, b in product(range(13), range(20)):
+        upfront = sum(tc.cost(a, offers[0])) + sum(tc.cost(b, offers[1]))
+        if upfront <= cap:
+            admissible.append((upfront, max(2, 11 - a, 24 - a - b)))
+    best = tc.portfolio(offers, gaps, spend_limit=cap)
+    assert best["upfront_cents"] <= cap
+    assert best["cash_cents"] == min(upfront + residual for upfront, residual in admissible)
+    funded = tc.portfolio(offers, gaps, spend_limit=cap, fuel_cash=7)
+    premiums = [upfront for upfront, residual in admissible if residual <= 7]
+    if premiums:
+        assert funded["upfront_cents"] == min(premiums) and funded["residual_cents"] <= 7
+    else:
+        assert funded is None
+
+
+def test_midwest_spend_limit_reprices_the_split_payment():
+    trip = {**tc.EXAMPLE, "region": "midwest", "spend_limit_cents": 300}
+    r = tc.analyze(tc.recorded(), trip, reserve={"available_cents": 3002, "road_cents": 2500})
+    assert r["reserve"]["split"] == {"reserve_cents": 502, "outside_fuel_cents": 792,
+                                     "upfront_cents": 300, "outside_total_cents": 1092}
+    assert r["limit_comparison"] == {"unrestricted_upfront_cents": 930, "kept_upfront_cents": 630, "outside_change_cents": 89}
+    assert r["combined"]["cash_cents"] == 1594 < r["best_single_cents"] == 2095
+
+
+@pytest.mark.parametrize(("limit", "fits"), [(197, False), (198, True)])
+def test_spend_limit_one_cent_either_side_of_minimum_premium(limit, fits):
+    r = tc.analyze(tc.recorded(), {**tc.EXAMPLE, "spend_limit_cents": limit},
+                   reserve={"available_cents": 3002, "road_cents": 2500})
+    assert r["reserve"]["minimum_spend_cents"] == 198
+    assert bool(r["reserve"]["plan"]) == fits
+    if not fits:
+        assert r["reserve"]["split"]["outside_fuel_cents"] == 1
+
+
+@pytest.mark.parametrize("limit", [-1, None, 0.3, True, 100_000_001])
+def test_spending_limit_requires_whole_nonnegative_cents(limit):
+    with pytest.raises(ValueError):
+        tc.validate({**tc.EXAMPLE, "spend_limit_cents": limit})
