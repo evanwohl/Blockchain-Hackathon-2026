@@ -90,3 +90,44 @@ def test_delay_threshold_matches_all_late_week_choices(weeks, premium):
             break
     assert fill_replay.delay_threshold(ready, delayed, premium) == {
         "count": count, "tail_cash_cents": (maximum + weeks - 1) // weeks}
+
+
+@pytest.mark.parametrize("weeks", [6, 10, 23, 40])
+def test_one_late_fit_matches_every_position_and_delay(weeks):
+    from random import Random
+
+    rng = Random(weeks)
+    offers = [{"strike": "83", "price": 34, "depth": 13}, {"strike": "85", "price": 11, "depth": 16}]
+    samples = [(rng.randrange(3), rng.randrange(22)) for _ in range(weeks)]
+
+    def expense(a, b):
+        return sum(trip_cover.cost(a, offers[0])) + sum(trip_cover.cost(b, offers[1]))
+
+    def score(a, b):
+        ready = [max(0, need - (0, a, a+b)[band]) for band, need in samples]
+        outcomes = [fill_replay.tail_sum(ready[:i] + [need] + ready[i+1:]) for i, (_, need) in enumerate(samples)]
+        exact, _ = fill_replay.worst_single_delay(samples, ready)
+        assert exact == max(outcomes)
+        return expense(a, b)*weeks + exact
+
+    allowed = [(a, b) for a, b in product(range(14), range(17))
+               if expense(a, b) <= 9 and max(2, 12-a, 23-a-b) <= 11]
+    mixed = trip_cover.portfolio(offers, [2, 12, 23], fuel_cash=11, spend_limit=9, tail_samples=samples, one_late=True)
+    lots = {leg["strike"]: leg["lots"] for leg in mixed["legs"]}
+    assert score(lots.get("83", 0), lots.get("85", 0)) == min(score(*p) for p in allowed)
+
+
+def test_late_payout_reconciles_with_its_own_week_and_separate_cash_choice():
+    trip = dict(trip_cover.EXAMPLE, region="midwest", diesel_model="recent", pump_cash_cents=500, spend_limit_cents=300)
+    target = trip_cover.analyze(trip_cover.recorded(), trip, reserve={"available_cents": 3002, "road_cents": 2500})["pump_target"]
+    cash = target["cash_mix"]
+    assert cash["after"] == target["before"]
+    assert cash["plan"]["legs"] == [] and cash["plan"]["upfront_cents"] == 0
+    fitted = target["delay_mix"]
+    late = fitted["fill_replay"]["after"]["one_late"]
+    assert fitted["train_cents"] < fitted["original_train_cents"]
+    assert late["week"] == "2026-03-09"
+    assert late["on_time_cents"] == max(0, late["short_cents"] - late["payout_cents"])
+    assert late["short_cents"] == 8118 and late["tail_cash_cents"] == 3216
+    assert fitted["plan"]["upfront_cents"] <= target["plan"]["upfront_cents"]
+    assert fitted["after"]["short_cents"] <= target["after"]["short_cents"] + trip["pump_mills"] // 10

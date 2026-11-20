@@ -76,6 +76,42 @@ def pump_gaps(samples, offers, plan):
     return [max(0, need - payouts[band]) for band, need, *_ in samples], payouts
 
 
+def delay_candidates(samples):
+    largest = {}
+    for i, (band, need, *_) in enumerate(samples):
+        if band and need > 0 and (band not in largest or need > samples[largest[band]][1]):
+            largest[band] = i
+    maximum = 0
+    candidates = []
+    for band in sorted(largest, reverse=True):
+        index = largest[band]
+        if samples[index][1] > maximum:
+            candidates.append(index)
+            maximum = samples[index][1]
+    return candidates
+
+
+def worst_single_delay(samples, ready):
+    worst, index = tail_sum(ready), None
+    for i in delay_candidates(samples):
+        gaps = ready.copy()
+        gaps[i] = samples[i][1]
+        score = tail_sum(gaps)
+        if score > worst or (index is not None and score == worst and gaps[i] > samples[index][1]):
+            worst, index = score, i
+    return worst, index
+
+
+def one_late_summary(samples, offers, plan):
+    ready, payouts = pump_gaps(samples, offers, plan)
+    score, index = worst_single_delay(samples, ready)
+    result = {"tail_cash_cents": plan["upfront_cents"] + ceil(Fraction(score, len(samples)))}
+    if index is not None:
+        band, need, week, *_ = samples[index]
+        result.update(week=week, short_cents=need, on_time_cents=ready[index], payout_cents=payouts[band])
+    return result
+
+
 def delay_threshold(ready, delayed, premium):
     """Fewest adversarial payout delays that erase the tail-cash saving against cash alone."""
     weeks = len(ready)
