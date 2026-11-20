@@ -6,6 +6,39 @@ FreightOS is our project for the University Blockchain Conference (2026) at UT A
 
 FreightOS helps an owner-operator decide how to pay a fuel bill while keeping enough cash for the next trip. The Python engine prices freight invoice terms alongside Kamino vault withdrawals, SOL-backed credit, and eligible Orca swaps. The driver sees the payee, amount, fees, and remaining balance. A Rust program on Solana enforces the approved reserve payment.
 
+## Project gallery
+
+[![The $745 sample fuel bill is covered by $555 from the reserve and $190 from early pay on the return load.](docs/media/gallery-cover.png)](docs/media/01-cover-the-stop.png)
+
+<details>
+<summary><strong>Explore all 9 images</strong> · Product screens, funding decisions, and onchain receipts</summary>
+
+<h3>The driver’s bill</h3>
+
+<p>
+  <a href="docs/media/01-cover-the-stop.png"><img src="docs/media/01-cover-the-stop.png" width="250" alt="Two engraved payment slips show the $555 reserve draw and $190 outside funds on the default sample bill." title="Cover the stop"></a>
+  <a href="docs/media/02-the-driver-statement.png"><img src="docs/media/02-the-driver-statement.png" width="250" alt="Actual paid-bill workspace alongside its $570 reserve transfer and $175 driver-reported payment." title="The driver’s statement"></a>
+  <a href="docs/media/04-price-the-customer-offer.png"><img src="docs/media/04-price-the-customer-offer.png" width="250" alt="The actual offer comparison and its line-item modeled fees, $8.49 to accept and $13.45 to wait." title="Price the customer’s offer"></a>
+</p>
+
+<h3>Inside the funding engine</h3>
+
+<p>
+  <a href="docs/media/03-gemini-fuel-budgets.png"><img src="docs/media/03-gemini-fuel-budgets.png" width="250" alt="Six modeled bill amounts from $700 to $760, informed by Gemini WTI thresholds and the reported settlement." title="Six budgets, one invoice choice"></a>
+  <a href="docs/media/05-collateral-before-payday.png"><img src="docs/media/05-collateral-before-payday.png" width="250" alt="A verified Gemini price path replayed at Kamino’s opening mark, with the modeled day-25 binding price labeled." title="Collateral before payday"></a>
+  <a href="docs/media/06-one-atomic-payment.png"><img src="docs/media/06-one-atomic-payment.png" width="250" alt="Funding-flow diagram of the $190 modeled stop and the one-raw-unit rollback test." title="Two sources, one vendor transfer"></a>
+</p>
+
+<h3>Receipts and results</h3>
+
+<p>
+  <a href="docs/media/07-finalized-vendor-receipt.png"><img src="docs/media/07-finalized-vendor-receipt.png" width="250" alt="Finalized public Devnet receipt with the complete transaction signature and a QR link to Solana Explorer." title="A receipt anyone can verify"></a>
+  <a href="docs/media/08-close-the-fuel-loan.png"><img src="docs/media/08-close-the-fuel-loan.png" width="250" alt="A screenshot of the signed fuel-loan record alongside collateral, vendor payment, repayment and release." title="Follow the loan through payoff"></a>
+  <a href="docs/media/09-the-same-access-test.png"><img src="docs/media/09-the-same-access-test.png" width="250" alt="128 cells correspond to the bundled trial cases, identifying each of the 41 wins and 87 ties." title="Measure the funding decision"></a>
+</p>
+
+</details>
+
 ## Run the project
 
 From a fresh checkout, use Python 3.11 or later and [uv](https://docs.astral.sh/uv/).
