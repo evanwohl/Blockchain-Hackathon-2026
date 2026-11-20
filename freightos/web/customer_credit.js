@@ -56,19 +56,20 @@ export function displayCustomer(data) {
       el("customer-rate").textContent += " If the fee per $99 reaches " + money(next.fee_cents) + ", " + action + ".";
     }
     el("customer-check").textContent = "Slot " + row.slot.toLocaleString("en-US") + ". Opening uses " + sol(row.pledge_lamports)
-      + " in collateral, " + sol(row.setup_lamports) + " for account setup and " + sol(row.network_lamports) + " in network fees. The "
+      + " in collateral, " + sol(row.setup_lamports) + " for loan accounts, " + sol(row.temporary_lamports) + " returned when the temporary accounts close, and " + sol(row.network_lamports) + " in network fees. The "
       + money(row.cost_cents) + " estimate includes that opening fee at sample scale (" + money(row.opening_fee_cents)
       + "), the customer fee (" + money(row.fee_cents) + ") and your entered expenses (" + money(row.extra_cents) + "). "
       + money(row.retained_cents) + " stays available for three gallons under the recorded Gemini oil scenario.";
+    if (row.entry_slot) el("customer-check").textContent += " At slot " + row.entry_slot.toLocaleString("en-US") + ", one lamport less failed the opening check.";
     el("customer-request").onclick = () => saveFile("FreightOS-customer-contribution.txt",
       "Freight invoice [invoice or load ID]\n\nPlease confirm that " + money(row.advance_cents)
       + " can clear by [fuel purchase date]. Including your fee of " + money(row.fee_cents)
       + ", this would leave " + money(row.invoice_left_cents) + " of the $200 invoice payable on [regular payment date].\n", "text/plain");
   } else {
-    el("credit-heading").textContent = "These offers leave a gap";
+    el("credit-heading").textContent = "These loans leave a gap";
     el("customer-label").textContent = "Fuel still to arrange";
     el("customer-amount").textContent = money(data.bill_cents);
-    el("customer-action").textContent = "None of the checked plans covers the entire bill within your available SOL and the customer’s remaining invoice. No money has moved.";
+    el("customer-action").textContent = "The checked loans exceed your wallet or payday budget. Open the no-loan comparison below to check a vendor payment using your existing assets.";
     facts(el("customer-breakdown"), [["Available now for opening the loan", sol(data.wallet_lamports)],
       ["Reserved for three more gallons", money(data.holdback.cost_cents)]]);
     el("customer-payday").textContent = "Each comparison checks both what you can put up today and what you can repay when freight pays.";

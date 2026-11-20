@@ -197,3 +197,11 @@
 @media (max-width: 450px) {
   #customer-settings .trip-fields { grid-template-columns: 1fr; }
 }
+#fuel-sale .trip-fields, #sale-facts { margin-block: .75rem; }
+#sale-heading { font: 600 1.45rem/1.15 var(--display); margin: .8rem 0 .45rem; }
+#sale-live { margin-block: .75rem; }
+@media (max-width: 500px) { #fuel-sale .trip-fields { grid-template-columns: 1fr; } }
+#sale-primary > details { border-top: 0; }
+#sale-primary #fuel-sale > summary, #sale-primary #sale-heading, #sale-primary #sale-live, #sale-primary #fuel-sale > p:first-of-type { display: none; }
+#sale-primary #fuel-sale[open] { display: flex; flex-direction: column; }
+#sale-primary #sale-result { order: -1; }

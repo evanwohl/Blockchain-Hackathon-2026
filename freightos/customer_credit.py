@@ -6,7 +6,7 @@ from decimal import Decimal
 from functools import cache
 from pathlib import Path
 
-from freightos import atomic_fuel, devnet, freight_credit as credit, reserve_credit
+from freightos import atomic_fuel, devnet, freight_credit as credit, next_stop, reserve_credit
 from hedging.quick_pay import integer
 
 SAMPLE = credit.DATA / "customer_credit.json.gz"
@@ -24,12 +24,56 @@ def residual(reserve, net):
     return {**reserve, "fuel_cents": remaining, "shortfall_raw": shortfall}
 
 
+def entry_budget(quote):
+    return sum(quote[key] for key in ("pledge_lamports", "setup_lamports", "fee_lamports", "temporary_lamports"))
+
+
+def check_entry(reserve, q, rpc):
+    plan = next_stop.payment()
+    config = {"commitment": "confirmed", "minContextSlot": q["remainder_slot"]}
+    balance = rpc("getBalance", [str(plan.payer), config])
+    slot, initial = balance["context"]["slot"], balance["value"]
+    if slot < q["remainder_slot"]:
+        raise ValueError("Opening balance predates the loan")
+    rent = rpc("getMinimumBalanceForRentExemption", [165])
+    block = rpc("getLatestBlockhash", [{**config, "minContextSlot": slot}])["value"]["blockhash"]
+    limit = entry_budget(q)
+    if initial <= limit:
+        raise ValueError("The demo payer cannot test both opening boundaries")
+    for cap in (limit, limit - 1):
+        parked = initial - cap
+        msg, _, _, result, _ = atomic_fuel.simulate(reserve, q["pledge_lamports"], rent, block, slot, rpc, parked=parked)
+        slot, value = result["context"]["slot"], result["value"]
+        keys = list(msg.account_keys)
+        owner, destination = keys.index(plan.payer), keys.index(plan.payee)
+        if value["preBalances"][owner] != initial or value["fee"] != q["fee_lamports"]:
+            raise ValueError("The opening wallet or transaction fee changed between checks")
+        if cap == limit:
+            if value["err"] is not None:
+                raise ValueError("The quoted wallet limit cannot open this loan")
+            before, after = devnet.token_balances(value, keys, plan.destination, devnet.MINT, plan.payee)
+            if (after - before != q["vendor_raw"] or value["postBalances"][owner] != q["temporary_lamports"]
+                    or value["postBalances"][destination] - value["preBalances"][destination] != parked):
+                raise ValueError("The capped loan did not pay the vendor and release its temporary deposits")
+        else:
+            expected = value["preBalances"].copy()
+            expected[owner] -= value["fee"]
+            need = q["obligation_rent_lamports"]
+            if (not value["err"] or f"Transfer: insufficient lamports {need-1}, need {need}" not in value["logs"]
+                    or value["postBalances"] != expected or value["postTokenBalances"] != value["preTokenBalances"]):
+                raise ValueError("The one-lamport shortfall did not roll back as expected")
+    return slot
+
+
 def capture(rpc=devnet.request):
-    data = {"reserve": [], "loans": {}}
+    data = {"reserve": [], "loans": {}, "entries": {}}
     reserve = reserve_credit.reserve_leg(atomic_fuel.record(data["reserve"], rpc))
     for net in ADVANCES:
         calls = data["loans"][str(net)] = []
-        atomic_fuel.terms(residual(reserve, net), DROP, DAYS, atomic_fuel.record(calls, rpc), protect=True)
+        payment = residual(reserve, net)
+        q = atomic_fuel.terms(payment, DROP, DAYS, atomic_fuel.record(calls, rpc), protect=True)
+        boundary = data["entries"][str(net)] = []
+        check_entry(payment, q, atomic_fuel.record(boundary, rpc))
     return data
 
 
@@ -42,6 +86,9 @@ def replay(data):
         if not previous <= quote["slot"] <= quote["refused_slot"] <= quote["remainder_slot"] <= reserve["slot"] + 150:
             raise ValueError("Loan observations fall outside the same reserve comparison window")
         previous = quote["remainder_slot"]
+    if "entries" in data:
+        for net, q in zip(ADVANCES, quotes, strict=True):
+            q["entry_slot"] = atomic_fuel.replay_calls(data["entries"][str(net)], lambda rpc: check_entry(residual(reserve, net), q, rpc))
     return quotes
 
 
@@ -96,7 +143,7 @@ def compare(quotes, menu, fee, funds, extra):
         regular = reserve_credit.INVOICE_CENTS - net - discount
         stress = q["payday_stress"]
         cash = regular - stress["repay_cents"] - reserve - extra
-        entry = q["pledge_lamports"] + q["setup_lamports"] + q["fee_lamports"]
+        entry = entry_budget(q)
         opening_fee = credit.ceiling(Decimal(q["sol_price"]) * q["fee_lamports"] * 10**6 / (scale * credit.LAMPORTS))
         cash_cost = discount + extra + opening_fee
         common_payoff = Decimal(q["initial_debt_raw"]) * (2 * baseline_rate * stress["days"] / 365).exp()
@@ -105,6 +152,7 @@ def compare(quotes, menu, fee, funds, extra):
         options.append({"advance_cents": net, "fee_cents": discount, "invoice_left_cents": regular, "reserve_cents": reserve,
                         "borrow_cents": borrowed, "payoff_cents": stress["repay_cents"], "payday_cash_cents": cash,
                         "entry_lamports": entry, "pledge_lamports": q["pledge_lamports"], "setup_lamports": q["setup_lamports"],
+                        "temporary_lamports": q["temporary_lamports"], "entry_slot": q.get("entry_slot"),
                         "network_lamports": q["fee_lamports"], "opening_fee_cents": opening_fee, "extra_cents": extra,
                         "cost_cents": cash_cost + stress["cost_cents"], "same_rate_cost_cents": common_cost,
                         "rate_bps": stress["rate_bps"], "retained_cents": q["retained_raw"] // scale, "slot": q["slot"],

@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
+from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cover, fuel_swap, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -639,6 +639,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/credit-exits":
             self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
             return
+        if self.path == "/evidence/fuel-swap":
+            self.reply(200, "application/json", gzip.decompress(fuel_swap.SAMPLE.read_bytes()), static=True)
+            return
         if self.path == "/evidence/customer-credit":
             self.reply(200, "application/json", gzip.decompress(customer_credit.SAMPLE.read_bytes()), static=True)
             return
@@ -724,6 +727,7 @@ class Handler(BaseHTTPRequestHandler):
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
             "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
+            "/fuel_swap.js": ("fuel_swap.js", "text/javascript"),
             "/customer_credit.js": ("customer_credit.js", "text/javascript"),
             "/fuel_credit.js": ("fuel_credit.js", "text/javascript"),
             "/forward-fill": ("forward.html", "text/html; charset=utf-8"),
@@ -938,6 +942,22 @@ class Handler(BaseHTTPRequestHandler):
                         data, calendar, self.server.settlement.load_reserve(data.get("reserve_mode")))
                 self.respond(200, calendar)
                 return
+            if self.path == "/api/fuel-swap":
+                customer = integer(data.get("customer_cents"), "customer contribution", 9900)
+                menu, fee, funds, extra = (data.get(k) for k in ("menu", "fee_cents", "wallet_lamports", "extra_cents"))
+                customer_credit.inputs(menu, fee, funds, extra)
+                price = data.get("price_cents")
+                if price is not None:
+                    integer(price, "replacement price", 10000000)
+                source = data.get("source")
+                if customer not in customer_credit.MENUS[menu] or source not in ("recorded", "live"):
+                    raise ValueError("Choose an available customer payment and price source")
+                try:
+                    quote = self.server.swap_checks[customer].read() if source == "live" else fuel_swap.saved(customer)
+                    self.respond(200, {**fuel_swap.compare(quote, fee, funds, extra, price), "source": source})
+                except (OSError, ValueError, KeyError, TypeError, RuntimeError, ArithmeticError):
+                    self.respond(503, {"error": "Could not verify the pool prices, wallet and vendor payment together."})
+                return
             if self.path == "/api/customer-credit":
                 args = (data.get("menu"), data.get("fee_cents"), data.get("wallet_lamports"), data.get("extra_cents"))
                 customer_credit.inputs(*args)
@@ -1025,6 +1045,7 @@ def main():
                            for drop, days in server.credit_checks for protect in (False, True)}
     server.reserve_credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: reserve_credit.live(d, t))
                                   for drop, days in server.credit_checks}
+    server.swap_checks = {net: PublicCheck(lambda n=net: fuel_swap.capture(n)[0]) for net in customer_credit.ADVANCES}
     server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
     server.settled_credit = PublicCheck(lambda: load_credit.settled(devnet.request))
     server.forward_check = PublicCheck(forward.ResultCheck().read)

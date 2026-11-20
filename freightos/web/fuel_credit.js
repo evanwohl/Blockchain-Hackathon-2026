@@ -1,5 +1,6 @@
 import { el, facts, money, request, saveFile, tokenUnits } from "./common.js";
 
+import { clearSale, setupSale } from "./fuel_swap.js";
 import { displayCustomer } from "./customer_credit.js";
 
 let sequence = 0;
@@ -146,7 +147,7 @@ function displayCombined(d) {
     ["Estimated loan payoff in " + d.days + " days", money(d.repay_cents)]]);
   el("combined-failure").textContent = "If either source fails, your reserve stays put, no debt opens and you still owe the full bill. A submitted attempt can still cost a network fee.";
   el("combined-terms").textContent = "At demo scale the pledge is " + sol(d.pledge_lamports) + " on Devnet. The payment needs "
-    + sol(d.setup_lamports) + " for loan account setup. Its network fee is " + sol(d.fee_lamports) + ".";
+    + sol(d.setup_lamports) + " for loan account setup and " + sol(d.temporary_lamports) + " for temporary accounts that close during payment. Its network fee is " + sol(d.fee_lamports) + ".";
   const early = offer.choice === "early", short = offer.choice === "short";
   const choice = early ? "Take the early freight payment" : short ? "Both plans leave a gap" : "Use the reserve and loan";
   el("credit-heading").textContent = choice;
@@ -197,7 +198,7 @@ function displayCombined(d) {
 async function compare(source) {
   const attempt = ++sequence;
   const route = el("credit-route").value;
-  const customer = route === "customer";
+  const directSale = route === "sale", customer = directSale || route === "customer";
   const split = route === "reserve", combined = route === "combined";
   const body = { drop: Number(el("credit-drop").value), days: Number(el("credit-days").value), source };
   el("combined-settings").hidden = !combined;
@@ -206,8 +207,13 @@ async function compare(source) {
   else if (!customer && form.nextElementSibling !== jump) form.after(jump);
   el("customer-settings").hidden = !customer;
   el("credit-terms").hidden = customer;
+  el("sale-primary").hidden = !directSale;
+  const container = el(directSale ? "sale-primary" : "sale-inline");
+  if (el("fuel-sale").parentElement !== container) { container.append(el("fuel-sale")); el("fuel-sale").open = directSale; }
+  el("customer-settings").querySelector("button").textContent = directSale ? "Refresh prices on public Solana" : "Refresh loan checks on public Solana";
   for (const input of el("customer-settings").querySelectorAll("input, select, button")) input.disabled = !customer;
-  if (customer) el("credit-intro").textContent = "Fuel is due before your $200 invoice clears. With no spare spending cash, see how an early customer payment and your reserve can reduce the loan.";
+  if (directSale) el("credit-intro").textContent = "Use the demo wallet’s spendable cash and compare two exchanges for the rest. See what reaches the fuel company, what stays for the next stop, and how much borrowing would take.";
+  else if (customer) el("credit-intro").textContent = "Fuel is due before your $200 invoice clears. With no spare spending cash, see how an early customer payment and your reserve can reduce the loan.";
   else if (!combined) el("credit-intro").textContent = "Taking the $200 invoice early costs $10 in this example. Compare it with borrowing against SOL to pay for fuel.";
   const partial = combined && el("allow-partial").checked;
   el("partial-expense-field").hidden = el("partial-expense").disabled = !partial;
@@ -223,13 +229,20 @@ async function compare(source) {
     Object.assign(body, {menu: el("customer-menu").value, fee_cents: Math.round(el("customer-fee").valueAsNumber * 100),
       wallet_lamports: Math.round(el("customer-wallet").valueAsNumber * 1e9), extra_cents: Math.round(el("customer-extra").valueAsNumber * 100)});
   }
+  if (directSale) {
+    const offers = {none: [0], half: [0, 4950], full: [0, 9900], both: [0, 4950, 9900]}[body.menu];
+    el("credit-status").textContent = "Demo wallet · one test cent represents one dollar of fuel.";
+    if (el("sale-result").hidden) el("credit-heading").textContent = "Checking the fuel payment";
+    await setupSale({options: offers.map(advance_cents => ({advance_cents})), choice: Number(el("sale-customer").value)}, body, true);
+    return;
+  }
   const button = customer ? el("customer-settings").querySelector("button") : el("credit-check");
   button.disabled = true;
   el("credit-status").textContent = source === "live" ? "Checking collateral, loan and vendor payment on Devnet…" : "Opening the recorded simulation…";
   try {
     const data = await request(customer ? "/api/customer-credit" : combined ? "/api/atomic-fuel" : split ? "/api/reserve-credit" : "/api/fuel-credit", body, AbortSignal.timeout(90000));
     if (attempt !== sequence) return;
-    if (customer) displayCustomer(data);
+    if (customer) { displayCustomer(data); setupSale(data, body); }
     else if (combined) displayCombined(data);
     else if (split) displaySplit(data);
     else display(data);
@@ -247,6 +260,7 @@ async function compare(source) {
   }
 }
 function changeTerms() {
+  clearSale();
   el("customer-result").hidden = true;
   el("credit-jump").hidden = el("combined-result").hidden = el("credit-result").hidden = el("split-result").hidden = true;
   el("credit-heading").textContent = "Your payment estimate";
@@ -256,6 +270,7 @@ el("credit-jump").onclick = () => el("credit-heading").focus();
 el("customer-settings").oninput = event => {
   if (event.target.type !== "number") return;
   ++sequence;
+  clearSale();
   el("customer-result").hidden = el("credit-jump").hidden = true;
   el("credit-heading").textContent = "Your payment estimate";
   el("customer-settings").querySelector("button").disabled = false;
@@ -264,11 +279,17 @@ el("customer-settings").oninput = event => {
 el("credit-form").onchange = changeTerms;
 el("credit-form").onsubmit = event => { event.preventDefault(); compare("live"); };
 el("credit-terms").open = matchMedia("(min-width: 761px)").matches;
-el("credit-route").value = location.hash === "#customer-contribution" ? "customer" : location.hash === "#one-payment" ? "combined" : location.hash === "#reserve-first" ? "reserve" : "loan";
+el("credit-route").value = ["#customer-contribution", "#pay-without-loan"].includes(location.hash) ? "customer" : location.hash === "#one-payment" ? "combined" : location.hash === "#reserve-first" ? "reserve" : "loan";
 if (location.hash === "#partial-advance") {
   el("credit-route").value = "combined";
   el("combined-settings").querySelector("details").open = true;
   el("allow-partial").checked = el("protect-payday").checked = true;
   el("offer-fee").value = "3.00";
+}
+if (location.hash === "#pay-without-loan") {
+  el("credit-route").value = "sale";
+  el("customer-menu").value = "none";
+  el("customer-wallet").value = "0.020";
+  el("fuel-sale").open = true;
 }
 changeTerms();

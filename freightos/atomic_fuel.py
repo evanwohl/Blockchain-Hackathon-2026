@@ -12,6 +12,7 @@ from solders.instruction import AccountMeta, Instruction
 from solders.message import MessageV1, TransactionConfig
 from solders.pubkey import Pubkey
 from solders.signature import Signature
+from solders.system_program import TransferParams, transfer
 from solders.transaction import VersionedTransaction
 
 from freightos import devnet, freight_credit as credit, funding, next_stop, public_offer, reserve_credit
@@ -23,7 +24,7 @@ LATE_SAMPLE = credit.DATA / "atomic_late.json.gz"
 LOAD = "FOS-RESERVE-LOAN-190"
 
 
-def message(reserve, collateral, rent, block, *, reject=False, check_remainder=False):
+def message(reserve, collateral, rent, block, *, reject=False, check_remainder=False, parked=0):
     plan = next_stop.payment()
     total = reserve["fuel_cents"] * reserve["raw_units_per_cent"]
     advance = total - reserve["vendor_raw"]
@@ -33,6 +34,8 @@ def message(reserve, collateral, rent, block, *, reject=False, check_remainder=F
         plan.route, plan.payer, plan.destination, LOAD, total + (change + 1 if reject else 0),
         units, rent, venue=devnet.VENUE)
     ops = [create, init, redeem]
+    if parked:
+        ops.insert(0, transfer(TransferParams(from_pubkey=plan.payer, to_pubkey=plan.payee, lamports=parked)))
     for ix in credit.loan_instructions(collateral, advance, "wallet"):
         accounts = [AccountMeta(stage if a.pubkey == plan.cash else a.pubkey, a.is_signer, a.is_writable) for a in ix.accounts]
         ops.append(Instruction(ix.program_id, ix.data, accounts))
@@ -50,8 +53,8 @@ def message(reserve, collateral, rent, block, *, reject=False, check_remainder=F
     return msg, stage, payment_index
 
 
-def simulate(reserve, collateral, rent, block, slot, rpc, *, reject=False, check_remainder=False):
-    msg, stage, index = message(reserve, collateral, rent, block, reject=reject, check_remainder=check_remainder)
+def simulate(reserve, collateral, rent, block, slot, rpc, *, reject=False, check_remainder=False, parked=0):
+    msg, stage, index = message(reserve, collateral, rent, block, reject=reject, check_remainder=check_remainder, parked=parked)
     wire = bytes(VersionedTransaction.populate(msg, [Signature.default()]))
     if len(wire) > 4096:
         raise ValueError("The payment exceeds the v1 Solana transaction limit")
@@ -157,7 +160,9 @@ def terms(reserve, drop, days, rpc, *, prepare=False, protect=False):
               "cost_cents": delayed_cost, "rate_bps": late["rate_bps"], "original_rate_bps": q["rate_bps"],
               "ordinary_pledge_lamports": q["minimum_lamports"], "required_lamports": late["minimum_lamports"],
               "stress_ltv_bps": late["stress_ltv_bps"], "target_ltv_bps": (late["liquidation_pct"] - 10) * 100}
-    return {**prepared, "annual_rate": q["annual_rate"], "initial_debt_raw": q["initial_debt_raw"], "sol_price": q["sol_price"],
+    wrapped_ix = credit.loan_instructions(pledge, reserve["shortfall_raw"], "wallet")[0]
+    temporary = rent + int.from_bytes(wrapped_ix.data[4:], "little") - pledge
+    return {**prepared, "temporary_lamports": temporary, "annual_rate": q["annual_rate"], "initial_debt_raw": q["initial_debt_raw"], "sol_price": q["sol_price"],
             "payday_stress": stress, "reserve_growth": str(late_growth if protect else ordinary_growth), "bill_cents": reserve["fuel_cents"], "scale": reserve["raw_units_per_cent"], "vendor_raw": total,
             "reserve_raw": reserve["vendor_raw"], "borrow_raw": reserve["shortfall_raw"], "retained_raw": retained,
             "holdback": reserve["holdback"], "repay_cents": q["repay_cents"], "pledge_lamports": pledge,
@@ -268,17 +273,21 @@ def record(calls, rpc):
     return observe
 
 
-def replay(reserve, drop, days, calls, *, protect=False):
+def replay_calls(calls, evaluate):
     rows = iter(calls)
     def read(method, params):
         row = next(rows, None)
         if row is None or method != row["method"] or params != row["params"]:
             raise ValueError("The recorded transaction differs from the payment")
         return row["response"]
-    result = terms(reserve, drop, days, read, protect=protect)
+    result = evaluate(read)
     if next(rows, None) is not None:
         raise ValueError("Unexpected calls after the combined payment")
     return result
+
+
+def replay(reserve, drop, days, calls, *, protect=False):
+    return replay_calls(calls, lambda rpc: terms(reserve, drop, days, rpc, protect=protect))
 
 
 @cache

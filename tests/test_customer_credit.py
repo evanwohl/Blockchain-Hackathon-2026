@@ -21,7 +21,7 @@ def test_sources_collateral_and_same_rate_counterfactual():
         assert r["reserve_cents"] + r["borrow_cents"] + r["advance_cents"] == plan["bill_cents"]
         assert r["fee_cents"] + r["invoice_left_cents"] + r["advance_cents"] == 20000
         assert r["payday_cash_cents"] + r["payoff_cents"] + r["reserve_cents"] == r["invoice_left_cents"]
-        assert r["entry_lamports"] == r["pledge_lamports"] + r["setup_lamports"] + r["network_lamports"]
+        assert r["entry_lamports"] == r["pledge_lamports"] + r["setup_lamports"] + r["network_lamports"] + r["temporary_lamports"]
         assert r["retained_cents"] >= plan["holdback"]["cost_cents"]
     assert c["payday_cash_cents"] == 802
     assert pick(wallet=c["entry_lamports"] - 1)["choice"] is None
@@ -32,7 +32,7 @@ def test_sources_collateral_and_same_rate_counterfactual():
 def test_only_contracts_the_customer_offers_can_win():
     assert pick("none")["choice"] is None
     assert pick("none", wallet=90000000)["choice"] == 0
-    assert pick("half", wallet=70000000)["choice"] == 4950
+    assert pick("half", wallet=71000000)["choice"] == 4950
     assert pick("full", fee=200, wallet=90000000)["choice"] == 9900
     assert pick(fee=200, wallet=90000000)["choice"] == 4950
     assert pick(fee=300, wallet=90000000)["choice"] == 0

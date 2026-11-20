@@ -183,7 +183,7 @@ export function setupLoadCredit(inputs, form) {
       }
       facts(el("combined-review"), [["Vendor receives", usdc(q.vendor_raw)], ["From reserve", usdc(q.reserve_raw)],
         ["New debt principal", usdc(q.borrow_raw)], ["Test SOL pledged", sol(q.pledge_lamports)],
-        ["Loan account setup", sol(q.setup_lamports)], ["Network fee", sol(q.fee_lamports)],
+        ["Loan account setup", sol(q.setup_lamports)], ["Temporary deposits returned at payment", sol(q.temporary_lamports)], ["Network fee", sol(q.fee_lamports)],
         ["Projected repayment in " + days + " days", money(q.repay_cents) + " at sample scale"], ...(q.payday_stress.protected ? [["Repay in the late, double-rate case", money(q.payday_stress.repay_cents) + " at sample scale"]] : []), ["Vendor account", q.vendor]]);
       status("Both sources must clear together. Review the amounts before approving.");
       review({...q, address: q.borrower}, "combined");
