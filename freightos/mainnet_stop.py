@@ -352,7 +352,8 @@ def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="pa
     except (OSError, ValueError):
         loan = None
     else:
-        loan = mainnet_loan.compare(plan, costs, stable, cash, wallet_cap, native * scale_factor, fee, rent, lending, history_prices)
+        loan = mainnet_loan.compare(plan, costs, stable, cash, wallet_cap, native * scale_factor, fee, rent, lending, history_prices,
+                                    offer_terms=(offer_menu, offer_fee, offer_amount))
     return {"secured_loan": loan, "early_freight": offer, "slot": data["accounts"]["context"]["slot"], "date": datetime.fromtimestamp(data["block_time"], timezone.utc).isoformat(),
             "covers_full_range": covered_range, "original": comparable, "first_cash_cents": first,
             "fuel_short_cents": max(0, first - cash), "target_cash_cents": preserving,

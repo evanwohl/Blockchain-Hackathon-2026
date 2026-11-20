@@ -48,6 +48,21 @@
       <div id="changes" hidden><h3 id="change-heading">Ways to cover fuel and protect payday</h3><div id="fixes"></div></div>
       <details id="mainnet-check" class="stop-details" hidden>
         <summary><span>Same bill at mainnet prices</span> <strong id="mainnet-status"></strong></summary>
+        <details id="mix" class="funding-slip" hidden>
+          <summary>Plan the full fuel payment <strong id="mix-preview"></strong></summary>
+          <label for="mix-priority">What matters for this stop?</label>
+          <select id="mix-priority"><option value="plan">Smallest customer request</option><option value="without_loan">Cover fuel without a new loan</option></select>
+          <div aria-live="polite">
+            <h3 id="mix-title"></h3><p id="mix-reason"></p>
+            <div id="mix-figures">
+              <dl id="mix-sources"></dl>
+              <p id="mix-payday"></p><p id="mix-risk"></p>
+              <details><summary>How this estimate was priced</summary><p id="mix-assumptions"></p></details>
+            </div>
+          </div>
+          <button type="button" id="mix-request" hidden>Download customer request</button>
+          <button type="button" id="mix-edit">Edit customer offer</button>
+        </details>
         <p id="mainnet-result"></p><div id="mainnet-quoted"><dl id="mainnet-ledger"></dl>
         <p id="mainnet-plan"></p>
         <button type="button" id="mainnet-try" hidden></button>
@@ -70,6 +85,7 @@
         </details>
         <details id="offer-result" class="stop-offer"><summary>Use early freight pay <strong id="offer-preview"></strong></summary>
           <p id="offer-explain"></p><p id="offer-fuel-only"></p><dl id="offer-ledger"></dl><p id="offer-tradeoff"></p>
+          <button type="button" id="offer-mix" hidden></button>
           <button type="button" id="offer-switch" hidden></button>
           <button type="button" id="offer-draft" hidden>Download customer request</button>
           <details id="compare-wait" hidden>

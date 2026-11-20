@@ -5,9 +5,10 @@ from decimal import Decimal
 from functools import cache
 from pathlib import Path
 
+import numpy as np
 from solders.pubkey import Pubkey
 
-from freightos import freight_credit as credit, reserve
+from freightos import customer_credit, freight_credit as credit, reserve, reserve_credit
 from freightos.fuel_floor import ceil_div
 
 EVIDENCE = Path(__file__).with_name("artifacts") / "mainnet_fuel" / "lending.json"
@@ -60,30 +61,22 @@ def saved():
     return verify(EVIDENCE.read_bytes())
 
 
-def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=()):
-    bill, reference = plan["bill_cents"], plan["reference_cents"]
-    low, high = plan["low_price_cents"], plan["high_price_cents"]
-    own = min(bill, cash)
-    vendor = bill - own
-    gap = max(0, vendor - stable)
+def loan_schedule(limit, low, lending):
     rate = lending["apr"]
     accrual = (2 * rate * 30 / 365).exp()
     coin = lending["usd_price"] * lending["factor"] / 100
     downside = min(lending["sol_price"], Decimal(low) / 100)
-    target = plan["floor_cents"]
-    baseline = chosen = minimum = best = None
-    for draw in range(gap + 1):
-        sale = gap - draw
-        if sale >= len(costs):
-            continue
+    for draw in range(limit + 1):
         raw = draw * RAW_PER_CENT
         origination = ceil_div(raw * lending["origination"], 2**60)
         debt = raw + origination
         value = debt * lending["usd_price"] / 10**6
         if debt > lending["credit_raw"]:
+            yield None
             continue
         if draw and (not downside or value < lending["min_value"]
                      or value * lending["factor"] / 100 > lending["max_value"]):
+            yield None
             continue
         payoff = credit.ceiling(debt * accrual)
         pledge = 0
@@ -92,10 +85,28 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
             stressed = payoff / Decimal(10**6) * coin * 100 / (downside * (lending["liquidation"] - 10))
             pledge = credit.ceiling(max(opening, stressed) * 10_000) * 100_000
         if pledge > lending["deposit_room"]:
+            yield None
             continue
+        yield pledge, ceil_div(payoff, RAW_PER_CENT)
+
+
+def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None):
+    bill, reference = plan["bill_cents"], plan["reference_cents"]
+    low, high = plan["low_price_cents"], plan["high_price_cents"]
+    own = min(bill, cash)
+    vendor = bill - own
+    gap = max(0, vendor - stable)
+    rate = lending["apr"]
+    schedule = list(loan_schedule(gap, low, lending))
+    target = plan["floor_cents"]
+    baseline = chosen = minimum = best = None
+    for draw, terms in enumerate(schedule):
+        sale = gap - draw
+        if terms is None or sale >= len(costs):
+            continue
+        pledge, repay = terms
         restore = costs[sale] + (fee if vendor else 0) + (2 * LOAN_FEE_ALLOWANCE if draw else 0)
         opening = pledge + restore + (rent if sale else 0)
-        repay = ceil_div(payoff, RAW_PER_CENT)
         proceeds = plan["receipt_cents"] - bill + sale + draw - repay
         payday = proceeds - ceil_div(restore * high, LAMPORTS)
         row = dict(draw_cents=draw, sale_cents=sale, pledge_lamports=pledge, repay_cents=repay,
@@ -117,7 +128,70 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
                        - ceil_div(chosen["restore_lamports"] * price, LAMPORTS) - chosen["repay_cents"]
                        for price in history]
         history_result = dict(windows=len(history), ahead=sum(d > 0 for d in differences), ties=differences.count(0))
-    return dict(history=history_result, selected=chosen, best_funded=best, minimum=minimum, sell_only=baseline, cash_cents=own,
+    combined = None
+    if offer_terms is not None:
+        combined = customer_mix(plan, costs, schedule, stable, cash, wallet_cap, fee, rent, *offer_terms)
+    return dict(combined=combined, history=history_result, selected=chosen, best_funded=best, minimum=minimum, sell_only=baseline, cash_cents=own,
                 stable_cents=min(stable, vendor), slot=lending["slot"], apr_bps=credit.ceiling(rate * 10000),
                 stressed_apr_bps=credit.ceiling(2 * rate * 10000), liquidation_pct=lending["liquidation"],
                 low_cents=low, high_cents=high)
+
+
+def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offer_fee, amount):
+    bill, received = plan["bill_cents"], plan["receipt_cents"]
+    high = plan["high_price_cents"]
+    invoice = reserve_credit.INVOICE_CENTS
+    if menu == "partial":
+        amounts = range(min(received, invoice, customer_credit.ADVANCES[-1]) + 1)
+    elif menu == "counter":
+        amounts = (0, amount)
+    else:
+        amounts = customer_credit.MENUS[menu]
+    # Each row pairs draw d with sale (gap - d). Keep integer rounding separate for each quoted leg.
+    valid = np.array([t is not None and t[0] <= cap for t in schedule])
+    pledged = np.array([t[0] if ok else 0 for t, ok in zip(schedule, valid)], dtype=np.int64)
+    repayments = np.array([t[1] if ok else 0 for t, ok in zip(schedule, valid)], dtype=np.int64)
+    last_draw = int(np.flatnonzero(valid)[-1])
+    with_loan = [c + fee + 2 * LOAN_FEE_ALLOWANCE for c in costs]
+    startup = np.array([c + (rent if s else 0) for s, c in enumerate(with_loan)], dtype=np.int64)
+    buyback = np.array([ceil_div(c * high, LAMPORTS) for c in with_loan], dtype=np.int64)
+    chosen = no_debt = None
+    for early in amounts:
+        discount = (offer_fee if early else 0) if menu == "counter" else customer_credit.customer_fee(early, offer_fee)
+        if early + discount > min(received, invoice):
+            continue
+        own = min(cash, max(0, bill - early))
+        vendor = max(0, bill - early - own)
+        gap = max(0, vendor - stable)
+        proceeds = received - bill + gap - discount
+        allowance = proceeds - plan["floor_cents"]
+        draw = None
+        if gap < len(costs):
+            restore = costs[gap] + (fee if vendor else 0)
+            if restore + (rent if gap else 0) <= cap and ceil_div(restore * high, LAMPORTS) <= allowance:
+                draw = 0
+        if chosen is None and draw is None and allowance > 0:
+            first, last = max(1, gap - len(costs) + 1), min(gap, last_draw)
+            if first <= last:
+                draws = slice(first, last + 1)
+                sales = slice(gap - last, gap - first + 1)
+                fits = (valid[draws] & (pledged[draws] + startup[sales][::-1] <= cap)
+                        & (repayments[draws] + buyback[sales][::-1] <= allowance))
+                if fits.any():
+                    draw = first + int(fits.argmax())
+        if draw is not None and (chosen is None or no_debt is None and draw == 0):
+            sale = gap - draw
+            pledge, repay = schedule[draw]
+            restore = costs[sale] + (fee if vendor else 0) + (2 * LOAN_FEE_ALLOWANCE if draw else 0)
+            row = dict(advance_cents=early, fee_cents=discount, invoice_balance_cents=invoice-early-discount,
+                          cash_cents=own, stable_cents=min(vendor, stable), surplus_cents=max(0, early-bill),
+                          draw_cents=draw, sale_cents=sale, pledge_lamports=pledge, repay_cents=repay,
+                          opening_lamports=restore + pledge + (rent if sale else 0),
+                          payday_cents=proceeds - repay - ceil_div(restore * high, LAMPORTS))
+            if chosen is None:
+                chosen = row
+            if draw == 0 and no_debt is None:
+                no_debt = row
+        if chosen is not None and no_debt is not None:
+            break
+    return dict(plan=chosen, without_loan=no_debt)

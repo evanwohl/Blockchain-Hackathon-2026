@@ -85,3 +85,13 @@
 #loan-outcomes :is(th, td):first-child { text-align: start; }
 #loan-result details { margin-block-start: .8rem; }
 #loan-result details a { display: block; margin-block: .6rem; }
+
+.funding-slip { border-block: 2px solid #536850; margin-block: .7rem 1.1rem; padding: .35rem .75rem; background: #eff1e6; }
+.funding-slip label { display: block; margin-top: .6rem; font-size: .85rem; }
+.funding-slip select { appearance: auto; width: 100%; margin-block: .35rem 1.1rem; padding: .65rem .4rem; font: inherit; color: var(--ink); background: #fbfaf5; border: 1px solid #89937d; }
+#mix-sources { margin-block: .85rem; }
+#mix-sources > div { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding-block: .45rem; font-size: .88rem; }
+#mix-sources > div:last-child { border-top: 1px solid #536850; font-weight: 650; }
+#mix-sources dd { margin: 0; font-variant-numeric: tabular-nums; }
+#mix-risk { color: var(--muted); font-size: .82rem; }
+.funding-slip button { margin-block: .25rem; }
