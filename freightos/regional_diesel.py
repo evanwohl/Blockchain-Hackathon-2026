@@ -14,6 +14,22 @@ REGIONS = {"east": "East Coast", "midwest": "Midwest", "gulf": "Gulf Coast", "ro
 TEST_START = "2025-01-01"
 
 
+def consecutive_fill_stress(later, allowance):
+    totals = []
+    for i in range(3, len(later)):
+        window = later[i-3:i+1]
+        span = date.fromisoformat(window[-1][0]) - date.fromisoformat(window[0][0])
+        if span.days == 21:
+            totals.append(sum(max(0, error - allowance) for _, error in window))
+    if not totals:
+        return None
+    totals.sort(reverse=True)
+    whole, remainder = divmod(len(totals), 10)
+    tail = (10 * sum(totals[:whole]) + remainder * totals[whole]) / len(totals)
+    return {"windows": len(totals), "overruns": sum(total > 0 for total in totals),
+            "tail_cents_per_weekly_gallon": str(tail)}
+
+
 def measure(rows, region, cents_per_oil_dollar):
     training, later = [], []
     for start, end in zip(rows, rows[1:]):
@@ -36,6 +52,7 @@ def measure(rows, region, cents_per_oil_dollar):
             "training_weeks": len(training), "test_weeks": len(later), "test_end": later[-1][0],
             "oil_only_misses": sum(error > 0 for _, error in later),
             "allowance_misses": sum(error > allowance for _, error in later),
+            "four_fills": consecutive_fill_stress(later, allowance),
             "worst_miss_cents": max(0, ceil(worst - allowance)), "worst_week": worst_day}
 
 

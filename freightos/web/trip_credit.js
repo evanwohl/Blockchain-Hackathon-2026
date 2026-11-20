@@ -2,6 +2,7 @@ import { el, facts, money, request, tokenUnits } from "./common.js";
 
 let gap = 0;
 let revision = 0;
+let protection;
 
 function clear() {
   revision++;
@@ -10,7 +11,8 @@ function clear() {
   el("gap-check").disabled = false;
 }
 
-export function setFuelGap(cents) {
+export function setFuelGap(cents, alternative = null) {
+  protection = alternative;
   clear();
   gap = cents;
   el("gap-credit").hidden = !gap;
@@ -41,6 +43,18 @@ function show(data) {
       : "Both choices use the same amount in fees and setup before exit costs.";
   }
   el("gap-comparison").textContent = verdict + " This counts all first-use setup cash upfront and assumes no refund.";
+  const alternative = el("gap-protection");
+  alternative.hidden = !protection;
+  if (protection && data.remaining_cents) {
+    alternative.textContent = "The loan leaves a gap. The " + money(protection.total_cents)
+      + " protection budget above could cover the modeled fill if the payout arrives in time.";
+  } else if (protection) {
+    const extraLoanCash = q.repay_cents + q.entry_cash_cents;
+    alternative.textContent = "At the full fuel gap, borrowing requires " + money(extraLoanCash)
+      + " beyond the current trip plan through payday, including principal and first-use setup. Raising the protection budget uses "
+      + money(protection.extra_cents) + " more today and keeps " + (q.pledge_millis / 1000).toLocaleString("en-US")
+      + " SOL free. The premium is spent even if oil falls and you never need the loan.";
+  }
   el("gap-risk").textContent = "If SOL falls " + q.drop + "%, the estimated debt reaches " + (q.stress_ltv_bps / 100).toFixed(1)
     + "% of the pledge. At " + q.liquidation_pct + "% Kamino could sell collateral. You still owe the loan if freight pays late.";
   el("gap-sale").textContent = "At the observed SOL price of $" + q.sol_price + ", selling enough for " + money(q.advance_cents)

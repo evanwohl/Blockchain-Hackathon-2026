@@ -4,9 +4,10 @@ import gzip
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from functools import cache
+from itertools import accumulate
 from math import ceil
 
 import numpy as np
@@ -58,6 +59,21 @@ def capture():
     return {"checked_at": datetime.now(timezone.utc).isoformat(), "market": market, "books": books}
 
 
+def matching_bid(levels, sell, ask):
+    if levels == [] and not sell:
+        return 0
+    if not levels or not sell:
+        return None
+    try:
+        bids = [(Decimal(q["price"]), Decimal(q["amount"])) for q in levels]
+        if any(not p.is_finite() or not size.is_finite() or not 0 < p <= ask or size <= 0 for p, size in bids):
+            return None
+        best = max(p for p, _ in bids)
+        return int(best * 100) if best == Decimal(sell) and best * 100 % 1 == 0 else None
+    except (KeyError, TypeError, InvalidOperation):
+        return None
+
+
 def top_offers(snapshot, fuel, rows):
     checked = datetime.fromisoformat(snapshot["checked_at"])
 
@@ -83,7 +99,9 @@ def top_offers(snapshot, fuel, rows):
                 or Decimal(c["quantityMinimum"]) != Decimal(".01") or Decimal(c["quantityIncrement"]) != Decimal(".01")
                 or price * 100 % 1 or depth * 100 % 1):
             continue
-        offers.append({"symbol": symbol, "strike": c["strike"]["value"], "price": int(price * 100), "depth": int(depth * 100)})
+        bid = matching_bid(book["levels"].get("bids"), c["prices"].get("sell", {}).get("yes"), price)
+        offers.append({"symbol": symbol, "strike": c["strike"]["value"], "price": int(price * 100),
+                       "depth": int(depth * 100), "bid": bid})
     return sorted(offers, key=lambda o: Decimal(o["strike"]))
 
 
@@ -101,12 +119,39 @@ def residual_floor(offers, gaps):
     return floor
 
 
-def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residual=False):
+def funding_risk_problem(offers, gaps, capacity, rows, bounds, caps):
+    n = len(offers)
+    first_flag = len(caps)
+    intercept = first_flag + len(gaps)
+    upper = intercept + 1
+    lower = upper + n
+    columns = lower + n
+    rows = [np.pad(row, (0, columns - first_flag)) for row in rows]
+    for i, need in enumerate(gaps):
+        row = np.zeros(columns)
+        row[:i] = -1
+        row[first_flag + i] = -max(0, need - capacity)
+        rows.append(row)
+        bounds.append(capacity - need)
+        row = np.zeros(columns)
+        row[first_flag + i] = 1
+        row[intercept] = -1
+        row[upper:upper+i] = -1
+        row[lower:lower+i] = 1
+        rows.append(row)
+        bounds.append(0)
+    objective = [0] * intercept + [100] + [o["price"] for o in offers] + [-o["bid"] for o in offers]
+    caps = caps + [1] * len(gaps) + [np.inf] * (1 + 2*n)
+    integrality = [1] * intercept + [0] * (1 + 2*n)
+    return rows, caps, objective, integrality
+
+
+def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residual=False, risk_capacity=None, risk_limit=None):
     gap = gaps[-1]
     empty = {"cash_cents": gap, "upfront_cents": 0, "residual_cents": gap, "legs": []}
     n = len(offers)
     if fuel_cash is not None:
-        if gap <= fuel_cash:
+        if gap <= fuel_cash and risk_capacity is None:
             return empty
         if residual_floor(offers, gaps) > fuel_cash:
             return None
@@ -138,9 +183,19 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residu
         objective[-1] = 0
     if minimize_residual:
         objective = [0]*(3*n) + [1]
+    integrality = np.ones(3*n + 1)
+    if risk_capacity is not None:
+        rows, caps, objective, integrality = funding_risk_problem(offers, gaps, risk_capacity, rows, bounds, caps)
+        if risk_limit is not None:
+            rows.append(np.array(objective))
+            bounds.append(risk_limit)
+            objective = np.zeros(len(caps))
+            objective[3*n] = 1
     constraints = LinearConstraint(rows, -np.inf, bounds)
-    sol = milp(objective, integrality=np.ones(3*n + 1), bounds=Bounds(0, caps), constraints=constraints,
+    sol = milp(objective, integrality=integrality, bounds=Bounds(0, caps), constraints=constraints,
                options={"mip_rel_gap": 0, "time_limit": 3})
+    if risk_capacity is not None and sol.status == 1:
+        return None
     if sol.status == 2 and fuel_cash is not None and spend_limit is not None:
         return None
     if not sol.success:
@@ -164,31 +219,119 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residu
     measured = total if fuel_cash is None else upfront
     if minimize_residual:
         measured = residual
+    if risk_capacity is not None:
+        weight = funding_weight(offers, gaps, lots, risk_capacity)
+        if risk_limit is not None and weight > risk_limit:
+            raise ValueError("Repriced hedge exceeds the funding risk limit")
+        measured = weight if risk_limit is None else residual
     if abs(measured - sol.fun) > .001 or (fuel_cash is not None and residual > fuel_cash):
         raise ValueError("Rounded position does not reconcile with the optimum")
     return {"cash_cents": total, "upfront_cents": upfront, "residual_cents": residual, "legs": legs} if minimize_residual or fuel_cash is not None or total < gap else empty
 
 
-def pump_target(offers, gaps, pump_cash, reserve_cash, spend_limit):
+def market_value_range(offers, changes):
+    if not offers or any(o.get("bid") is None for o in offers):
+        return None
+    ticks = np.arange(101, dtype=np.int64)
+    low = high = np.zeros_like(ticks)
+    reachable = np.ones(101, dtype=bool)
+    for offer, change in zip(reversed(offers), reversed(changes)):
+        valid = reachable & (ticks >= offer["bid"]) & (ticks <= offer["price"])
+        if not valid.any():
+            return None
+        value = change * ticks
+        low = np.minimum.accumulate(np.where(valid, value + low, np.iinfo(np.int64).max))
+        high = np.maximum.accumulate(np.where(valid, value + high, np.iinfo(np.int64).min))
+        reachable = np.logical_or.accumulate(valid)
+    return {"low_cents": int(low[-1]) // 100, "high_cents": -(-int(high[-1]) // 100)}
+
+
+def funding_weight(offers, gaps, lots, capacity):
+    payouts = accumulate(lots, initial=0)
+    flags = [100 * int(need > capacity + payout) for need, payout in zip(gaps, payouts)]
+    changes = [b - a for a, b in zip(flags, flags[1:])]
+    mark = market_value_range(offers, changes)
+    return flags[0] + mark["high_cents"] if mark else None
+
+
+def protection_change(offers, gaps, capacity, selected, alternative):
+    def quantities(plan):
+        return {leg["strike"]: leg["lots"] for leg in plan["legs"]}
+
+    old, new = quantities(selected), quantities(alternative)
+    changes = [new.get(o["strike"], 0) - old.get(o["strike"], 0) for o in offers]
+    payouts = list(accumulate(changes, initial=0))
+    held = list(accumulate((old.get(o["strike"], 0) for o in offers), initial=0))
+    lower = [max(0, need - payout - capacity) for need, payout in zip([0, *gaps[:-1]], held)]
+    upper = [max(0, need - payout - capacity) for need, payout in zip(gaps, held)]
+
+    def draw_mark(amounts, bound):
+        differences = [b - a for a, b in zip(amounts, amounts[1:])]
+        mark = market_value_range(offers, differences)
+        return amounts[0] + mark[bound] if mark else None
+
+    strikes = [None, *(o["strike"] for o in offers)]
+    return {"extra_cents": alternative["upfront_cents"] - selected["upfront_cents"],
+            "total_cents": alternative["upfront_cents"], "market_value": market_value_range(offers, changes),
+            "draw_low_cents": draw_mark(lower, "low_cents"), "draw_high_cents": draw_mark(upper, "high_cents"),
+            "outcomes": [{"from_strike": strike, "extra_payout_cents": payout, "min_draw_cents": low, "max_draw_cents": high}
+                         for strike, payout, low, high in zip(strikes, payouts, lower, upper)]}
+
+
+def pump_target(offers, gaps, pump_cash, reserve_cash, spend_limit, gallon_cents=0):
     capacity = reserve_cash + pump_cash
     floor = residual_floor(offers, gaps)
     plan = portfolio(offers, gaps, fuel_cash=max(capacity, floor))
-    minimum = plan["upfront_cents"] if floor <= capacity else None
+    loan_free = plan if floor <= capacity else None
+    minimum = loan_free["upfront_cents"] if loan_free else None
     if spend_limit is not None and plan["upfront_cents"] > spend_limit:
         best = portfolio(offers, gaps, spend_limit=spend_limit, minimize_residual=True)
         plan = portfolio(offers, gaps, fuel_cash=best["residual_cents"], spend_limit=spend_limit)
         if plan is None:
             raise ValueError("Could not reconcile the nearest attainable pump budget")
 
+    risk = None
+    if plan["legs"] and plan["residual_cents"] > capacity and all("strike" in o for o in offers):
+        def weight(candidate):
+            quantities = {o["strike"]: o["lots"] for o in candidate["legs"]}
+            return funding_weight(offers, gaps, [quantities.get(o["strike"], 0) for o in offers], capacity)
+
+        before = weight(plan)
+        if before is not None:
+            peak = plan["residual_cents"]
+            terms = {"spend_limit": plan["upfront_cents"], "risk_capacity": capacity}
+            candidate = portfolio(offers, gaps, fuel_cash=peak, **terms)
+            if candidate:
+                after = weight(candidate)
+                risk = {"before_pct": before, "after_pct": after}
+                if after < before:
+                    plan = candidate
+                if gallon_cents and after:
+                    room = min(gaps[-1], plan["residual_cents"] + gallon_cents)
+                    wider = portfolio(offers, gaps, fuel_cash=room, **terms)
+                    if wider and weight(wider) < after:
+                        best = portfolio(offers, gaps, fuel_cash=room, risk_limit=weight(wider), **terms)
+                        if best:
+                            risk["alternative"] = {"weight_pct": weight(best), "plan": best,
+                                                   "short_cents": max(0, best["residual_cents"] - capacity)}
+
     def at_stop(residual):
         draw = min(reserve_cash, residual)
         outside = residual - draw
         return {"reserve_cents": draw, "outside_cents": outside, "short_cents": max(0, outside - pump_cash)}
 
+    if risk and "alternative" in risk:
+        alternative = risk["alternative"]
+        best = alternative["plan"]
+        alternative["after"] = at_stop(best["residual_cents"])
+        alternative["protection_change"] = protection_change(offers, gaps, capacity, best, loan_free) if loan_free else None
     lots = max(0, gaps[-1] - capacity)
     single = min((sum(cost(lots, offer)) for offer, gap in zip(offers, gaps)
                   if gap <= capacity and offer["depth"] >= lots), default=None) if lots else 0
-    return {"before": at_stop(gaps[-1]), "after": at_stop(plan["residual_cents"]), "single_spend_cents": single,
+    change = None
+    if loan_free and plan["residual_cents"] > capacity and all("strike" in o for o in offers):
+        change = protection_change(offers, gaps, capacity, plan, loan_free)
+    return {"funding_risk": risk, "protection_change": change, "before": at_stop(gaps[-1]), "after": at_stop(plan["residual_cents"]), "single_spend_cents": single,
             "plan": plan, "minimum_spend_cents": minimum}
 
 
@@ -220,6 +363,10 @@ def analyze(snapshot, trip, *, reserve=None):
             "offers": len(offers), "contracts_checked": len(rows), "combined": combined}
     if regional:
         result["regional"] = {**regional, "allowance_cents": allowance}
+        four = regional["four_fills"]
+        if four:
+            tail = Fraction(four["tail_cents_per_weekly_gallon"]) * trip["gallons"]
+            result["regional"]["four_fills"] = {**four, "tail_cents": ceil(tail)}
     benchmark, selected = unrestricted, combined
     fuel_cash = 0
     if reserve is not None:
@@ -247,7 +394,7 @@ def analyze(snapshot, trip, *, reserve=None):
                                       "kept_upfront_cents": benchmark["upfront_cents"] - selected["upfront_cents"],
                                       "outside_change_cents": after - before}
     if "pump_cash_cents" in trip:
-        result["pump_target"] = pump_target(offers, gaps, trip["pump_cash_cents"], fuel_cash, limit)
+        result["pump_target"] = pump_target(offers, gaps, trip["pump_cash_cents"], fuel_cash, limit, trip["pump_mills"] // 10)
     return result
 
 

@@ -5,6 +5,7 @@ import { setFuelGap } from "./trip_credit.js";
 const form = el("trip-cover-form");
 const result = el("trip-result");
 let current;
+let useRiskMix = false;
 let revision = 0;
 
 function generalBudget(d, later) {
@@ -103,6 +104,39 @@ function targetBudget(d, later) {
   return later ? target.plan : null;
 }
 
+function showProtectionChoice(target, later) {
+  const change = later && target?.protection_change;
+  el("protection-choice").hidden = !change;
+  if (!change) return;
+  el("protection-extra").textContent = money(change.extra_cents);
+  el("protection-covered").textContent = money(target.after.short_cents);
+  el("protection-terms").textContent = "Raising your protection budget to " + money(change.total_cents)
+    + " covers the modeled fuel gap if payouts arrive before the stop. If payouts arrive late, you still need "
+    + money(target.before.short_cents) + " at the pump.";
+  const outcomes = change.outcomes;
+  facts(el("protection-outcomes"), outcomes.map((row, index) => {
+    const next = outcomes[index + 1]?.from_strike;
+    const label = index === 0 ? "Oil below $" + next : next ? "$" + row.from_strike + " to below $" + next : "$" + row.from_strike + " or higher";
+    return [label, money(row.extra_payout_cents)];
+  }));
+  const largest = Math.max(1, ...outcomes.map(row => Math.abs(row.extra_payout_cents)));
+  for (const [index, cell] of [...el("protection-outcomes").querySelectorAll("dd")].entries()) {
+    const payout = outcomes[index].extra_payout_cents;
+    cell.style.setProperty("--payout", (100 * Math.abs(payout) / largest) + "%");
+    cell.dataset.loss = String(payout < 0);
+  }
+  const range = change.market_value;
+  el("protection-value").textContent = "These are changes in settlement payout from switching plans before buying. The extra premium is paid in every outcome."
+    + (range ? " Prices consistent with Gemini’s displayed quotes put the added payouts at " + money(range.low_cents) + " to "
+      + money(range.high_cents) + " before fees. Realized payouts depend on where oil settles." : "");
+  const draw = el("protection-draw");
+  draw.hidden = !range;
+  if (range) draw.textContent = "With your current budget, the largest modeled draw is " + money(target.after.short_cents)
+    + ". Weighting possible draws using prices consistent with the same quotes gives " + money(change.draw_low_cents)
+    + " to " + money(change.draw_high_cents) + ". This assumes timely payouts, the trip’s diesel estimate and oil capped at the tested ceiling. Actual borrowing can differ.";
+  el("protection-try").textContent = "Try the " + money(change.total_cents) + " budget";
+}
+
 function regionalCost(region) {
   return [region.name + " pump allowance included in estimate", money(region.allowance_cents)];
 }
@@ -129,8 +163,25 @@ function showSpendingLimit(d, later) {
 }
 
 function render() {
-  const d = current;
+  let d = current;
   const later = document.querySelector('input[name="timing"]:checked').value === "after";
+  const target = d.pump_target;
+  const risk = later && target?.funding_risk;
+  const alternative = risk?.alternative;
+  el("funding-risk").hidden = !risk;
+  if (risk) {
+    el("risk-weight").textContent = "Oil ranges where extra cash may be needed carry up to " + risk.after_pct
+      + "% of the weight implied by Gemini prices with the smaller-gap plan."
+      + (alternative ? " The other mix reduces that bound to " + alternative.weight_pct + "%." : "")
+      + " A range counts if any tested price leaves a gap. These weights describe market pricing.";
+    el("risk-switch").hidden = !alternative;
+    el("risk-tradeoff").textContent = alternative ? "Within the same " + money(target.plan.upfront_cents)
+      + " protection budget, the other mix covers different oil prices. Your largest modeled fuel gap rises from "
+      + money(target.after.short_cents) + " to " + money(alternative.short_cents) + "."
+      : "The tested mixes gave no verified improvement within one extra gallon’s cost in the worst case.";
+    el("risk-switch").textContent = useRiskMix ? "Return to the smaller peak gap" : "Preview the other mix";
+    if (alternative && useRiskMix) d = {...d, pump_target: {...target, ...alternative}};
+  }
   el("reserve-observation").hidden = !d.reserve;
   if (d.reserve) {
     el("reserve-observation").textContent = (d.source === "live" ? "Public Devnet check" : "Recorded Devnet check")
@@ -144,7 +195,9 @@ function render() {
     plan = d.reserve ? reserveBudget(d, later) : generalBudget(d, later);
     showSpendingLimit(d, later);
   }
-  setFuelGap(d.pump_target ? (later ? d.pump_target.after : d.pump_target.before).short_cents : 0);
+  showProtectionChoice(d.pump_target, later);
+  setFuelGap(d.pump_target ? (later ? d.pump_target.after : d.pump_target.before).short_cents : 0,
+    later ? d.pump_target?.protection_change : null);
   const region = d.regional;
   el("regional-evidence").hidden = !region;
   if (region) {
@@ -155,6 +208,11 @@ function render() {
       + region.oil_only_misses + " of " + region.test_weeks + " later weeks. With the allowance, it exceeded the estimate in "
       + region.allowance_misses + ". The largest remaining gap was about " + region.worst_miss_cents + "¢ per gallon. "
       + "The check uses weekly EIA diesel and WTI spot prices through " + region.test_end + ". Your station price and the time until you fill up can differ.";
+    const four = region.four_fills;
+    el("regional-tail").hidden = !four;
+    if (four) el("regional-tail").textContent = "For " + d.trip.gallons + " gallons each week, the worst tenth of "
+      + four.windows + " overlapping four-fill runs averaged " + money(four.tail_cents)
+      + " in extra fuel cash above the regional allowance. Each fill starts from the previous week’s price. Cheaper weeks contribute zero.";
   }
   const legs = plan?.legs || [];
   el("trip-method").textContent = "The model starts from your diesel price and Gemini’s $" + Number(d.anchor).toFixed(2)
@@ -190,12 +248,13 @@ async function compare(source, submitted = false) {
     if (body && includeReserve) body.road_cents = Math.round(el("trip-road").valueAsNumber * 100);
     const data = await request("/api/trip-cover", body, AbortSignal.timeout(45000));
     if (attempt !== revision) return;
+    useRiskMix = false;
     current = data;
     render();
     const stamp = new Date(data.checked_at).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" });
     status.textContent = (data.source === "live" ? "Checked with Gemini" : "Recorded Gemini prices") + " · " + stamp + " UTC";
     el("trip-recorded").hidden = true;
-    if (submitted && matchMedia("(max-width: 720px)").matches && (form.contains(document.activeElement) || document.activeElement === document.body)) {
+    if (submitted && matchMedia("(max-width: 720px)").matches && (form.contains(document.activeElement) || document.activeElement === document.body || document.activeElement === status)) {
       el("trip-heading").focus();
     }
   } catch {
@@ -216,9 +275,22 @@ form.oninput = () => {
   el("trip-check").disabled = el("trip-pending").hidden = false;
   el("trip-status").textContent = "Compare these amounts to update your budget.";
 };
+el("risk-switch").onclick = () => {
+  useRiskMix = !useRiskMix;
+  render();
+};
+el("protection-try").onclick = () => {
+  const change = current?.pump_target?.protection_change;
+  if (!change) return;
+  const source = current.source;
+  el("trip-limit").value = (change.total_cents / 100).toFixed(2);
+  form.dispatchEvent(new Event("input"));
+  el("trip-status").focus();
+  compare(source, true);
+};
 form.onsubmit = event => { event.preventDefault(); compare("live", true); };
 el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded", true); };
-document.querySelector(".trip-timing").onchange = () => { if (current) render(); };
+document.querySelector(".trip-timing").onchange = () => { if (current) { useRiskMix = false; render(); } };
 function openExample() {
   form.reset();
   const example = new URLSearchParams(location.hash.slice(1));
@@ -235,7 +307,8 @@ function openExample() {
   el("protection-limit").open = hasLimit;
   el("use-trip-reserve").checked = includeReserve;
   el("trip-road").disabled = el("trip-road-fields").hidden = !includeReserve;
-  document.querySelector('input[name="timing"][value="before"]').checked = true;
+  const timing = example.get("timing") === "after" ? "after" : "before";
+  document.querySelector('input[name="timing"][value="' + timing + '"]').checked = true;
   setFuelGap(0);
   current = null;
   result.hidden = el("trip-recorded").hidden = true;

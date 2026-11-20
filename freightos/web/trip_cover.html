@@ -42,7 +42,7 @@
         <button id="trip-check" class="primary">Compare my trip</button>
         <button id="trip-recorded" class="secondary" type="button" hidden>Use recorded market prices</button>
       </form>
-      <p id="trip-status" role="status">Opening the sample trip…</p>
+      <p id="trip-status" role="status" tabindex="-1">Opening the sample trip…</p>
     </section>
     <section class="public-slip" aria-labelledby="trip-heading">
       <p class="panel-label">Extra cash above your budget</p>
@@ -60,6 +60,17 @@
         </section>
         <dl id="trip-options" class="facts"></dl><p id="reserve-observation" hidden></p>
         <a id="trip-reserve" class="ledger-back">Check the cash buffer on Solana →</a>
+        <details id="funding-risk" hidden><summary>What if I can handle a larger fuel gap?</summary>
+          <p id="risk-tradeoff"></p><p id="risk-weight"></p><button id="risk-switch" type="button" class="secondary" hidden></button>
+        </details>
+        <section id="protection-choice" class="protection-choice" aria-labelledby="protection-title" hidden>
+          <h3 id="protection-title">Cover the gap without borrowing</h3>
+          <dl><div><dt>Extra to spend now</dt><dd id="protection-extra"></dd></div>
+          <div><dt>Fuel gap closed</dt><dd id="protection-covered"></dd></div></dl>
+          <p id="protection-terms"></p>
+          <details><summary>What does the extra protection pay?</summary><dl id="protection-outcomes" class="facts"></dl><p id="protection-value"></p><p id="protection-draw"></p></details>
+          <button type="button" class="secondary" id="protection-try"></button>
+        </section>
         <details id="gap-credit" hidden><summary id="gap-title">Check a fuel loan</summary>
           <p>If you already own SOL, see how much of this fuel gap it could cover. Kamino would hold your pledge until you repay the loan.</p>
           <form id="gap-form"><div class="trip-fields">
@@ -71,13 +82,13 @@
           <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>
           <p id="gap-status" role="status"></p><div id="gap-answer" hidden>
             <h3 id="gap-verdict"></h3><dl class="facts" id="gap-facts"></dl>
-            <p id="gap-comparison"></p><p id="gap-risk"></p>
+            <p id="gap-comparison"></p><p id="gap-protection" hidden></p><p id="gap-risk"></p>
             <details><summary>What if I sold some SOL instead?</summary><p id="gap-sale"></p></details>
             <details><summary>How was the loan checked?</summary><p id="gap-proof"></p></details>
           </div>
         </details>
         <details id="regional-evidence" hidden><summary>How much can diesel move on its own?</summary>
-          <p id="regional-test"></p><p id="regional-limit"></p>
+          <p id="regional-test"></p><p id="regional-limit"></p><p id="regional-tail"></p>
           <a href="/evidence/regional-diesel" download="FreightOS-regional-diesel.json">Download weekly prices and EIA sources</a>
         </details>
         <details><summary>Which oil contracts were compared?</summary>
