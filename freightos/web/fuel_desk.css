@@ -78,7 +78,7 @@
 .driver-desk #payday-choices label { flex: 1 1 7.5rem; }
 .driver-desk #payday-prices { overflow-x: auto; }
 
-.driver-desk #desk-liquidity { margin-block-start: .3rem; padding: .4rem 0; border: 0; text-align: start; color: #3b5c3d; text-decoration: underline; text-underline-offset: .22em; }
+.driver-desk :is(#desk-liquidity,#jump-payoff) { margin-block-start: .3rem; padding: .4rem 0; border: 0; text-align: start; color: #3b5c3d; text-decoration: underline; text-underline-offset: .22em; }
 
 
 #setup-costs { margin: .7rem 0; font-size: .88rem; }
@@ -114,3 +114,13 @@
 #split-receipt dt { font-size: .8rem; }
 #split-receipt dd { margin: .15rem 0 0; text-align: start; font: 600 1.7rem/1 var(--display); }
 #split-receipt > div:last-child { grid-column: 1/-1; border-top: 1px solid #a4b498; padding-top: .7rem; display: flex; justify-content: space-between; align-items: baseline; }
+
+#payoff-check > label:not([hidden]) { display: grid; gap: .35rem; margin: .8rem 0; }
+#payoff-check select { background: var(--paper); color: var(--ink); border: 1px solid #849284; border-radius: 0; padding: .55rem; min-height: 44px; max-width: 100%; }
+#exit-amounts, #exit-receipt:not([hidden]) { display: grid; gap: .65rem; margin: .8rem 0; padding: .8rem 1rem; background: #e8eedb; color: #243d2b; }
+#exit-amounts > div, #exit-receipt > div { display: flex; justify-content: space-between; gap: .6rem; align-items: baseline; }
+#exit-amounts dt, #exit-receipt dt { font-size: .82rem; }
+#exit-amounts dd, #exit-receipt dd { flex: 0 0 auto; white-space: nowrap; margin: 0; text-align: end; font-weight: 650; font-variant-numeric: tabular-nums; }
+#payoff-check { border-block: 1px solid var(--line); margin: .75rem 0; padding: .65rem 0; font-size: .91rem; line-height: 1.5; }
+#payoff-check summary { cursor: pointer; font-weight: 600; }
+#payoff-check details { border-top: 1px solid var(--line); padding: .65rem 0; }

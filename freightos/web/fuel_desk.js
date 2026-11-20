@@ -1,3 +1,4 @@
+import {showExit, exitLines} from "./collateral-exit.js";
 import {el, facts, money, request, saveFile} from "./common.js";
 import {downloadOffer, mixKey, showMix} from "./funding_mix.js";
 import {showRun, saveRun} from "./repeat-run.js";
@@ -47,6 +48,7 @@ function paint() {
   }
   showMix(quote);
   const row = selected();
+  showExit(row && row.payday_cents >= inputs.target ? [["This stop", row]] : [], quote.low_price_cents);
   el("plan-heading").textContent = row ? (row.cash_cents ? "Bring " + money(row.cash_cents) + " to the stop." : "Cover fuel without separate cash.") : "Review the funding gap.";
   el("desk-split").hidden = !row;
   if (row) {
@@ -102,7 +104,7 @@ function price(delay, focus) {
   el("fixed-offer").hidden = el("advance").disabled = el("discount").disabled = !exact;
   el("scaled-offer").hidden = el("fee").disabled = !flexible;
   const inputs = terms();
-  el("series-panel").hidden = true;
+  el("series-panel").hidden = el("jump-payoff").hidden = el("payoff-check").hidden = true;
   el("booked-field").hidden = inputs.stops < 2;
   const bookings = el("booked");
   if (bookings.options.length !== inputs.stops + 1) {
@@ -184,6 +186,7 @@ function fundingSheet() {
     "The estimate assumes freight pays on schedule and uses Gemini price scenarios. Confirm early terms with the customer.",
     "A secured loan can be liquidated before payday. This sheet records a plan. It does not authorize or confirm a payment.", ""
   ];
+  lines.push(...exitLines(row));
   saveFile("FreightOS-driver-funding-sheet.txt", lines.join("\n"), "text/plain;charset=utf-8");
 }
 
@@ -195,6 +198,7 @@ form.oninput = event => {
   if (event.target.id !== "trip-ref") price(180, false);
 };
 form.onreset = () => {
+  el("exit-keep").value = "100";
   sizeLoans = true;
   el("mix-priority").value = "most_cash"; el("payday-allow").checked = true; el("desk-setup").open = false;
   setTimeout(() => price(0, false), 0);

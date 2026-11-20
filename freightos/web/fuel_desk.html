@@ -41,7 +41,7 @@
       <a class="desk-receipt-jump" href="#signed-loan">Inspect a settled loan on Devnet</a>
     </aside>
     <section class="desk-decision" aria-labelledby="plan-heading">
-      <header class="desk-plan-heading"><p class="desk-kicker" id="desk-basis">Recorded mainnet estimate</p><h2 id="plan-heading" tabindex="-1">Your payment plan</h2><p id="desk-split" hidden></p><button id="desk-liquidity" type="button" hidden></button></header>
+      <header class="desk-plan-heading"><p class="desk-kicker" id="desk-basis">Recorded mainnet estimate</p><h2 id="plan-heading" tabindex="-1">Your payment plan</h2><p id="desk-split" hidden></p><button id="desk-liquidity" type="button" hidden></button> <button id="jump-payoff" type="button" hidden></button></header>
       <p id="desk-status" role="status">Pricing the fuel bill…</p><button id="desk-retry" type="button" class="desk-secondary" hidden>Try pricing again</button>
       <div id="mix" class="funding-slip" hidden><span class="visually-hidden" id="mix-preview"></span>
         {{funding_fields}}
@@ -71,6 +71,16 @@
         </details>
         <div class="desk-actions"><button type="button" id="series-save">Save this run’s funding sheet</button><button type="button" id="series-single">Show this stop on its own</button></div>
       </div>
+        <details id="payoff-check" hidden><summary>How can I repay if freight pays late?</summary>
+          <label id="exit-stage-field" hidden>Loan to check <select id="exit-stage"></select></label>
+          <label>How much of my pledged SOL should I keep? <select id="exit-keep"><option value="100">Keep all of it</option><option value="75">Keep at least three quarters</option><option value="0">Use what repayment needs</option></select></label>
+          <dl id="exit-amounts" aria-live="polite"></dl><p id="exit-how"></p><p id="exit-price"></p>
+          <details id="exit-mechanics"><summary>How the payoff works</summary><p>Kamino can lend temporary USDC to close the fuel loan and release the SOL. An Orca sale then repays the temporary credit in the same transaction. The estimate uses recorded liquidity, a fee allowance and whole-cent sale amounts. The SOL price check assumes one USDC is worth one dollar. Network fees and temporary account deposits require separate SOL. The loan must still hold its collateral. Reprice at payoff and plan the next stop using the SOL you have left.</p></details>
+          <details id="exit-proof"><summary>Verify a payoff with zero starting USDC</summary><p>This separate public Devnet example opens and immediately closes the sample $72.98 loan at 1:100 scale. A sponsor supplies test SOL for the opening, accounts and network fee.</p>
+            <dl id="exit-receipt" hidden></dl><p id="exit-proof-result" role="status"></p>
+            <button id="exit-simulate" type="button">Recheck payoff on public Devnet</button> <a href="/evidence/collateral-exit" download="FreightOS-collateral-payoff.json">Download payoff evidence</a>
+          </details>
+        </details>
     </section>
     <section class="desk-receipt" id="signed-loan" aria-labelledby="receipt-heading">
       <div class="desk-proof-heading"><p class="desk-kicker">Public Solana Devnet</p><h2 id="receipt-heading">A fuel loan that settled.</h2><p>This separate $7 example uses test funds. Kamino lent to the driver, the fuel vendor received payment, and repayment released the collateral.</p></div>

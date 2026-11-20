@@ -22,6 +22,19 @@ SPONSOR = 100_000_000
 POOL = fuel_swap.POOLS[0]
 
 
+def opening_instructions(owner, cash, route, maximum, rent):
+    sponsor, vendor = credit.OWNER, load_credit.vendor()
+    setup = [transfer(TransferParams(from_pubkey=sponsor, to_pubkey=owner, lamports=SPONSOR)),
+             devnet.create_ata(sponsor, owner, devnet.MINT)]
+    tag = hashlib.sha256(b"global:init_user_metadata").digest()[:8]
+    loan = load_credit.instructions(owner, PLEDGE, LOAN)
+    if loan[-1].accounts[2].pubkey != vendor or loan[-1].program_id != devnet.TOKEN:
+        raise ValueError("Unexpected final Kamino vendor transfer")
+    setup.extend(ix for ix in loan[:-1] if not (ix.program_id == credit.KLEND and ix.data[:8] == tag))
+    return [*setup, *fuel_swap.swap_instructions(owner, cash, route, SALE, maximum, rent),
+            public_offer.transfer(cash, owner, vendor, LOAN + SALE)]
+
+
 def simulate(rpc=devnet.request):
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("The split payment requires Solana Devnet")
@@ -32,13 +45,6 @@ def simulate(rpc=devnet.request):
     rent = rpc("getMinimumBalanceForRentExemption", [165])
     vendor = load_credit.vendor()
     sponsor = credit.OWNER
-    setup = [transfer(TransferParams(from_pubkey=sponsor, to_pubkey=owner, lamports=SPONSOR)),
-             devnet.create_ata(sponsor, owner, devnet.MINT)]
-    tag = hashlib.sha256(b"global:init_user_metadata").digest()[:8]
-    loan = load_credit.instructions(owner, PLEDGE, LOAN)
-    if loan[-1].accounts[2].pubkey != vendor or loan[-1].program_id != devnet.TOKEN:
-        raise ValueError("Unexpected final Kamino vendor transfer")
-    setup.extend(ix for ix in loan[:-1] if not (ix.program_id == credit.KLEND and ix.data[:8] == tag))
     market = Pubkey.from_string(credit.route()["market"])
     authority = Pubkey.find_program_address([b"lma", bytes(market)], credit.KLEND)[0]
     debt_vault = Pubkey.from_string(credit.route()["ixs"][12]["a"][6][0])
@@ -46,8 +52,7 @@ def simulate(rpc=devnet.request):
     payee = Pubkey.from_string(json.loads(devnet.SAMPLE.read_bytes())["vendor_owner"])
 
     def run(maximum, *, decline=False):
-        ops = setup + fuel_swap.swap_instructions(owner, cash, route, SALE, maximum, rent)
-        ops.append(public_offer.transfer(cash, owner, vendor, LOAN + SALE))
+        ops = opening_instructions(owner, cash, route, maximum, rent)
         config = TransactionConfig(compute_unit_limit=850000, loaded_accounts_data_size_limit=16*1024*1024, heap_size=32768)
         msg = MessageV1.try_compile(sponsor, ops, Hash.from_string(block), config)
         wire = bytes(VersionedTransaction.populate(msg, [Signature.default()] * msg.header.num_required_signatures))

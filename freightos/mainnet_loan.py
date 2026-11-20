@@ -54,6 +54,7 @@ def verify(raw):
                 min_value=Decimal(uint(market, 3224)) / credit.UNIT, max_value=uint(market, 152, 8),
                 sol_price=Decimal(uint(sol, 248)) / credit.UNIT, usd_price=Decimal(uint(usd, 248)) / credit.UNIT,
                 factor=uint(usd, 5008, 8), initial=initial, liquidation=liquidation,
+                flash_fee_sf=uint(usd, 4904, 8), flash_available_raw=uint(usd, 224, 8),
                 origination=uint(usd, 4896, 8), credit_raw=max(0, room),
                 deposit_room=max(0, uint(sol, 5016, 8) - sol_supply_upper))
 

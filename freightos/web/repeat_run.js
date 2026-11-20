@@ -1,3 +1,4 @@
+import {showExit, exitLines} from "./collateral-exit.js";
 import {el, facts, money, request, saveFile} from "./common.js";
 
 const scope = "Each 30-day stop uses a separate invoice on the same terms. Freight pays and working balances are restored before the next stop. Market terms and the price scenarios reset each cycle. The profile and collateral-tracking accounts stay open. Each new loan needs a refundable loan-account deposit and a setup transaction. The model excludes overlapping loads, future rewards and liquidation before payday.";
@@ -171,6 +172,7 @@ export function showRun(q) {
   el("series-renewal").hidden = !!s.booking || s.renewal_pct === null;
   if (s.renewal_pct !== null) el("series-renewal").textContent = "If only the first stop is booked, each next stop needs at least a " + s.renewal_pct
     + "% chance of renewal for opening now to leave more expected cash at the stress price. This checks whole percentages with the same renewal chance each time.";
+  showExit(rows, q.low_price_cents);
   el("split-proof").hidden = !s.sizing;
   el("series-proof").hidden = !!s.sizing;
   el("series-scope").textContent = scope;
@@ -199,7 +201,7 @@ export function saveRun(q, reference) {
       + ". Invoice still owed: " + money(row.invoice_balance_cents), "Pledged: " + (row.pledge_lamports / 1e9).toFixed(4) + " SOL. Estimated payoff: " + money(row.repay_cents),
       "Account setup at opening, including extra fee allowance: " + ((row.draw_cents ? loan.setup.refunded_lamports + loan.setup.setup_fee_lamports
         + (row === s.first ? loan.setup.retained_lamports : 0) : 0) / 1e9).toFixed(9) + " SOL",
-      "Payday after restoring balances: " + money(row.payday_cents));
+      "Payday after restoring balances: " + money(row.payday_cents), ...exitLines(row));
   }
   for (const [label, cents] of s.sizing ? [] : [["Open now", s.open_cents], ["Stay debt-free", s.debt_free_cents]]) {
     lines.push(label + " · total at the highest SOL price: " + (cents === null ? "outside limits" : money(cents)));

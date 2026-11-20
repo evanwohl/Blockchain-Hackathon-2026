@@ -3,7 +3,7 @@ from decimal import ROUND_HALF_UP
 from fractions import Fraction
 
 from hedging.quick_pay import integer
-from freightos import collateral_path, fuel_floor, mainnet_loan, mainnet_stop, payday_policy, route_booking, route_sizing
+from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, payday_policy, route_booking, route_sizing
 
 MAX_BILL = 250_000
 VENDOR_FEE_LAMPORTS = 5_000
@@ -86,6 +86,18 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance):
                             dict(pool=pool, output_cents=cents) for pool, cents in zip(observation["addresses"], volumes) if cents])
             choice = series["booking"]["choice"]
             series["choice"] = "unfunded" if choice is None else {None: "debt_free", 1: "open"}.get(choice["open_stop"], "defer")
+    if stops > 1:
+        rows = [result["series"][key] for key in ("first", "later")]
+    else:
+        rows = [loan["combined"][key] for key in ("most_cash", "plan", "keep_sol", "best_loan")]
+    debt_rows = [r for r in rows if r and r["draw_cents"]]
+    if debt_rows:
+        max_debt = max(r["repay_cents"] for r in debt_rows)
+        fee_sf = lending["flash_fee_sf"]
+        limit = 0 if fee_sf == collateral_exit.FLASH_DISABLED else collateral_exit.sale_cents(max_debt, fee_sf)
+        exit_costs = costs if len(costs) > limit else mainnet_stop.split_costs(pools, limit)[0]
+        for row in debt_rows:
+            row["payoff_options"] = collateral_exit.options(row, exit_costs, lending, min(prices))
     return result
 
 
