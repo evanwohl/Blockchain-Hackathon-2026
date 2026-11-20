@@ -17,6 +17,7 @@ from freightos import bill, credit_exit, devnet, diesel_model, forward, freight_
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
+from freightos.load_calendar import funding_options, project as project_load
 from hedging.quick_pay import integer, price_calendar
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
@@ -110,6 +111,12 @@ def stressed_trial():
     return {**counts, "one_day_delay": timing, "late_freight": freight_delay, "flexible_refill": flexible}
 
 
+@cache
+def sample_load_reserve():
+    # A separate hypothetical reserve; never deposit the editable opening cash.
+    return ReserveFork().available_after_deposit(60_000) // 10_000
+
+
 class LoadSettlement:
     def __init__(self):
         self.lock = RLock()
@@ -124,6 +131,26 @@ class LoadSettlement:
         self.surcharge_profile = None
         self.applied_quote = None
         self.surcharge_limit = None
+
+    def load_reserve(self, mode):
+        if mode in (None, "off"):
+            return None
+        if mode not in ("sample", "wallet"):
+            raise ValueError("Choose a practice reserve")
+        with self.lock:
+            terms = next(s for s in self.plans["quick pay"]["oil stress"]["calendar"]["funding"]
+                         if s["id"] == "reserve redemption")
+            try:
+                if mode == "sample":
+                    capacity = sample_load_reserve()
+                elif self.fork.pending_review():
+                    return {"capacity_cents": 0, "note": "The practice wallet has a pending payment."}
+                else:
+                    capacity = self.fork.available_after_deposit(0) // 10_000
+            except VaultExecutionError:
+                return {"capacity_cents": 0, "note": "Redemption could not be confirmed."}
+            return {"capacity_cents": capacity, "fixed_cost_cents": terms["fixed_cost_cents"],
+                    "term_cost_bps": terms["term_cost_bps"]}
 
     def clear_surcharge(self):
         for group in (self.plans, self.edges, self.policies):
@@ -682,6 +709,10 @@ class Handler(BaseHTTPRequestHandler):
             "/payday.js": ("payday.js", "text/javascript"),
             "/trip_credit.js": ("trip_credit.js", "text/javascript"),
             "/trip_cover.js": ("trip_cover.js", "text/javascript"),
+
+            "/load": ("load.html", "text/html; charset=utf-8"),
+            "/browser_wallet.js": ("browser_wallet.js", "text/javascript"),
+            "/load.js": ("load.js", "text/javascript"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
             "/next_stop.js": ("next_stop.js", "text/javascript"),
             "/public-offer": ("public_offer.html", "text/html; charset=utf-8"),
@@ -820,6 +851,23 @@ class Handler(BaseHTTPRequestHandler):
                     self.respond(422, {"error": str(exc)})
                 except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError):
                     self.respond(503, {"error": "Could not verify the market comparison for this trip."})
+                return
+            if self.path == "/api/devnet-wallet":
+                address = data.get("address")
+                if not isinstance(address, str):
+                    raise ValueError("Enter a wallet address")
+                devnet.Pubkey.from_string(address)
+                try:
+                    self.respond(200, devnet.wallet_balances(address))
+                except (OSError, ValueError, KeyError, TypeError):
+                    self.respond(503, {"error": "Devnet balances are unavailable. Try again."})
+                return
+            if self.path == "/api/load-calendar":
+                calendar = project_load(data)
+                if data.get("compare_funding") is True:
+                    calendar["decision"] = funding_options(
+                        data, calendar, self.server.settlement.load_reserve(data.get("reserve_mode")))
+                self.respond(200, calendar)
                 return
             if self.path in ("/api/next-stop", "/api/two-stops"):
                 fuel, road = data.get("fuel_cents"), data.get("road_cents")
