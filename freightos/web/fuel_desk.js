@@ -201,6 +201,8 @@ form.oninput = event => {
 form.onreset = () => {
   el("exit-keep").value = "100";
   el("cash-exit-budget").value = "30.00";
+  el("midtrip-price").value = "55.00";
+  el("midtrip").open = false;
   sizeLoans = true;
   el("mix-priority").value = "most_cash"; el("payday-allow").checked = true; el("desk-setup").open = false;
   setTimeout(() => price(0, false), 0);

@@ -41,7 +41,7 @@ def verify(raw):
             raise ValueError("Lending asset, permissions or recorded price are unsupported")
     initial, liquidation = sol[4872:4874]
     if (sol[5500] or not 0 < initial < liquidation <= 100 or liquidation <= 10 or usd[5501]
-            or uint(usd, 6968, 8) or any(usd[5776:5792]) or usd[4865] != 1 or uint(usd, 5008, 8) < 100):
+            or usd[4863] or uint(usd, 6968, 8) or any(usd[5776:5792]) or usd[4865] != 1 or uint(usd, 5008, 8) < 100):
         raise ValueError("Unsupported loan configuration")
     borrowed = credit.ceiling(Decimal(uint(usd, 232)) / credit.UNIT)
     daily_cap = int.from_bytes(usd[5448:5456], "little", signed=True)
