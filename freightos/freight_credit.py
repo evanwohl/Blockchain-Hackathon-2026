@@ -202,7 +202,14 @@ def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recor
         holding_cost = quote["entry_cash_cents"] + quote["cost_cents"]
         quote.update(pledge_millis=pledged // step, model_ratio=model_ratio,
                      buyback_break_even_cents=ceiling(100 * sale_price * (cents + holding_cost) / cents))
-        return {**result, "remaining_cents": gap_cents - cents, "loan": quote}
+        remaining = gap_cents - cents
+        response = {**result, "remaining_cents": remaining, "loan": quote}
+        if remaining and remaining * scale <= quote["remaining_liquidity_raw"]:
+            unit = cents * step
+            estimate = (quote["minimum_lamports"] * gap_cents + unit - 1) // unit
+            if pledge_millis < estimate <= 1_000_000:
+                response["estimated_full_pledge_millis"] = estimate
+        return response
 
     if recorded:
         samples = json.loads(gzip.decompress((DATA / "trip_credit.json.gz").read_bytes()))

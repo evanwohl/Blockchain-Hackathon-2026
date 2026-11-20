@@ -5,29 +5,42 @@ let revision = 0;
 let protection;
 let replayWeek;
 let laterPayout;
+let backupCheck;
 
 function clear() {
   revision++;
   el("gap-answer").hidden = el("gap-saved").hidden = true;
   el("gap-status").textContent = "";
+  el("gap-coverage").hidden = true;
   el("gap-check").disabled = false;
 }
 
-export function setFuelGap(cents, alternative = null, week = null, payout = null) {
-  if (gap !== cents || week !== replayWeek || payout !== laterPayout) el("gap-offer").value = "";
+export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null} = {}) {
+  if (gap !== cents || week !== replayWeek || payout !== laterPayout || backup !== backupCheck) el("gap-offer").value = "";
   replayWeek = week;
   laterPayout = payout;
-  el("usual-gap").hidden = !week;
+  backupCheck = backup;
+  el("usual-gap").hidden = !(week || backup);
   protection = alternative;
   clear();
   gap = cents;
   el("gap-credit").hidden = !gap;
   if (!gap) el("gap-credit").open = false;
-  el("gap-title").textContent = "Could a loan cover the " + money(gap) + (payout !== null ? " late-payout gap from the week ending " + week + "?" : week ? " gap from the week ending " + week + "?" : " fuel gap?");
+  const label = backup ? " weekly backup" : week ? (payout === null ? " gap" : " late-payout gap") + " from the week ending " + week : " fuel gap";
+  el("gap-title").textContent = "Could a loan cover the " + money(gap) + label + "?";
 }
 
 function show(data) {
   const q = data.loan;
+  if (backupCheck) {
+    const amount = q?.advance_cents || 0;
+    const gaps = backupCheck.records.map(row => row.gap_cents).filter(value => value > 0);
+    el("gap-coverage").hidden = false;
+    el("gap-coverage").textContent = gaps.length ? "At " + money(amount) + " per stop, this amount would have covered "
+      + gaps.filter(value => value <= amount).length + " of the " + gaps.length + " later fills that actually needed backup in the replay. The largest gap left would be "
+      + money(Math.max(0, Math.max(...gaps) - amount)) + ". This assumes the same credit was available each time."
+      : "Every later replayed fill was already covered with the selected plan.";
+  }
   if (!q) {
     el("gap-status").textContent = "This pledge limit cannot cover a cent of the fuel gap. You still need " + money(gap) + ".";
     return;
@@ -45,6 +58,17 @@ function show(data) {
     el("gap-payout").textContent = "If the " + money(laterPayout) + " oil payout arrives by repayment and you use "
       + money(used) + " toward this loan, " + money(q.repay_cents - used)
       + " still comes from other funds. Entry costs are separate.";
+  }
+  const recheck = el("gap-full-cap");
+  const estimate = data.estimated_full_pledge_millis;
+  recheck.hidden = !estimate;
+  if (estimate) {
+    const cap = (estimate / 1000).toFixed(3);
+    recheck.textContent = "Recheck the full amount with an estimated " + cap + " SOL limit";
+    recheck.onclick = () => {
+      el("gap-cap").value = cap;
+      check("live");
+    };
   }
   const comparison = data.comparison;
   let verdict = "Compare fees once the rest of the fuel payment is funded.";

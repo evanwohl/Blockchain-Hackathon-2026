@@ -92,3 +92,14 @@ def test_trip_draw_rechecks_liquidity_and_stress_after_resizing(monkeypatch):
     result = credit.trip_draw(1000, 32, 40, 23, lambda *_: credit.devnet.GENESIS)
     assert observations == [(1_000_000, 0, 10000), (300_000, 1, 30000), (320_000, 2, 26600)]
     assert result["remaining_cents"] == 734 and result["loan"]["pledge_millis"] == 32
+    assert "estimated_full_pledge_millis" not in result
+
+
+def test_partial_saved_loan_estimates_a_new_limit_without_changing_the_quote():
+    q = credit.trip_draw(2430, 100, 40, 23, recorded=True)
+    loan = q["loan"]
+    estimate = q["estimated_full_pledge_millis"]
+    assert loan["pledge_millis"] <= 100 < estimate
+    step = credit.LAMPORTS // (1000 * loan["model_ratio"])
+    required = loan["minimum_lamports"] * 2430
+    assert (estimate-1) * loan["advance_cents"] * step < required <= estimate * loan["advance_cents"] * step

@@ -156,7 +156,7 @@
 
 #history-choice { grid-template-columns: 1fr; margin: 1rem 0; }
 #history-choice[hidden], #history-costs[hidden] { display: none; }
-#history-costs { width: 100%; font-variant-numeric: tabular-nums; }
-#history-costs caption { text-align: left; font-weight: 600; padding: .35rem 0 .6rem; }
-#history-costs :is(td, th):not(:first-child) { text-align: right; }
-#history-costs tbody th { font-weight: normal; text-align: left; }
+:is(#history-costs, #backup-results) { width: 100%; font-variant-numeric: tabular-nums; }
+:is(#history-costs, #backup-results) caption { text-align: left; font-weight: 600; padding: .35rem 0 .6rem; }
+:is(#history-costs, #backup-results) :is(td, th):not(:first-child) { text-align: right; }
+:is(#history-costs, #backup-results) tbody th { font-weight: normal; text-align: left; }
