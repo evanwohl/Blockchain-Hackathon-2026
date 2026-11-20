@@ -225,27 +225,63 @@ function showPayday(check, plan) {
     + " of fuel money. All " + run.stops + " stops share one " + money(run.reserve_cents) + " reserve."
     + (!available ? " The latest complete run is too old to size the next one." : editing ? "" : " These are two ways to cover the estimated backup with cash.");
   if (available && !editing) showSchedule(el("payday-cash"), run, 0);
-  const budget = editing && field.validity.valid ? budgetPlan(run, Math.round(field.valueAsNumber * 100)) : null;
+  const flexField = el("payday-flex");
+  const flex = flexField.value === "" ? null : Math.round(flexField.valueAsNumber * 100);
+  const budget = editing && field.validity.valid && flexField.validity.valid
+    ? budgetPlan(run, Math.round(field.valueAsNumber * 100), flex) : null;
+  function applyFlex(cents, reopenLoan) {
+    const repayLimit = el("repay-limit").value;
+    el("gap-credit").open = false;
+    flexField.value = (cents / 100).toFixed(2);
+    el("payday-flex-options").open = true;
+    render();
+    if (reopenLoan && !credit.hidden) {
+      credit.click();
+      el("repay-limit").value = repayLimit;
+    } else {
+      el("payday-run").open = true;
+      el("payday-fit-title").focus();
+    }
+  }
   el("payday-fit").hidden = !editing;
   const needed = budget ? budget.request : run.target_cents;
   credit.hidden = (editing && !budget) || !needed || needed > 100000000;
   credit.textContent = budget ? "Check a " + money(needed) + " loan on Solana" : "Check how much a loan could cover";
   if (editing) {
-    el("payday-fit-title").textContent = !budget ? "Enter a valid cash amount" : !needed ? "Your weekly cash covers the target"
-      : money(needed) + " to bridge the weekly payments";
-    el("payday-fit-note").textContent = !budget ? "Use a nonnegative dollar amount with up to two decimal places."
+    const adjusted = budget && flex !== null;
+    el("payday-fit-title").textContent = !budget ? "Enter a valid cash amount" : !needed ? "Your fuel cash covers the target"
+      : money(needed) + (adjusted ? " still needed before the first fill" : " to bridge the weekly payments");
+    el("payday-fit-note").textContent = !budget ? "Use a nonnegative dollar amount within each field’s limit, with up to two decimal places."
+      : adjusted ? "Of your " + money(run.stops * budget.weekly) + " in extra fuel cash, move up to " + money(budget.moved)
+        + " forward. This plan covered at least 25 of the 26 recent sample trips." + (budget.equal_request > needed ? " Equal payments would need a " + money(budget.equal_request) + " loan." : "")
       : !needed ? "Keeping the same amount for each fill covered at least 25 of the 26 recent runs."
       : budget.schedule ? "If you can move cash between fills, these amounts cover the same target with " + money(run.stops * budget.weekly)
         + " in total and no loan. Keeping equal payments requires the bridge."
       : "This is the smallest upfront loan that, with " + money(budget.weekly) + " per fill, would have covered at least 25 of the 26 recent runs.";
+    const best = el("payday-flex-best");
+    best.hidden = !budget || needed <= budget.floor;
+    if (!best.hidden) {
+      best.textContent = "Try moving " + money(budget.floor_flex) + (budget.floor ? " to borrow " + money(budget.floor) : " to cover it with cash");
+      best.onclick = () => applyFlex(budget.floor_flex, false);
+    }
+    el("payday-flex-options").hidden = !flexField.validity.badInput && flex === null && (!budget || budget.equal_request === budget.floor);
     const schedule = el("payday-fit-schedule");
-    schedule.hidden = !budget?.schedule || !needed;
-    if (!schedule.hidden) facts(schedule, budget.schedule.map((v, i) => ["Fill " + (i+1), money(v)]));
+    const cash = adjusted ? budget.contributions : budget?.schedule;
+    schedule.hidden = !cash || (!adjusted && !needed);
+    if (!schedule.hidden) facts(schedule, cash.map((v, i) => ["Fill " + (i + 1), money(v)]));
     const history = budget?.history || [];
-    el("payday-fit-history").textContent = history.length ? "With the same weekly cash, sizing the loan before each of "
-      + history.length + " later runs left " + history.filter(p => p.short).length + " short. This assumes the loan was available." : "";
+    let historyNote = history.length ? "Setting a loan size before each of " + history.length + " later historical runs left "
+      + history.filter(p => p.short).length + " short. This assumes the loan was available." : "";
+    if (adjusted && history.length) {
+      const mean = key => money(Math.round(history.reduce((sum, row) => sum + row[key], 0) / history.length));
+      const equalMisses = history.filter(row => row.equal_deficit > 0).length;
+      historyNote += " Equal contributions left " + equalMisses + " short. Average planned borrowing "
+        + (mean("draw") === mean("equal_draw") ? "was " + mean("draw") + " with either schedule."
+          : "fell from " + mean("equal_draw") + " to " + mean("draw") + " with the adjusted schedule.");
+    }
+    el("payday-fit-history").textContent = historyNote;
   }
-  credit.onclick = () => openLoan(needed, {payday: run, budget});
+  credit.onclick = () => openLoan(needed, {payday: run, budget, onFlex: cents => applyFlex(cents, true)});
   el("payday-method").textContent = "Unused fuel cash carries to the next stop. "
     + (plan?.legs.length ? "Only the first fill can receive the selected oil payout. Its premium of " + money(run.premium_cents) + " is paid separately. " : "These stops use cash alone. ")
     + "We reprice consecutive weekly diesel changes from your starting price. Each estimate covers at least 25 of the last 26 complete historical runs. Training runs overlap. The later checks use separate stretches. New price shocks can exceed the estimate.";
@@ -533,6 +569,7 @@ form.onsubmit = event => { event.preventDefault(); compare("live", true); };
 el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded", true); };
 document.querySelector(".trip-timing").onchange = () => { if (current) { mix = null; render(); } };
 el("payday-weekly").oninput = () => { if (current) render(); };
+el("payday-flex").oninput = () => { if (current) render(); };
 el("payday-days").onchange = () => { if (current) render(); };
 function openExample() {
   form.reset();
@@ -540,6 +577,9 @@ function openExample() {
   el("payday-run").open = example.has("payday");
   const weekly = example.get("weekly");
   el("payday-weekly").value = weekly && /^\d{1,7}(\.\d{1,2})?$/.test(weekly) && Number(weekly) <= 1000000 ? Number(weekly).toFixed(2) : "";
+  const flex = example.get("flex");
+  el("payday-flex").value = flex && /^\d{1,7}(\.\d{1,2})?$/.test(flex) && Number(flex) <= 5000000 ? Number(flex).toFixed(2) : "";
+  el("payday-flex-options").open = !!el("payday-flex").value;
   el("payday-days").value = example.get("payday") === "30" ? "30" : "23";
   el("backup-budget").open = example.has("backup");
   el("fill-history").open = example.has("replay") || example.has("backup");

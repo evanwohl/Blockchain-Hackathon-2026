@@ -1,5 +1,5 @@
 import { el, facts, money, request, saveFile, tokenUnits } from "./common.js";
-import { creditUse, showSchedule } from "./payday.js";
+import { creditUse, leastFlex, showSchedule } from "./payday.js";
 
 let gap = 0;
 let revision = 0;
@@ -10,11 +10,13 @@ let backupCheck;
 let priceAdjusted;
 let paydayRun;
 let weeklyBudget;
+let applyFlex;
 let savedCheck;
 
 function clear() {
   revision++;
   savedCheck = null;
+  el("gap-reschedule").hidden = true;
   el("gap-exit").hidden = el("gap-exit-result").hidden = true;
   el("gap-exit-check").disabled = false;
   el("gap-exit-status").textContent = "";
@@ -24,7 +26,7 @@ function clear() {
   el("gap-check").disabled = false;
 }
 
-export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null, adjusted = false, payday = null, budget = null} = {}) {
+export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null, adjusted = false, payday = null, budget = null, onFlex = null} = {}) {
   if (gap !== cents || week !== replayWeek || payout !== laterPayout || backup !== backupCheck || adjusted !== priceAdjusted || payday !== paydayRun) el("gap-offer").value = "";
   replayWeek = week;
   laterPayout = payout;
@@ -33,6 +35,7 @@ export function setFuelGap(cents, alternative = null, {week = null, payout = nul
   if (payday?.days !== paydayRun?.days) el("repay-limit").value = "";
   paydayRun = payday;
   weeklyBudget = budget;
+  applyFlex = onFlex;
   el("repay-limit-label").hidden = el("repay-limit").disabled = !payday;
   el("gap-days").disabled = !!payday;
   if (payday) el("gap-days").value = String(payday.days);
@@ -100,11 +103,23 @@ function show(data) {
     const entry = q?.entry_cash_cents || 0;
     if (weeklyBudget) {
       const extra = Math.max(0, weeklyBudget.request - capacity);
-      const setup = weeklyBudget.weekly + extra + entry + paydayRun.premium_cents;
-      const rows = [["Extra cash before the first fill, including setup", money(setup)],
-        ["Then before each remaining fill", money(weeklyBudget.weekly)]];
+      const cash = weeklyBudget.contributions;
+      const setup = cash[0] + extra + entry + paydayRun.premium_cents;
+      const rows = [["Extra cash before the first fill, including setup", money(setup)]];
+      if (cash.slice(1).every(v => v === cash[1])) rows.push(["Then before each remaining fill", money(cash[1])]);
+      else cash.slice(1).forEach((amount, i) => rows.push(["Before fill " + (i + 2), money(amount)]));
       if (extra) rows.push(["Included at setup to cover the unfunded part", money(extra)]);
       facts(el("gap-payday-cash"), rows);
+      const required = extra ? leastFlex(paydayRun.bounds, weeklyBudget.weekly, capacity) : null;
+      if (applyFlex && required !== null && required > (weeklyBudget.flex || 0)) {
+        const adjust = el("gap-reschedule");
+        adjust.hidden = false;
+        adjust.textContent = "Move " + money(required) + " of planned cash earlier to fit " + (capacity ? "this loan limit" : "a cash-only plan");
+        adjust.onclick = () => {
+          applyFlex(required);
+          if (paydayRun && gap) check(data.source);
+        };
+      }
     } else {
       showSchedule(el("gap-payday-cash"), paydayRun, capacity, entry);
     }
@@ -116,7 +131,7 @@ function show(data) {
       + money(paydayRun.premium_cents) + " for the selected oil protection. Repayment is separate."
       + (data.repayment_limited ? " The full requested loan would exceed your payday repayment limit." : "");
   }
-  if (q && weeklyBudget?.schedule) {
+  if (q && weeklyBudget?.schedule && weeklyBudget.flex === null) {
     el("gap-payday-note").textContent += " If you can use the cash-only schedule above, you keep "
       + (q.pledge_millis / 1000).toLocaleString("en-US") + " SOL available and avoid "
       + money(q.cost_cents) + " in estimated borrowing costs and " + money(q.entry_cash_cents) + " in setup outlay.";
@@ -210,24 +225,26 @@ function show(data) {
   el("gap-status").textContent = (data.source === "recorded" ? "Saved Devnet simulation" : "Public Devnet simulation") + " · " + time + " UTC. No funds moved.";
 }
 
-async function check() {
+async function check(source = "live") {
   clear();
   const attempt = revision;
   const body = { gap_cents: gap, pledge_millis: Math.round(el("gap-cap").valueAsNumber * 1000),
-    days: Number(el("gap-days").value), drop: Number(el("gap-drop").value), source: "live" };
+    days: Number(el("gap-days").value), drop: Number(el("gap-drop").value), source };
   if (paydayRun) {
     body.destination = "wallet";
     if (el("repay-limit").value !== "") body.repay_limit_cents = Math.round(el("repay-limit").valueAsNumber * 100);
   }
   if (el("gap-offer").value !== "") body.offer_cents = Math.round(el("gap-offer").valueAsNumber * 100);
   el("gap-check").disabled = true;
-  el("gap-status").textContent = paydayRun ? "Checking the loan into your demo fuel wallet…" : "Checking the loan and fuel payment on Solana…";
+  el("gap-status").textContent = source === "recorded" ? "Checking the saved Devnet loan for the revised amount…"
+    : paydayRun ? "Checking the loan into your demo fuel wallet…" : "Checking the loan and fuel payment on Solana…";
   try {
     const data = await request("/api/trip-credit", body, AbortSignal.timeout(45000));
     if (attempt === revision) show(data);
   } catch (error) {
     if (attempt !== revision) return;
     el("gap-status").textContent = error.name === "TimeoutError" ? "The network took too long. Try again." : error.message;
+    if (source === "recorded") return;
     try {
       const saved = await request("/api/trip-credit", {...body, source: "recorded"});
       if (attempt === revision) {

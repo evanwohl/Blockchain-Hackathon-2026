@@ -7,31 +7,53 @@ export function cashSchedule(run, credit) {
   return {upfront: Math.max(0, run.target_cents - credit), weekly: weekly[rank - 1]};
 }
 
-function bridge(bounds, weekly) {
-  return Math.min(...bounds.map(row => Math.max(0, ...row.map((need, i) => need - (i + 1) * weekly))));
+function fundingSchedule(bounds, weekly, flex) {
+  let best;
+  for (const needs of bounds) {
+    const total = needs.length * weekly;
+    const loan = Math.max(0, ...needs.map((need, i) => need - Math.min(total, (i + 1) * weekly + flex)));
+    let spent = 0, lead = 0, peak = 0;
+    const cash = needs.map((need, i) => {
+      const due = (i + 1) * weekly;
+      const next = Math.max(spent, due, need - loan);
+      const contribution = next - spent;
+      lead += next - due;
+      peak = Math.max(peak, next - due);
+      spent = next;
+      return contribution;
+    });
+    if (!best || loan < best.loan || (loan === best.loan && lead < best.lead)) best = {loan, lead, peak, cash};
+  }
+  return best;
 }
 
-export function budgetPlan(run, weekly) {
-  const request = bridge(run.bounds, weekly);
-  let best = null;
-  for (const bounds of run.bounds) {
-    let cumulative = 0, cost = 0;
-    const schedule = [];
-    for (const [i, need] of bounds.entries()) {
-      const due = (i + 1) * weekly;
-      const next = Math.max(cumulative, due, need);
-      schedule.push(next - cumulative);
-      cost += next - due;
-      cumulative = next;
-    }
-    if (cumulative === run.stops * weekly && (!best || cost < best.cost)) best = {cost, schedule};
-  }
+export function leastFlex(bounds, weekly, loan) {
+  const total = bounds[0].length * weekly;
+  const eligible = bounds.filter(row => row.every(need => need <= total + loan));
+  if (!eligible.length) return null;
+  return Math.min(...eligible.map(row => Math.max(0, ...row.map((need, i) => need - loan - (i + 1) * weekly))));
+}
+
+export function budgetPlan(run, weekly, flex = null) {
+  const total = run.stops * weekly;
+  const equal = fundingSchedule(run.bounds, weekly, 0);
+  const flexible = fundingSchedule(run.bounds, weekly, total);
+  const chosen = flex === null ? equal : fundingSchedule(run.bounds, weekly, flex);
   const history = run.records.map(row => {
-    const draw = bridge(row.bounds, weekly);
-    const needed = Math.max(0, ...row.need_cents.map((v, i) => v - (i + 1) * weekly));
-    return {draw, short: needed > draw};
+    const flat = fundingSchedule(row.bounds, weekly, 0);
+    const fitted = flex === null ? flat : fundingSchedule(row.bounds, weekly, flex);
+    let own = 0;
+    const deficit = Math.max(0, ...row.need_cents.map((need, i) => {
+      own += fitted.cash[i];
+      return need - own - fitted.loan;
+    }));
+    const flatDeficit = Math.max(0, ...row.need_cents.map((need, i) => need - (i + 1) * weekly - flat.loan));
+    return {first: row.first, draw: fitted.loan, contributions: fitted.cash, equal_draw: flat.loan,
+      short: deficit > 0, deficit, equal_deficit: flatDeficit};
   });
-  return {weekly, request, schedule: best?.schedule, history};
+  return {weekly, flex, request: chosen.loan, contributions: chosen.cash, moved: chosen.peak,
+    equal_request: equal.loan, floor: flexible.loan, floor_flex: leastFlex(run.bounds, weekly, flexible.loan),
+    schedule: flexible.loan === 0 ? flexible.cash : null, history};
 }
 
 export function showSchedule(panel, run, credit, entry = null) {

@@ -64,7 +64,12 @@
             <input id="payday-weekly" type="number" min="0" max="1000000" step=".01" inputmode="decimal" aria-describedby="payday-budget-help">
           </label></div>
           <p id="payday-budget-help">Optional. Enter cash above the weekly fuel money shown here. Set aside the oil premium and loan setup separately.</p>
-          <div id="payday-fit" class="spending-result" hidden><h3 id="payday-fit-title"></h3><p id="payday-fit-note"></p>
+          <div id="payday-fit" class="spending-result" hidden><h3 id="payday-fit-title" tabindex="-1"></h3><p id="payday-fit-note"></p>
+            <details id="payday-flex-options"><summary>Move some fuel money earlier</summary>
+              <div class="trip-fields"><label>Most I can move forward at any fill ($)
+                <input id="payday-flex" type="number" min="0" max="5000000" step=".01" inputmode="decimal" aria-describedby="payday-flex-help">
+              </label></div><p id="payday-flex-help">Use money already in your fuel budget. Later contributions go down by the same total.</p>
+              <button type="button" id="payday-flex-best" class="secondary" hidden></button></details>
             <dl class="fill-contributions" id="payday-fit-schedule" hidden></dl><p id="payday-fit-history"></p></div>
           <button type="button" id="payday-credit" class="secondary">Check how much a loan could cover</button>
           <details><summary>How was this checked?</summary><p id="payday-method"></p><p id="payday-evidence"></p>
@@ -135,7 +140,7 @@
             <label>Fee on another offer ($, optional)<input id="gap-offer" type="number" min="0" max="1000000" step=".01" aria-describedby="gap-offer-help"></label>
           </div><p id="gap-offer-help">Compare a fee quoted for the same fuel amount and repayment date.</p><button id="gap-check" class="secondary">Check loan on Devnet</button>
           <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>
-          <p id="gap-status" role="status"></p><p id="gap-coverage" hidden></p><p id="gap-cash-backup" hidden></p><section id="gap-payday" class="spending-result" hidden><h3>Your cash until payday</h3><dl id="gap-payday-cash"></dl><p id="gap-payday-note"></p>
+          <p id="gap-status" role="status"></p><p id="gap-coverage" hidden></p><p id="gap-cash-backup" hidden></p><section id="gap-payday" class="spending-result" hidden><h3>Your cash until payday</h3><dl id="gap-payday-cash"></dl><p id="gap-payday-note"></p><button type="button" id="gap-reschedule" class="secondary" hidden></button>
             <details id="gap-payday-use" hidden><summary>How often would I have needed the loan?</summary><p id="gap-payday-history"></p></details>
           </section><div id="gap-answer" hidden>
             <h3 id="gap-verdict"></h3><button type="button" id="gap-full-cap" class="secondary" hidden></button><dl class="facts" id="gap-facts"></dl>
