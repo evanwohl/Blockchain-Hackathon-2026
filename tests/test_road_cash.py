@@ -64,3 +64,40 @@ def test_recovery_uses_the_full_wallet_but_never_requires_more_than_it_contains(
                            (1000+p.exchange-floor)*10000000 >= p.restore*high for p in rows)
             assert viable(fix["amount_cents"])
             assert not viable(fix["amount_cents"]-1)
+
+
+def test_payday_buyback_limit_has_a_one_cent_witness_for_every_affordable_split():
+    quote, native, rows = road_cash.recorded()
+    for cash, received, target in ((7500, 20000, 300), (7000, 19000, 0), (5000, 20000, 300),
+                                   (6000, 0, 300), (19000, 20000, 300)):
+        plan = road_cash.model(quote, native, rows, 8000, cash, received, target, 7282, [15000], "price-room")
+        eligible = [row for row in rows if row.entry <= plan["cap_lamports"] and row.separate <= cash]
+        best = plan["price_first"]
+        def can_restore(row, price):
+            cost = fuel_floor.ceil_div(row.restore * price, quote["scale"] * 100000)
+            return received - quote["bill_cents"] + row.exchange - cost >= target
+        if best is None:
+            assert all(not can_restore(row, 0) for row in eligible)
+        elif best["state"] == "unbounded":
+            assert any(not row.restore and can_restore(row, 0) for row in eligible)
+        else:
+            price = best["price_cents"]
+            assert not any(can_restore(row, price + 1) for row in eligible)
+            assert min(row.separate for row in eligible if can_restore(row, price)) == best["cash_cents"]
+        if plan["status"] == "ready":
+            assert best == plan["selected_limit"]
+
+
+def test_preview_and_live_public_selector_use_identical_price_room_and_tie_break():
+    quote, native, _ = road_cash.recorded()
+    market = {**quote["market"], "cap_lamports": min(native, 8000 * 10000000 // 7282)}
+    for cash, expected in ((7500, (7500, 15189)), (20000, (19000, None))):
+        p = road_cash.evaluate(8000, cash, 20000, 300, 15000, preference="price-room")
+        selected = p["selected_limit"]
+        pick = fuel_floor.best_split(market, cash, 20000, 300, 15000, price_room=True)
+        assert (pick["separate_cents"], selected["price_cents"]) == expected
+        assert p["cash_first"]["price_cents"] == 15000
+        assert selected["cash_cents"] == pick["separate_cents"]
+        assert p["gemini_windows"] == 9
+    with pytest.raises(ValueError):
+        road_cash.limits(8000, 7500, 20000, 300, 15000, "other")

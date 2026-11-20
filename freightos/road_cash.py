@@ -49,7 +49,9 @@ def recorded():
     return quote, native, payments(quote, native)
 
 
-def limits(budget, cash, received, target, stress):
+def limits(budget, cash, received, target, stress, preference="keep-cash"):
+    if preference not in ("keep-cash", "price-room"):
+        raise ValueError("Choose how to use the available cash")
     integer(budget, "wallet budget", 100000000)
     integer(cash, "cash for fuel", 100000000)
     integer(received, "freight received", reserve_credit.INVOICE_CENTS)
@@ -58,7 +60,7 @@ def limits(budget, cash, received, target, stress):
         integer(stress, "all-in SOL price", 10000000)
 
 
-def model(quote, native, rows, budget, cash, received, target, reference, prices):
+def model(quote, native, rows, budget, cash, received, target, reference, prices, preference="keep-cash"):
     bill, scale = quote["bill_cents"], quote["scale"]
     denominator = scale * 100000
     cap = min(native, budget * denominator // reference)
@@ -68,6 +70,7 @@ def model(quote, native, rows, budget, cash, received, target, reference, prices
         return received - bill + p.exchange - fuel_floor.ceil_div(p.restore * price, denominator)
 
     chosen = most_left = first_funding = cash_fix = wallet_fix = None
+    buffered, best_limit = None, -1
     for row in rows:
         fits_wallet, fits_cash = row.entry <= cap, row.separate <= cash
         least = remaining(row, high)
@@ -78,14 +81,29 @@ def model(quote, native, rows, budget, cash, received, target, reference, prices
                 most_left = row
             if least >= target and cash_fix is None:
                 cash_fix = row
-            if fits_cash and least >= target and chosen is None:
-                chosen = row
+            if fits_cash:
+                if chosen is None and least >= target:
+                    chosen = row
+                limit = fuel_floor.buyback_limit(received, bill, target, row.exchange, row.restore, scale)
+                if limit > best_limit:
+                    best_limit, buffered = limit, row
         if fits_cash and least >= target and (wallet_fix is None or row.entry < wallet_fix.entry):
             wallet_fix = row
 
     # An entirely separate cash payment always has zero wallet requirement.
     need = max(0, first_funding.separate - cash)
     pick = chosen or most_left or first_funding
+    if chosen is not None and preference == "price-room":
+        pick = buffered
+
+    def tolerance(row):
+        if row is None:
+            return None
+        limit = fuel_floor.buyback_limit(received, bill, target, row.exchange, row.restore, scale)
+        state = "unbounded" if limit == float("inf") else "unreachable" if limit < 0 else "bounded"
+        return {"state": state, "price_cents": limit if state == "bounded" else None,
+                "cash_cents": row.separate, "wallet_cents": bill - row.separate}
+
     paid = pick.wallet_cash + pick.reserve + pick.exchange
     options = []
     if not chosen:
@@ -103,6 +121,8 @@ def model(quote, native, rows, budget, cash, received, target, reference, prices
                     r["entry_lamports"] <= cap and r["wallet_raw"] == pick.wallet_cash*scale and
                     r["reserve_raw"] == pick.reserve*scale and r["limit_lamports"] + r["fee_lamports"] == pick.restore), None)
     return {"status": "ready" if chosen else "payday_short" if most_left else "fuel_short",
+            "preference": preference, "selected_limit": tolerance(pick) if not need else None,
+            "cash_first": tolerance(chosen), "price_first": tolerance(buffered),
             "bill_cents": bill, "separate_cents": pick.separate, "wallet_cents": paid, "fuel_gap_cents": need,
             "untouched_cents": max(0, cash - pick.separate), "low_payday_cents": remaining(pick, high),
             "high_payday_cents": remaining(pick, low), "payday_gap_cents": max(0, target-remaining(pick, high)),
@@ -113,14 +133,15 @@ def model(quote, native, rows, budget, cash, received, target, reference, prices
             "effective_budget_cents": cap * reference // denominator, "low_price_cents": low, "high_price_cents": high, "receipt_cents": received, "floor_cents": target}
 
 
-def evaluate(budget, cash, received, target, stress, *, live=False, evidence=None):
-    limits(budget, cash, received, target, stress)
+def evaluate(budget, cash, received, target, stress, *, preference="keep-cash", live=False, evidence=None):
+    limits(budget, cash, received, target, stress, preference)
     reference = payday_policy.reference_price(payday_policy.recorded_menu()[0])
     cases, _ = payday_policy.price_cases(reference, stress)
     prices = [c["price_cents"] for c in cases]
     if live:
         cap = budget * fuel_floor.saved()["scale"] * 100000 // reference
-        q = fuel_floor.public_quotes(cap, cash, received, target, max(prices), devnet.read_with_retry())
+        q = fuel_floor.public_quotes(cap, cash, received, target, max(prices), devnet.read_with_retry(),
+                                     price_room=preference == "price-room")
         if not q.get("market"):
             raise ValueError("The public pool curves could not be verified for this stop")
         native = q["market"]["wallet_lamports"]
@@ -131,13 +152,17 @@ def evaluate(budget, cash, received, target, stress, *, live=False, evidence=Non
         rows = payments(q, native)
     else:
         q, native, rows = recorded()
-    return {**model(q, native, rows, budget, cash, received, target, reference, prices), "source": "live" if live else "recorded"}
+    history = [case["price_cents"] for case in cases if "start" in case]
+    return {**model(q, native, rows, budget, cash, received, target, reference, prices, preference),
+            "gemini_windows": len(history), "gemini_high_cents": max(history) if history else None,
+            "source": "live" if live else "recorded"}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     for name, default in (("budget", 8000), ("cash", 7500), ("received", 20000), ("target", 300)):
         parser.add_argument("--" + name, type=int, default=default, help="Amount in cents")
+    parser.add_argument("--preference", choices=("keep-cash", "price-room"), default="keep-cash")
     stress_group = parser.add_mutually_exclusive_group()
     stress_group.add_argument("--stress", type=int, default=15000, help="Additional SOL price in cents")
     stress_group.add_argument("--historical-only", action="store_true", help="Use only the Gemini history and unchanged price")
@@ -147,4 +172,4 @@ if __name__ == "__main__":
     if args.gemini_evidence:
         payday_policy.verify_history(args.gemini_evidence.read_bytes())
     print(json.dumps(evaluate(args.budget, args.cash, args.received, args.target, None if args.historical_only else args.stress,
-                              evidence=json.loads(args.evidence.read_bytes()) if args.evidence else None), indent=2))
+                              preference=args.preference, evidence=json.loads(args.evidence.read_bytes()) if args.evidence else None), indent=2))

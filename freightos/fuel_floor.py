@@ -105,23 +105,38 @@ def price_payment(market, separate, received, high):
             "spent_lamports": spent, "pool": pool, "least_cents": payday}
 
 
-def best_split(market, cash, received, required, high):
+def buyback_limit(received, bill, target, exchange, restore, scale):
+    available = received - bill + exchange - target
+    if available < 0:
+        return -1
+    if not restore:
+        return float("inf")
+    return available * scale * 100000 // restore
+
+
+def best_split(market, cash, received, required, high, *, price_room=False):
     maximum = max(0, market["bill_cents"] - market["wallet_cents"] - market["reserve_cents"]) * market["scale"]
     if any(c["max_raw"] < maximum for c in market["curves"]):
         raise ValueError("The bill extends beyond the verified liquidity range")
-    strongest = None
+    strongest = buffered = None
+    best_limit = -1
     for separate in range(min(market["bill_cents"], cash) + 1):
         row = price_payment(market, separate, received, high)
         if row is None:
             continue
         if row["least_cents"] >= required:
-            return row
+            if not price_room:
+                return row
+            limit = buyback_limit(received, market["bill_cents"], required, row["exchange_cents"],
+                                  row["restore_lamports"], market["scale"])
+            if limit > best_limit:
+                buffered, best_limit = row, limit
         if strongest is None or row["least_cents"] > strongest["least_cents"]:
             strongest = row
-    return strongest
+    return buffered or strongest
 
 
-def snapshot(plan, reserve, wallet, cap, rent, fee, slot, rpc, scenarios):
+def snapshot(plan, reserve, wallet, cap, rent, fee, slot, rpc, scenarios, *, price_room=False):
     curves, slot = read_curves(slot, rpc)
     scale = reserve["raw_units_per_cent"]
     market = {"scale": scale, "bill_cents": reserve["fuel_cents"], "wallet_cents": int(wallet["usdc_raw"]) // scale,
@@ -129,7 +144,7 @@ def snapshot(plan, reserve, wallet, cap, rent, fee, slot, rpc, scenarios):
               "rent_lamports": rent, "curves": curves, "curve_slot": slot}
     checks = {}
     for cash, received, required, high in scenarios:
-        pick = best_split(market, cash, received, required, high)
+        pick = best_split(market, cash, received, required, high, price_room=price_room)
         if not pick:
             continue
         for target in (pick["vendor_cents"], min(reserve["fuel_cents"], pick["vendor_cents"] + 1)):
@@ -183,10 +198,10 @@ def decisions(quote, receipts, required, prices):
     return {"by_receipt": options, "slot": market["curve_slot"], "pool_count": len(market["curves"])}
 
 
-def public_quotes(cap, cash, received, floor, high, rpc):
+def public_quotes(cap, cash, received, floor, high, rpc, *, price_room=False):
     def inspect(plan, reserve, wallet, cap, rent, fee, slot, rpc):
         try:
-            result, end = snapshot(plan, reserve, wallet, cap, rent, fee, slot, rpc, [(cash, received, floor, high)])
+            result, end = snapshot(plan, reserve, wallet, cap, rent, fee, slot, rpc, [(cash, received, floor, high)], price_room=price_room)
             if end - min(reserve["slot"], wallet["slot"]) <= 240:
                 return {**result, "wallet_lamports": wallet["lamports"]}, end
         except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):

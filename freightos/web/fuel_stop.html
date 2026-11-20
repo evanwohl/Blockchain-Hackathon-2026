@@ -32,6 +32,12 @@
         <dl class="stop-totals"><div><dt>Cash kept at the stop</dt><dd id="kept"></dd></div><div><dt>Left on payday, weakest case</dt><dd id="payday"></dd></div></dl></div>
       </article>
       <div id="changes" hidden><h3 id="change-heading">Ways to cover fuel and protect payday</h3><div id="fixes"></div></div>
+      <details id="price-room" class="stop-details" hidden>
+        <summary>What if SOL costs more on payday?</summary>
+        <p id="price-limit"></p><p id="price-comparison"></p>
+        <button id="price-choice" type="button" hidden></button>
+        <p id="price-history"></p>
+      </details>
       <div class="stop-check"><button type="button" id="verify" disabled>Check payment on public Solana</button><p id="check-status" role="status"></p></div>
       <details class="stop-details" id="sources" hidden><summary>Where the wallet money comes from</summary><dl id="wallet-parts"></dl><p id="math"></p><p id="proof"></p><div class="stop-links"><a href="/evidence/fuel-floor" download="FreightOS-fuel-pool-checks.json">Saved pool checks</a><a href="/evidence/sol-payday" download="FreightOS-Gemini-prices.json">Gemini prices</a><a href="/public-offer">See a signed demo bill →</a></div></details>
     </section>

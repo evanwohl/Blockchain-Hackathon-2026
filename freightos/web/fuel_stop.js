@@ -1,6 +1,7 @@
 import {el, facts, money, request} from "./common.js";
 
 const form = el("stop-inputs"), verify = el("verify"), note = el("check-status");
+let preference = "keep-cash";
 let revision = 0, timer, pending, last, undo;
 
 function inputs() {
@@ -35,6 +36,40 @@ function repairs(q) {
   el("change-heading").textContent = q.repairs.length ? "Ways to cover fuel and protect payday" : "Changed your planning limit";
 }
 
+function showPriceRoom(q) {
+  const panel = el("price-room"), selected = q.selected_limit, better = q.price_first;
+  panel.hidden = !selected;
+  if (!selected) return;
+  const limited = selected.state === "bounded", button = el("price-choice");
+  const label = money(q.floor_cents) + " payday target";
+  el("price-limit").textContent = limited
+    ? "With " + money(q.receipt_cents) + " of freight paid and the quoted spending cap, this split keeps your " + label + " through " + money(selected.price_cents) + " per SOL. At "
+      + money(selected.price_cents + 1) + " it falls short after restoring the money used for fuel."
+    : selected.state === "unbounded" ? "This split needs no SOL buyback. Your " + label + " holds at any SOL price under the entered freight terms."
+    : "Even a free SOL buyback leaves this split below your " + label + " under the entered freight terms.";
+  let comparison = "";
+  button.hidden = true;
+  if (q.status === "ready" && better.cash_cents !== q.cash_first.cash_cents) {
+    const cost = money(better.cash_cents - q.cash_first.cash_cents);
+    comparison = "Bringing " + cost + " more of your available cash today "
+      + (better.state === "unbounded" ? "removes the buyback entirely." : "raises the limit from "
+        + money(q.cash_first.price_cents) + " to " + money(better.price_cents) + " per SOL.");
+    button.hidden = false;
+    button.textContent = q.preference === "keep-cash" ? "Compare bringing " + money(better.cash_cents)
+      : "Return to bringing " + money(q.cash_first.cash_cents);
+  } else if (q.status === "payday_short" && better) {
+    comparison = "Across all splits within your cash and wallet limits, the highest buyback price that still leaves "
+      + money(q.floor_cents) + " is " + money(better.price_cents) + " per SOL.";
+  } else if (q.status === "ready" && limited) {
+    comparison = "No other split within your limits covers a higher buyback price.";
+  }
+  el("price-comparison").textContent = comparison;
+  el("price-comparison").hidden = !comparison;
+  el("price-history").textContent = q.gemini_windows ? "The largest move across " + q.gemini_windows
+    + " recorded 30-day Gemini windows puts SOL at " + money(q.gemini_high_cents)
+    + " from the demo starting price. Future prices can go higher." : "The comparison uses the entered prices.";
+}
+
 function render(q) {
   last = q;
   const fuelShort = q.status === "fuel_short", paydayShort = q.status === "payday_short";
@@ -44,6 +79,8 @@ function render(q) {
   el("decision-note").textContent = fuelShort
     ? "The wallet could send " + money(q.wallet_cents) + ". Together with " + money(cashUsed) + " of separate cash, it covers " + money(q.bill_cents-q.fuel_gap_cents) + " at the stop."
     : paydayShort ? "You can cover fuel today. Even the best split leaves less than the " + money(q.floor_cents) + " you need on payday."
+    : q.preference === "price-room" && q.wallet_cents ? "The wallet could pay the other " + money(q.wallet_cents)
+      + ". This split covers the highest SOL buyback price within your limits while meeting your payday target."
     : q.wallet_cents ? "The wallet could pay the other " + money(q.wallet_cents) + ". This is the least cash you need to bring while protecting your payday target."
     : "Separate cash covers the full bill. You can leave the wallet untouched.";
   el("source").textContent = q.source === "live" ? (q.payment_slot ? "Live Devnet simulation" : "Fresh Devnet prices") : "Saved Devnet prices";
@@ -61,7 +98,7 @@ function render(q) {
   el("proof").textContent = (q.source === "live" ? "Public" : "Recorded") + " pool accounts at slot " + q.curve_slot.toLocaleString("en-US") + ". "
     + (q.payment_slot ? "The exact wallet transfer was simulated at slot " + q.payment_slot.toLocaleString("en-US") + "."
       : q.wallet_cents ? "This exact transfer is priced from the pool accounts." : "This split uses no wallet transfer.");
-  repairs(q);
+  repairs(q); showPriceRoom(q);
   note.textContent = q.source === "live" ? (q.payment_slot ? "Wallet payment checked on Devnet. No money moved." : "Public pool prices checked. No money moved.")
     : "Planning estimate from saved public data. Editing moves no money.";
 }
@@ -72,7 +109,7 @@ async function price(source, current, id) {
   const timeout = setTimeout(() => controller.abort(), source === "live" ? 95000 : 15000);
   verify.disabled = true;
   try {
-    const q = await request("/api/fuel-stop", {...current, source}, controller.signal);
+    const q = await request("/api/fuel-stop", {...current, source, preference}, controller.signal);
     if (id === revision) render(q);
   } catch (error) {
     if (id !== revision) return;
@@ -94,7 +131,7 @@ async function price(source, current, id) {
 function estimate(delay = 0) {
   const id = ++revision;
   clearTimeout(timer); pending?.abort(); last = null;
-  verify.disabled = true; el("fixes").replaceChildren(); el("changes").hidden = true;
+  verify.disabled = true; el("fixes").replaceChildren(); el("changes").hidden = el("price-room").hidden = true;
   const current = inputs();
   if (!current) {
     el("decision").textContent = "Check your amounts";
@@ -106,6 +143,10 @@ function estimate(delay = 0) {
   timer = setTimeout(() => price("recorded", current, id), delay);
 }
 
+el("price-choice").onclick = () => {
+  preference = preference === "keep-cash" ? "price-room" : "keep-cash";
+  estimate(); el("decision").focus();
+};
 document.querySelector(".stop-edit").onclick = event => {
   event.preventDefault();
   el("cash").focus();
@@ -118,10 +159,18 @@ verify.onclick = () => {
   note.textContent = "Checking the wallet, reserve and vendor payment on public Solana…";
   price("live", current, ++revision);
 };
-const preset = new URLSearchParams(location.hash.slice(1));
-for (const input of form.querySelectorAll("input")) {
-  const value = preset.get(input.id);
-  if (value !== null && /^\d{1,7}(?:\.\d{1,2})?$/.test(value) && Number(value) <= Number(input.max))
-    input.value = Number(value).toFixed(2);
+function openPreset() {
+  const preset = new URLSearchParams(location.hash.slice(1));
+  form.reset();
+  preference = preset.get("preference") === "price-room" ? "price-room" : "keep-cash";
+  undo = null;
+  for (const input of form.querySelectorAll("input")) {
+    const value = preset.get(input.id);
+    if (value !== null && /^\d{1,7}(?:\.\d{1,2})?$/.test(value) && Number(value) <= Number(input.max))
+      input.value = Number(value).toFixed(2);
+  }
+  el("price-room").open = preset.has("preference");
+  estimate();
 }
-estimate();
+window.addEventListener("hashchange", openPreset);
+openPreset();
