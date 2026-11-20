@@ -8,22 +8,36 @@
 </head>
 <body class="workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
-<main class="public-ledger trip-cover">
+<main class="public-ledger trip-cover fuel-credit">
   <a class="ledger-back" href="/public-payment">← Fuel bill and receipt</a>
   <div class="public-spread">
     <section class="public-cover">
       <p class="panel-label">Working capital · FOS-2048</p>
-      <h1>Keep the full<br><em>invoice.</em></h1>
-      <p>You need $190 for diesel today. Getting your $200 invoice paid early costs $10. If you already own SOL, you can test borrowing the $190 against it and paying the loan when the invoice clears.</p>
+      <h1>Cover the <em>$190 bill.</em></h1>
+      <p>Getting your $200 invoice early costs $10. If you own SOL, you can pledge it for a fuel loan and collect the full invoice later.</p>
       <form id="credit-form"><div class="trip-fields">
+        <label>How will you cover the bill?<select id="credit-route"><option value="loan">Borrow the full $190</option><option value="reserve">Use spare fuel money first</option></select></label>
+      </div><details id="credit-terms"><summary>Adjust terms and check live</summary><div class="trip-fields">
         <label>SOL price drop to allow for<select id="credit-drop"><option value="20">20%</option><option value="40" selected>40%</option><option value="60">60%</option></select></label>
-        <label>When will the customer pay?<select id="credit-days"><option value="23">On time · 23 days</option><option value="30">A week late · 30 days</option></select></label>
-      </div><button class="primary" id="credit-check">Check loan on public Solana</button></form>
+        <label>When will the customer pay?<select id="credit-days"><option value="23">23 days</option><option value="30">30 days</option></select></label>
+      </div><button class="primary" id="credit-check">Refresh on public Solana</button></details></form>
+      <button type="button" id="credit-jump" class="ledger-back" hidden></button>
       <p id="credit-status" role="status" aria-live="polite">Opening the recorded loan preview…</p>
-      <p class="credit-scope">Devnet simulation. The loan sends test USDC to the fuel vendor. Your wallet stays unchanged.</p>
+      <p class="credit-scope">Payment preview · test funds only.</p>
     </section>
     <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label">Secured loan · Kamino</p>
       <h2 id="credit-heading" tabindex="-1">What borrowing would cost</h2>
+      <div id="split-result" hidden>
+        <div class="trip-outcome"><small>Borrow for this bill</small><strong id="split-borrow"></strong><p id="split-payment"></p><div class="fuel-source-strip" aria-hidden="true"><i id="split-reserve-bar"></i></div></div>
+        <dl class="facts" id="split-facts"></dl>
+        <section class="spending-result"><h3>What you keep for the next stop</h3><p id="split-next"></p><p id="split-tradeoff"></p></section>
+        <details id="split-limit"><summary>Will this fit my SOL pledge limit?</summary>
+          <div class="trip-fields"><label>Most SOL you are willing to pledge<input id="pledge-limit" type="number" inputmode="decimal" min="0" step="0.001" max="1000" placeholder="e.g. 6.100"></label></div>
+          <p id="pledge-fit" role="status" aria-live="polite"></p>
+        </details>
+        <details><summary>Compare the costs and the risks</summary><dl class="facts" id="split-costs"></dl><p id="split-pricing"></p><dl class="facts" id="split-rate-check"></dl><p id="split-risk"></p></details>
+        <details><summary>Check the two payments</summary><p id="split-proof"></p><a href="/evidence/reserve-credit" download="FreightOS-reserve-credit.json">Download the recorded checks</a></details>
+      </div>
       <div id="credit-result" hidden>
         <div class="trip-outcome"><small>Estimated financing cost on $190</small><strong id="credit-cost"></strong><p id="credit-repay"></p></div>
         <dl class="facts" id="credit-compare"></dl>
