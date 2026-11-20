@@ -487,14 +487,15 @@ class LoadSettlement:
 
 
 class PublicCheck:
-    def __init__(self, observe):
+    def __init__(self, observe, wait_seconds=0):
+        self.wait_seconds = wait_seconds
         self.observe = observe
         self.lock = Lock()
         self.valid_until = 0
         self.observation = None
 
     def read(self):
-        if not self.lock.acquire(blocking=False):
+        if not self.lock.acquire(timeout=self.wait_seconds):
             raise ValueError("Public check is in progress")
         try:
             if monotonic() >= self.valid_until or self.observation is None:
@@ -1230,7 +1231,7 @@ def main():
     server.policy_checks = {menu: PublicCheck(lambda m=menu: payday_policy.quotes(m, True)) for menu in customer_credit.MENUS}
     server.swap_checks = {net: PublicCheck(lambda n=net: fuel_swap.capture(n)[0]) for net in customer_credit.ADVANCES}
     server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
-    server.midtrip_payment = PublicCheck(partial_payment.simulate)
+    server.midtrip_payment = PublicCheck(partial_payment.simulate, wait_seconds=8)
     server.cash_exit = PublicCheck(lambda: flash_exit.simulate(cash_raw=flash_exit.SAMPLE_CASH))
     server.flash_exit = PublicCheck(flash_exit.simulate)
     server.split_payment = PublicCheck(split_payment.simulate)

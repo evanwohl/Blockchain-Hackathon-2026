@@ -1,7 +1,9 @@
 import base64
 import gzip
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
+from threading import Event
 from decimal import Decimal
 from fractions import Fraction
 from math import ceil, floor
@@ -113,3 +115,29 @@ def test_replay_rejects_changed_remaining_debt_even_if_token_balances_match():
     account["data"][0] = base64.b64encode(data).decode()
     with pytest.raises(ValueError, match="did not reconcile"):
         atomic_fuel.replay_calls(calls, partial_payment.simulate)
+
+def test_concurrent_public_replays_share_the_finished_observation():
+    from freightos.app import PublicCheck
+
+    entered, finish = Event(), Event()
+    observed = []
+    def observe():
+        observed.append(True)
+        entered.set()
+        assert finish.wait(3)
+        return {"slot": 123}
+    check = PublicCheck(observe, wait_seconds=2)
+    started = Event()
+    def join_observation():
+        started.set()
+        return check.read()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(check.read)
+        assert entered.wait(1)
+        second = pool.submit(join_observation)
+        assert started.wait(1)
+        with pytest.raises(TimeoutError):
+            second.result(timeout=.05)
+        finish.set()
+        assert first.result() == second.result() == {"slot": 123}
+    assert len(observed) == 1
