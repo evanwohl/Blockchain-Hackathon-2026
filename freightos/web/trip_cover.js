@@ -212,7 +212,7 @@ function showBackup(check, plan, trip) {
 
 function showPayday(check, plan) {
   const days = el("payday-days").value;
-  const run = check?.payday?.[days];
+  const run = (mix === "price_original" ? check?.late_payday : check?.payday)?.[days];
   el("payday-run").hidden = !run;
   if (!run) return;
   const available = run.target_cents != null;
@@ -290,6 +290,76 @@ function showPayday(check, plan) {
     quoted_at: current.checked_at, plan: plan || {legs: [], upfront_cents: 0}, weekly_budget: budget, ...run}, null, 2), "application/json");
 }
 
+function showPriceRule(report, names, key, checks) {
+  const rule = el("payday-priority").value;
+  const policy = report.price_policy;
+  const limit = policy.current?.[rule];
+  el("payday-price-rule").hidden = !limit;
+  el("payday-price-missing").hidden = !!limit;
+  const totals = policy.summary;
+  const measure = rule === "average" ? "average_cents" : "hard_cents";
+  const history = policy.records;
+  const bought = history.filter(r => r[rule].choice !== "cash").length;
+  el("payday-price-replay").textContent = history.length ? "Using only fuel paths completed before each decision and holding the contract quotes fixed, the rule would have bought protection for "
+    + bought + " of " + history.length + " scored trips with enough prior history. " + (rule === "average" ? "Average cash needed" : "Cash needed in the hardest tenth")
+    + " was " + money(totals[rule][measure]) + " with the rule, " + money(totals.cash[measure]) + " with cash alone and "
+    + money(totals.fitted[measure]) + " buying the fitted hedge every time. Every replay uses the displayed contract prices." : "Too few earlier observations to check the rule on later trips.";
+  if (!limit) return;
+  el("payday-price-source").textContent = current.source === "live" ? "Gemini quote" : "Recorded quote";
+  const choice = limit.choice;
+  const pick = {cash: "cash_mix", original: "price_original", fitted: key}[choice];
+  el("payday-price-title").textContent = choice === "cash" ? "Keep the premium in cash" : "Price check favors the " + (choice === "original" ? "original hedge" : "hedge for these fills");
+  el("payday-price-note").textContent = choice === "cash" ? "Neither quoted position reduced your cash requirement across every tested starting week after its price and fees."
+    : "At its quoted price, this position gave the largest minimum reduction in cash needed across the tested starting weeks.";
+  const days = el("payday-days").value;
+  const runs = {cash: checks?.cash_mix?.payday?.[days], original: checks?.original?.late_payday?.[days], fitted: checks?.[key]?.payday?.[days]};
+  const weekly = el("payday-weekly"), flex = el("payday-flex");
+  const other = choice === "cash" ? "fitted" : "cash";
+  const backup = el("payday-price-backup");
+  backup.hidden = runs[choice]?.target_cents == null || runs[other]?.target_cents == null || !weekly.validity.valid || (weekly.value !== "" && !flex.validity.valid);
+  if (!backup.hidden) {
+    const need = name => weekly.value === "" ? runs[name].target_cents : budgetPlan(runs[name], Math.round(weekly.valueAsNumber * 100),
+      flex.value === "" ? null : Math.round(flex.valueAsNumber * 100)).request;
+    const selected = need(choice), alternative = need(other);
+    const label = weekly.value === "" ? "upfront backup target" : "upfront gap after your fuel contributions";
+    backup.textContent = selected === alternative ? "Both plans have the same " + label + " of " + money(selected) + "."
+      : "The " + label + " is " + money(selected) + " for this plan and " + money(alternative)
+        + (other === "cash" ? " without oil protection." : " with the hedge for these fills.");
+    if (selected) backup.textContent += " You can check a loan for that gap separately.";
+  }
+  const button = el("payday-price-apply");
+  button.hidden = mix === pick;
+  button.textContent = choice === "cash" ? "Preview fuel budget without a hedge" : "Preview this hedge and fuel budget";
+  button.onclick = () => {
+    mix = pick;
+    render();
+    el("payday-cover-choice").focus();
+  };
+  el("payday-price-rows").replaceChildren(...["original", "fitted"].map(name => {
+    const row = document.createElement("tr");
+    const heading = document.createElement("th");
+    heading.scope = "row";
+    heading.textContent = names[name];
+    row.append(heading);
+    row.insertCell().textContent = money(report.scores[name].premium_cents);
+    const cap = limit.max_price_cents[name];
+    row.insertCell().textContent = cap === null ? "No qualifying price" : money(cap);
+    return row;
+  }));
+  const scenarios = ["original", "fitted"].map(name => {
+    const target = limit.quote_targets[name];
+    if (!target) return names[name] + (limit.max_price_cents[name] === null ? " had no qualifying price." : " would exceed its limit even at one cent per contract.");
+    const legs = target.legs.map(leg => leg.target + "¢ at the $" + leg.strike + " oil threshold");
+    return names[name] + " would total " + money(target.all_in_cents) + " at " + legs.join(", ") + ".";
+  });
+  el("payday-price-ticks").textContent = scenarios.join(" ") + " Each example keeps the quantities fixed and reduces asks together in whole ticks. All legs would need enough size at those prices.";
+  const counts = policy.current.cohorts.map(rows => rows.length);
+  const low = Math.min(...counts), high = Math.max(...counts);
+  el("payday-price-basis").textContent = "The limit is the highest whole-cent price that improved on keeping cash in all "
+    + counts.length + " historical schedules. Each uses " + (low === high ? low : low + "–" + high)
+    + " separate fuel stretches through " + policy.current.through + ", with any payout available at fill two. Schedules share weeks.";
+}
+
 function showPaydayCover(target, later) {
   const days = el("payday-days").value;
   const key = "payday_" + days;
@@ -298,7 +368,8 @@ function showPaydayCover(target, later) {
   el("payday-cover").hidden = !report;
   if (!report) return;
   const scores = report.scores;
-  const names = {cash: "Cash only", original: "Original hedge", fitted: "Hedge for these fills"};
+  const names = {cash: "No oil hedge", original: "Original hedge", fitted: "Hedge for these fills"};
+  showPriceRule(report, names, key, target.backup_checks);
   const rows = Object.entries(names).map(([name, label]) => {
     const row = document.createElement("tr");
     const heading = document.createElement("th");
@@ -316,11 +387,12 @@ function showPaydayCover(target, later) {
   el("payday-cover-summary").textContent = "Across " + report.count + " separate historical stretches, the hedge for these fills needed "
     + (delta ? money(Math.abs(delta)) + (delta < 0 ? " less" : " more") + " cash than going without protection"
       : "the same cash as going without protection") + " in the hardest tenth. Each amount includes the premium and fees.";
-  el("payday-cover-choice").value = mix === key ? "horizon" : !mix || mix === "cash_mix" ? mix || "" : "other";
+  el("payday-cover-choice").value = mix === key ? "horizon" : mix === "price_original" ? "" : !mix || mix === "cash_mix" ? mix || "" : "other";
   el("payday-cover-dates").textContent = mix === key ? "Your fuel schedule below waits until fill two to count the payout. The oil contracts would cost "
     + money(scores.fitted.premium_cents) + " upfront."
-    : mix === "cash_mix" ? "Your schedule below uses cash alone. Previewing a hedge updates the schedule and loan check."
-    : "Your current schedule counts a payout at the first fill. Preview the hedge for these fills to budget for a one-fill delay.";
+    : mix === "price_original" ? "Your schedule uses the original hedge and waits until fill two to count its payout."
+    : mix === "cash_mix" ? "Your fuel schedule assumes no oil payout. You can still check a loan for any shortfall."
+    : "Your current schedule budgets for any payout at the first fill. Preview the hedge for these fills to budget for a one-fill delay.";
   el("payday-cover-method").textContent = "The engine priced positions in 0.01-contract steps at the quoted Gemini prices using " + report.training_count
     + " earlier, overlapping stretches ending by " + report.trained_through + ". All plans use the same fuel reserve, pump cash and diesel paths. "
     + "One paper position can pay once. Through payday, extra cash is the upfront price plus the biggest fuel shortfall at any fill. Each plan has its own hardest stretches. Regional diesel and oil-index proxies can differ from actual prices.";
@@ -339,7 +411,8 @@ function showPastFills(target, selected, later) {
   const sample = later ? history.after : history.before;
   const peak = sample.peak;
   const plan = later ? selected.plan : null;
-  const fundingCheck = target.backup_checks?.[plan?.legs.length ? mix || "original" : "cash_mix"];
+  const fundingName = !plan?.legs.length ? "cash_mix" : !mix || mix === "price_original" ? "original" : mix;
+  const fundingCheck = target.backup_checks?.[fundingName];
   showBackup(fundingCheck, plan, current.trip);
   showPayday(fundingCheck, plan);
   showPaydayCover(target, later);
@@ -387,7 +460,7 @@ function showPastFills(target, selected, later) {
   for (const option of picker.options) {
     option.disabled = option.hidden = !!option.value && !target[option.value];
   }
-  picker.value = mix === "risk" ? "" : mix || "";
+  picker.value = mix === "risk" || mix === "price_original" ? "" : mix || "";
   const fitted = later && (mix === "history_mix" || mix === "delay_mix") && selected;
   el("history-tradeoff").hidden = !fitted;
   if (fitted) {
@@ -614,12 +687,20 @@ el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("record
 document.querySelector(".trip-timing").onchange = () => { if (current) { mix = null; render(); } };
 el("payday-weekly").oninput = () => { if (current) render(); };
 el("payday-flex").oninput = () => { if (current) render(); };
+el("payday-price-refresh").onclick = () => {
+  if (form.reportValidity() && !el("trip-check").disabled) {
+    el("trip-status").focus();
+    compare("live", true);
+  }
+};
+el("payday-priority").onchange = () => { if (current) render(); };
 el("payday-cover-choice").onchange = event => {
   mix = event.target.value === "horizon" ? "payday_" + el("payday-days").value : event.target.value || null;
   render();
 };
 el("payday-days").onchange = () => {
   if (!current) return;
+  if (mix === "price_original" && !current.pump_target?.["payday_" + el("payday-days").value]) mix = null;
   if (mix?.startsWith("payday_")) {
     const key = "payday_" + el("payday-days").value;
     mix = current.pump_target?.[key] ? key : null;

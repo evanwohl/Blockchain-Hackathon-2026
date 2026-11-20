@@ -13,7 +13,7 @@ from math import ceil
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, fuel_volatility, payday, pump_value, regional_diesel
+from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, fuel_volatility, payday, payday_price, pump_value, regional_diesel
 from hedging.quick_pay import integer
 
 SNAPSHOT = fuel_cover.SNAPSHOT.with_name("trip_cover.json.gz")
@@ -110,6 +110,27 @@ def top_offers(snapshot, fuel, rows):
 def cost(lots, offer):
     p = offer["price"]
     return (lots * p + 99) // 100, (lots * 7 * p * (100 - p) + 999999) // 1000000
+
+
+def basket_quote(legs, limit):
+    if limit is None:
+        return None
+    cuts = {0}
+    for leg in legs:
+        price = leg["price"]
+        cuts.update((10000 * ticks + price - 1) // price for ticks in range(1, price))
+    for cut in sorted(cuts):
+        quotes = []
+        total = 0
+        for leg in legs:
+            price = max(1, (leg["price"] * (10000 - cut) + 9999) // 10000)
+            premium, fee = cost(leg["lots"], {"price": price})
+            quotes.append({"strike": leg["strike"], "lots": leg["lots"], "ask": leg["price"],
+                           "target": price, "premium_cents": premium, "fee_cents": fee})
+            total += premium + fee
+        if total <= limit:
+            return {"cut_bps": cut, "all_in_cents": total, "legs": quotes}
+    return None
 
 
 def residual_floor(offers, gaps):
@@ -494,6 +515,15 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
         if not report or report["scores"]["fitted"]["training"]["late_cents"] >= report["scores"]["original"]["training"]["late_cents"]:
             continue
         name = f"payday_{days}"
+        report["price_policy"] = payday_price.price_policy(train, future, report, stops, fill_day, as_of)
+        limits = report["price_policy"]["current"]
+        if limits:
+            for mode in ("average", "hard"):
+                rule = limits[mode]
+                rule["quote_targets"] = {label: basket_quote(plan["legs"], rule["max_price_cents"][label])
+                                         for label, plan in (("original", base), ("fitted", candidate))}
+        if checks.get("original"):
+            checks["original"].setdefault("late_payday", {})[days] = payday.estimate(later, trip, fuel_cash, offers, base, as_of, days, payout_stop=2)
         target[name] = {**preview(candidate, name, days), "horizon": report}
 
 

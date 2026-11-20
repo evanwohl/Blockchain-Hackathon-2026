@@ -61,15 +61,30 @@
           </select></label></div>
           <p id="payday-terms"></p>
           <details id="payday-cover" hidden><summary>Is oil protection worth buying for these fills?</summary>
-            <p id="payday-cover-summary"></p>
+            <div id="payday-price-rule">
+              <div class="trip-fields"><label>What matters most?<select id="payday-priority">
+                <option value="average">Keep average cash needs low</option><option value="hard">Cover the hardest fuel stretches</option>
+              </select></label></div>
+              <div class="spending-result"><h3 id="payday-price-title"></h3><p id="payday-price-note"></p><p id="payday-price-backup" hidden></p>
+                <button type="button" class="secondary" id="payday-price-apply"></button></div>
+              <table class="reference-prices"><caption>Price check for the whole position, including fees</caption>
+                <thead><tr><th scope="col">Protection</th><th scope="col" id="payday-price-source">Quoted</th><th scope="col">Historical limit</th></tr></thead>
+                <tbody id="payday-price-rows"></tbody></table>
+              <p id="payday-price-basis"></p>
+              <details><summary>Which contract quotes would clear the limit?</summary><p id="payday-price-ticks"></p>
+                <button type="button" class="secondary" id="payday-price-refresh">Recheck Gemini quotes</button></details>
+            </div><p id="payday-price-missing" hidden>Recent complete fuel stretches are too sparse for a price limit. You can still compare the historical figures.</p>
+            <div class="trip-fields"><label>Plan to preview<select id="payday-cover-choice">
+              <option value="">Original hedge</option><option value="horizon">Hedge for these fills</option>
+              <option value="cash_mix">No oil hedge</option><option value="other" hidden disabled>Other selected hedge</option>
+            </select></label></div>
+            <p id="payday-cover-dates"></p><details><summary>What happened on later trips?</summary>
+              <p id="payday-price-replay"></p>
+              <p id="payday-cover-summary"></p>
             <table class="reference-prices"><caption>Extra cash needed through payday if the payout arrives at fill two</caption>
               <thead><tr><th scope="col">Plan</th><th scope="col">Average</th><th scope="col">Hardest 10%</th></tr></thead>
               <tbody id="payday-cover-rows"></tbody></table>
-            <div class="trip-fields"><label>Plan to preview<select id="payday-cover-choice">
-              <option value="">Original hedge</option><option value="horizon">Hedge for these fills</option>
-              <option value="cash_mix">Cash only</option><option value="other" hidden disabled>Other selected hedge</option>
-            </select></label></div>
-            <p id="payday-cover-dates"></p><details><summary>See how the plans were compared</summary>
+
               <p id="payday-cover-method"></p><p id="payday-cover-shifts"></p>
               <button type="button" class="secondary" id="payday-cover-download">Download the comparison</button></details>
           </details><dl class="facts" id="payday-cash"></dl>
@@ -91,7 +106,7 @@
         <details id="fill-history" hidden><summary>Would my fuel money have lasted in past weeks?</summary>
           <div id="history-choice" class="trip-fields" hidden><label>Plan to preview<select id="history-plan">
             <option value="">Original trip hedge</option><option value="history_mix">Fit for on-time payouts</option>
-            <option value="delay_mix">Fit for one late payout</option><option value="cash_mix">Cash only</option><option value="payday_23">Fit for four fills</option><option value="payday_30">Fit for five fills</option>
+            <option value="delay_mix">Fit for one late payout</option><option value="cash_mix">No oil hedge</option><option value="payday_23">Fit for four fills</option><option value="payday_30">Fit for five fills</option>
           </select></label></div>
           <table id="history-costs" class="reference-prices" hidden><caption>Average extra cash in the hardest 10% of weeks</caption>
             <thead><tr><th scope="col">Timing</th><th scope="col">Cash only</th><th scope="col">Selected plan</th></tr></thead>
