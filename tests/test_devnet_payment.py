@@ -123,3 +123,38 @@ def test_public_preview_fails_closed_on_inconsistent_simulation(change):
         return result
     with pytest.raises(ValueError):
         devnet.reserve_preview(run, proof, "road", changed)
+
+
+def test_browser_preview_simulates_cli_instructions_without_signature(monkeypatch):
+    import base64
+    from solders.hash import Hash
+    from solders.keypair import Keypair
+    from solders.message import Message
+    from solders.signature import Signature
+    from solders.transaction import Transaction
+
+    run = json.loads(devnet.SAMPLE.read_bytes())
+    payer = Keypair().pubkey()
+    block = Hash.new_unique()
+    simulated = []
+    def rpc(method, params):
+        if method == "getGenesisHash":
+            return devnet.GENESIS
+        if method == "getMinimumBalanceForRentExemption":
+            return run["receipt_rent"] if params == [devnet.bill.RECEIPT_SIZE] else run["token_rent"]
+        if method == "getAccountInfo":
+            return {"value": None}
+        if method == "getLatestBlockhash":
+            return {"value": {"blockhash": str(block), "lastValidBlockHeight": 123}}
+        assert method == "simulateTransaction" and params[1]["sigVerify"] is False
+        simulated.append(params[0])
+        return {"value": {"err": None}}
+
+    monkeypatch.setattr(devnet, "wallet_balances", lambda address, rpc: {"usdc_raw": str(run["deposit_raw"])})
+    result = devnet.preview_approval(str(payer), rpc)
+    assert simulated == [result["transaction"]]
+    tx = Transaction.from_bytes(base64.b64decode(result["transaction"]))
+    plan = devnet.PublicPayment(run, payer)
+    assert tx.message == Message.new_with_blockhash([*plan.deposit, *plan.approval], payer, block)
+    assert tx.signatures == [Signature.default()]
+    assert result["last_valid_block_height"] == 123

@@ -264,13 +264,38 @@ def sized_redemption(plan, full, target, rpc):
     raise ValueError("Could not size the public quote at the current vault price")
 
 
-def execute(run, payer_file, step):
-    if request("getGenesisHash", []) != GENESIS:
+def current_plan(run, payer, rpc):
+    if rpc("getGenesisHash", []) != GENESIS:
         raise ValueError("Expected Solana Devnet")
+    run = {**run, "receipt_rent": rpc("getMinimumBalanceForRentExemption", [bill.RECEIPT_SIZE]),
+           "token_rent": rpc("getMinimumBalanceForRentExemption", [165])}
+    return PublicPayment(run, payer)
+
+
+def preview_approval(address, rpc=request):
+    run = json.loads(SAMPLE.read_bytes())
+    payer = Pubkey.from_string(address)
+    plan = current_plan(run, payer, rpc)
+    config = {"encoding": "base64", "commitment": "confirmed"}
+    if rpc("getAccountInfo", [str(plan.receipt), config])["value"]:
+        raise ValueError("This wallet already has an approval or payment for this sample load")
+    balances = wallet_balances(address, rpc)
+    if int(balances["usdc_raw"]) < run["deposit_raw"]:
+        raise ValueError(f"This sample needs {run['deposit_raw'] / 1e6:g} Devnet USDC for the reserve deposit.")
+    block = rpc("getLatestBlockhash", [{"commitment": "confirmed"}])["value"]
+    message = Message.new_with_blockhash([*plan.deposit, *plan.approval], payer, Hash.from_string(block["blockhash"]))
+    wire = base64.b64encode(bytes(Transaction.new_unsigned(message))).decode()
+    simulation = rpc("simulateTransaction", [wire, {**config, "sigVerify": False}])["value"]
+    if simulation["err"] is not None:
+        raise ValueError("The reserve setup failed Devnet simulation. Check test SOL for fees and account rent.")
+    return {"address": address, "transaction": wire, "vendor": str(plan.payee), "load": plan.load,
+            "deposit_raw": run["deposit_raw"], "vendor_payment_raw": plan.amount,
+            "last_valid_block_height": block["lastValidBlockHeight"]}
+
+
+def execute(run, payer_file, step):
     signer = Keypair.from_json(payer_file.read_text())
-    run = {**run, "receipt_rent": request("getMinimumBalanceForRentExemption", [bill.RECEIPT_SIZE]),
-           "token_rent": request("getMinimumBalanceForRentExemption", [165])}
-    plan = PublicPayment(run, signer.pubkey())
+    plan = current_plan(run, signer.pubkey(), request)
     config = {"encoding": "base64", "commitment": "confirmed"}
     current = request("getAccountInfo", [str(plan.receipt), config])["value"]
     if step == "approve":

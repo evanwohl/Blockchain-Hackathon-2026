@@ -852,6 +852,15 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError):
                     self.respond(503, {"error": "Could not verify the market comparison for this trip."})
                 return
+            if self.path == "/api/devnet-approval-preview":
+                address = data.get("address")
+                if not isinstance(address, str):
+                    raise ValueError("Connect a wallet first")
+                try:
+                    self.respond(200, devnet.preview_approval(address))
+                except (OSError, KeyError, TypeError):
+                    self.respond(503, {"error": "Could not prepare the Devnet preview. Try again."})
+                return
             if self.path == "/api/devnet-wallet":
                 address = data.get("address")
                 if not isinstance(address, str):
