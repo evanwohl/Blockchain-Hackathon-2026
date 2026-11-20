@@ -964,7 +964,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/fuel-stop":
                 args = [data.get(k) for k in ("budget", "cash", "received", "target", "stress")]
                 preference = data.get("preference", "keep-cash")
-                road_cash.limits(*args, preference)
+                menu, fee = data.get("offer_menu", "partial"), data.get("offer_fee", 100)
+                road_cash.limits(*args, preference, menu, fee)
                 source = data.get("source")
                 if source not in ("recorded", "live"):
                     raise ValueError("Choose recorded or live funding checks")
@@ -973,7 +974,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.respond(503, {"error": "Another public check is running. Try again shortly."})
                     return
                 try:
-                    self.respond(200, road_cash.evaluate(*args, preference=preference, live=live))
+                    self.respond(200, road_cash.evaluate(*args, preference=preference, live=live, offer_menu=menu, offer_fee=fee))
                 except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):
                     self.respond(503, {"error": "The pool prices and fuel funds could not be checked together."})
                 finally:

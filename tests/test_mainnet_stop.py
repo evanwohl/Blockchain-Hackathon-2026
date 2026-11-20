@@ -50,10 +50,60 @@ def test_mainnet_evidence_pins_accounts_token_pair_and_cluster():
 
 
 def test_missing_mainnet_observation_keeps_the_devnet_plan_available(monkeypatch):
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise ValueError("Unverified pool evidence")
     monkeypatch.setattr(mainnet_stop, "compare", unavailable)
     q = road_cash.evaluate(8000, 7500, 20000, 300, 15000)
     assert q["mainnet"] is None and q["separate_cents"] == 5432
     with pytest.raises(ValueError):
         road_cash.evaluate(8000, 7500, 20000, 300, 15000, mainnet_evidence=b"{}")
+
+
+@pytest.mark.parametrize("menu,fee", [("partial", 0), ("partial", 990), ("partial", 10000), ("both", 100), ("none", 0)])
+def test_early_freight_matches_exhaustive_cash_and_advance_pairs(menu, fee):
+    bill, received, target, cash = 65, 69, 9, 38
+    def price(outside):
+        return (bill - outside + 3, 22 - (bill - outside) // 2 + outside % 4)
+    offer = mainnet_stop.early_freight(bill, 0, received, target, cash, 40, price, menu, fee)
+    allowed = range(bill + 1) if menu == "partial" else (0,)
+    feasible, fees = [], []
+    for early in allowed:
+        charge = (early * fee + 9899) // 9900
+        for own in range(bill - early + 1):
+            opening, before_fee = price(early + own)
+            if opening > 40:
+                continue
+            room = min(received - early, before_fee - target)
+            if own <= cash and early and room >= 0:
+                fees.append(room * 9900 // early)
+            if charge <= room:
+                feasible.append((early, own))
+    eligible = [pair for pair in feasible if pair[1] <= cash]
+    assert offer["minimum_cash_cents"] == min((own for _, own in feasible), default=None)
+    for field, expected in (("smallest", min(eligible, default=None)),
+                            ("keep_cash", min(eligible, key=lambda p: (p[1], p[0]), default=None))):
+        row = offer[field]
+        assert ((row["advance_cents"], row["cash_cents"]) if row else None) == expected
+    assert offer["max_fee_per_99_cents"] == (None if eligible and min(eligible)[0] == 0 else max(fees, default=None))
+
+
+def test_customer_offer_reconciles_each_cent_and_has_a_binding_negotiation_ceiling():
+    def compare(menu="partial", fee=100, received=20000):
+        return road_cash.evaluate(8000, 7500, received, 300, 15000, offer_menu=menu, offer_fee=fee)["mainnet"]["early_freight"]
+    offer = compare()
+    a, b = offer["smallest"], offer["keep_cash"]
+    assert (offer["fuel_only"]["advance_cents"], offer["fuel_only"]["payday_cents"]) == (1544, -7559)
+    assert (a["advance_cents"], a["fee_cents"], a["sale_cents"], a["payday_cents"]) == (8893,90,564,301)
+    assert (b["advance_cents"], b["cash_cents"], b["fee_cents"], b["payday_cents"]) == (9900,6502,100,300)
+    for row in (a,b):
+        assert row["advance_cents"] + row["cash_cents"] + row["wallet_cents"] == 19000
+        assert row["later_cents"] + row["advance_cents"] + row["fee_cents"] == 20000
+    for menu, ceiling in (("partial",731),("both",699)):
+        assert compare(menu)["max_fee_per_99_cents"] == ceiling
+        assert compare(menu, ceiling)["smallest"] and compare(menu, ceiling+1)["smallest"] is None
+    assert compare("both")["smallest"] == b
+    assert compare("none")["smallest"] is None
+    assert compare(received=15000)["smallest"] is None
+    for menu, fee in (("wrong",10),("both",-1),("partial",False)):
+        with pytest.raises(ValueError):
+            compare(menu, fee)

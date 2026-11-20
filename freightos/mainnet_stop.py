@@ -8,8 +8,9 @@ from pathlib import Path
 
 import numpy as np
 from solders.pubkey import Pubkey
+from hedging.quick_pay import integer
 
-from freightos import fuel_floor, fuel_swap, reserve, stop_backup
+from freightos import customer_credit, fuel_floor, fuel_swap, reserve, reserve_credit, stop_backup
 
 EVIDENCE = Path(__file__).with_name("artifacts") / "mainnet_fuel" / "pools.json"
 DIGEST = "3de18210abdfd86e2a7e72cf91284099c623dadd28daf38f211c5466052c7134"
@@ -82,7 +83,66 @@ def sale_table(bill):
     return split_costs(saved()[1], bill)
 
 
-def compare(plan, market, native, budget, cash, evidence=None):
+def validate_offer(menu, fee):
+    if menu not in ("partial", "both", "none"):
+        raise ValueError("Choose the amounts the customer offers")
+    integer(fee, "fee per $99 of early freight cash", 10000)
+
+
+def early_freight(bill, stable, received, target, cash, wallet_cap, price, menu, fee):
+    face = customer_credit.ADVANCES[-1]
+    invoice_limit = received * face // (face + fee)
+    smallest = most_cash = minimum_cash = max_fee = fuel_only = None
+
+    def describe(key, cash_first=False):
+        if key is None:
+            return None
+        own, advance = key if cash_first else (key[1], key[0])
+        charge = customer_credit.customer_fee(advance, fee)
+        vendor = bill - own - advance
+        return {"advance_cents": advance, "cash_cents": own, "fee_cents": charge,
+                "wallet_cents": vendor, "sale_cents": max(0, vendor - stable),
+                "later_cents": received - advance - charge,
+                "invoice_balance_cents": reserve_credit.INVOICE_CENTS - advance - charge,
+                "payday_cents": price(own + advance)[1] - charge}
+
+    for outside in range(bill + 1):
+        quote = price(outside)
+        if quote is None or quote[0] > wallet_cap:
+            continue
+        room = quote[1] - target
+        needed = max(0, outside - cash)
+        capacity = min(face, outside, invoice_limit)
+        lots = customer_credit.MENUS.get(menu)
+        first = needed if lots is None else next((lot for lot in lots if lot >= needed), face + 1)
+        if first <= capacity:
+            fuel_key = (first, customer_credit.customer_fee(first, fee) - quote[1], outside - first)
+            if fuel_only is None or fuel_key < fuel_only:
+                fuel_only = fuel_key
+        if room < 0:
+            continue
+        maximum = min(capacity, room * face // fee) if fee else capacity
+        last = maximum if lots is None else next(lot for lot in reversed(lots) if lot <= maximum)
+        own = outside - last
+        minimum_cash = own if minimum_cash is None else min(minimum_cash, own)
+        if 0 < first <= min(outside, received, face):
+            ceiling = min(room, received - first) * face // first
+            max_fee = ceiling if max_fee is None else max(max_fee, ceiling)
+        if first > last:
+            continue
+        request_key = (first, outside - first)
+        cash_key = (own, last)
+        if smallest is None or request_key < smallest:
+            smallest = request_key
+        if most_cash is None or cash_key < most_cash:
+            most_cash = cash_key
+    return {"menu": menu, "fee_per_99_cents": fee, "smallest": describe(smallest),
+            "fuel_only": describe((fuel_only[0], fuel_only[2])) if fuel_only is not None else None,
+            "keep_cash": describe(most_cash, cash_first=True), "minimum_cash_cents": minimum_cash,
+            "max_fee_per_99_cents": max_fee if smallest is None or smallest[0] else None}
+
+
+def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="partial", offer_fee=100):
     data, pools = saved() if evidence is None else verify(evidence)
     bill, reference = plan["bill_cents"], plan["reference_cents"]
     costs, second_legs = sale_table(bill) if evidence is None else split_costs(pools, bill)
@@ -128,7 +188,8 @@ def compare(plan, market, native, budget, cash, evidence=None):
                       "cash_fits": original <= cash}
     target_sale = None if preserving is None else max(0, bill - preserving - stable)
     covered_range = len(costs) > max(0, bill - stable)
-    return {"slot": data["accounts"]["context"]["slot"], "date": datetime.fromtimestamp(data["block_time"], timezone.utc).isoformat(),
+    offer = early_freight(bill, stable, received, target, cash, wallet_cap, price, offer_menu, offer_fee)
+    return {"early_freight": offer, "slot": data["accounts"]["context"]["slot"], "date": datetime.fromtimestamp(data["block_time"], timezone.utc).isoformat(),
             "covers_full_range": covered_range, "original": comparable, "first_cash_cents": first,
             "fuel_short_cents": max(0, first - cash), "target_cash_cents": preserving,
             "target_sale_cents": target_sale, "target_second_pool_cents": second_legs[target_sale] if target_sale is not None else None,

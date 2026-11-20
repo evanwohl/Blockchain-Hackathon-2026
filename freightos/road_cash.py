@@ -49,7 +49,8 @@ def recorded():
     return quote, native, payments(quote, native)
 
 
-def limits(budget, cash, received, target, stress, preference="keep-cash"):
+def limits(budget, cash, received, target, stress, preference="keep-cash", offer_menu="partial", offer_fee=100):
+    mainnet_stop.validate_offer(offer_menu, offer_fee)
     if preference not in ("keep-cash", "price-room"):
         raise ValueError("Choose how to use the available cash")
     integer(budget, "wallet budget", 100000000)
@@ -133,8 +134,8 @@ def model(quote, native, rows, budget, cash, received, target, reference, prices
             "effective_budget_cents": cap * reference // denominator, "low_price_cents": low, "high_price_cents": high, "receipt_cents": received, "floor_cents": target}
 
 
-def evaluate(budget, cash, received, target, stress, *, preference="keep-cash", live=False, evidence=None, mainnet_evidence=None):
-    limits(budget, cash, received, target, stress, preference)
+def evaluate(budget, cash, received, target, stress, *, preference="keep-cash", live=False, evidence=None, mainnet_evidence=None, offer_menu="partial", offer_fee=100):
+    limits(budget, cash, received, target, stress, preference, offer_menu, offer_fee)
     reference = payday_policy.reference_price(payday_policy.recorded_menu()[0])
     cases, _ = payday_policy.price_cases(reference, stress)
     prices = [c["price_cents"] for c in cases]
@@ -155,7 +156,8 @@ def evaluate(budget, cash, received, target, stress, *, preference="keep-cash", 
     history = [case["price_cents"] for case in cases if "start" in case]
     result = model(q, native, rows, budget, cash, received, target, reference, prices, preference)
     try:
-        production_prices = mainnet_stop.compare(result, q["market"], native, budget, cash, mainnet_evidence)
+        production_prices = mainnet_stop.compare(result, q["market"], native, budget, cash, mainnet_evidence,
+                                                offer_menu=offer_menu, offer_fee=offer_fee)
     except (OSError, ValueError):
         if mainnet_evidence is not None:
             raise
@@ -170,6 +172,8 @@ if __name__ == "__main__":
     for name, default in (("budget", 8000), ("cash", 7500), ("received", 20000), ("target", 300)):
         parser.add_argument("--" + name, type=int, default=default, help="Amount in cents")
     parser.add_argument("--preference", choices=("keep-cash", "price-room"), default="keep-cash")
+    parser.add_argument("--offer-menu", choices=("partial", "both", "none"), default="partial")
+    parser.add_argument("--offer-fee", type=int, default=100, help="Fee in cents per $99 of early payment")
     stress_group = parser.add_mutually_exclusive_group()
     stress_group.add_argument("--stress", type=int, default=15000, help="Additional SOL price in cents")
     stress_group.add_argument("--historical-only", action="store_true", help="Use only the Gemini history and unchanged price")
@@ -180,5 +184,6 @@ if __name__ == "__main__":
     if args.gemini_evidence:
         payday_policy.verify_history(args.gemini_evidence.read_bytes())
     print(json.dumps(evaluate(args.budget, args.cash, args.received, args.target, None if args.historical_only else args.stress,
-                              preference=args.preference, mainnet_evidence=args.mainnet_evidence.read_bytes() if args.mainnet_evidence else None,
+                              preference=args.preference, offer_menu=args.offer_menu, offer_fee=args.offer_fee,
+                              mainnet_evidence=args.mainnet_evidence.read_bytes() if args.mainnet_evidence else None,
                               evidence=json.loads(args.evidence.read_bytes()) if args.evidence else None), indent=2))

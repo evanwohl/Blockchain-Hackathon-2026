@@ -23,6 +23,14 @@
         <label for="stress">Extra SOL buyback price to test</label><div class="stop-money"><span>$</span><input id="stress" type="number" min="0" max="100000" value="150.00" step=".01" inputmode="decimal" placeholder="Optional"></div>
         <p>Gemini’s recorded 30-day SOL price moves supply the other test prices. The demo assumes the vendor accepts cash plus a wallet payment.</p>
       </details>
+      <details class="stop-details" id="offer-inputs"><summary>Customer early-pay terms</summary>
+        <label for="offer-menu">Amounts the customer can send before fuel is due</label>
+        <select id="offer-menu"><option value="partial">Any amount up to $99</option><option value="both">$49.50 or $99 only</option><option value="none">No early payment</option></select>
+        <label for="offer_fee">Customer fee per $99 received early</label>
+        <div class="stop-money"><span>$</span><input type="number" id="offer_fee" min="0" max="100" value="1.00" required step=".01" inputmode="decimal"></div>
+        <p>These sample terms apply to the mainnet comparison. Smaller amounts carry a proportional fee rounded up to a cent.</p>
+        <button type="button" class="paper-action" id="review-offer">Review customer split</button>
+      </details>
     </form>
     <section id="stop-outcome" class="stop-outcome" aria-label="Fuel payment plan">
       <article class="stop-ticket">
@@ -37,6 +45,12 @@
         <p id="mainnet-result"></p><div id="mainnet-quoted"><dl id="mainnet-ledger"></dl>
         <p id="mainnet-plan"></p>
         <button type="button" id="mainnet-try" hidden></button>
+        <details id="offer-result" class="stop-offer"><summary>Use early freight pay <strong id="offer-preview"></strong></summary>
+          <p id="offer-explain"></p><p id="offer-fuel-only"></p><dl id="offer-ledger"></dl><p id="offer-tradeoff"></p>
+          <button type="button" id="offer-switch" hidden></button>
+          <button type="button" id="offer-draft" hidden>Download customer request</button>
+          <p id="offer-bound"></p><button type="button" id="edit-offer">Change customer terms</button>
+        </details>
         <p id="mainnet-terms"></p>
         <a href="/evidence/mainnet-fuel-pools" download="FreightOS-mainnet-fuel-pools.json">Download the two pool observations</a></div>
       </details>

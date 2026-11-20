@@ -1,16 +1,18 @@
-import {el, facts, money, request} from "./common.js";
+import {el, facts, money, request, saveFile} from "./common.js";
 
 const form = el("stop-inputs"), verify = el("verify"), note = el("check-status");
-let focusMainnet = false;
+let focusMainnet = false, focusOffer = false, keepRoadCash = false;
 let preference = "keep-cash";
 let revision = 0, timer, pending, last, undo;
 
 function inputs() {
   if (!form.checkValidity()) return null;
-  return Object.fromEntries(["cash", "budget", "target", "received", "stress"].map(id => {
+  const amounts = Object.fromEntries(["cash", "budget", "target", "received", "stress"].map(id => {
     const input = el(id);
     return [id, input.value === "" ? null : Math.round(input.valueAsNumber * 100)];
   }));
+  return {...amounts, offer_fee: el("offer_fee").disabled ? 0 : Math.round(el("offer_fee").valueAsNumber * 100),
+    offer_menu: el("offer-menu").value};
 }
 
 function tryAmount(id, cents) {
@@ -75,6 +77,48 @@ function showPriceRoom(q) {
     + " from the demo starting price. Future prices can go higher." : "The comparison uses the entered prices.";
 }
 
+function chosenOffer(offer) {
+  return keepRoadCash ? offer.keep_cash : offer.smallest;
+}
+
+function showOffer(q) {
+  const offer = q.mainnet.early_freight, chosen = chosenOffer(offer);
+  const toggle = el("offer-switch");
+  toggle.hidden = !(chosen && offer.smallest.advance_cents !== offer.keep_cash.advance_cents);
+  toggle.textContent = keepRoadCash ? "See smallest request" : "Keep more cash at the stop";
+  const tradeoff = el("offer-tradeoff");
+  tradeoff.hidden = toggle.hidden;
+  if (!toggle.hidden) {
+    const difference = offer.keep_cash.fee_cents - offer.smallest.fee_cents;
+    tradeoff.textContent = "Taking " + money(offer.keep_cash.advance_cents) + " early keeps "
+      + money(offer.smallest.cash_cents - offer.keep_cash.cash_cents) + " more on the road "
+      + (difference ? "for an extra " + money(difference) + " in fees." : "at the same fee.");
+  }
+  el("offer-ledger").hidden = !chosen;
+  el("offer-draft").hidden = !chosen?.advance_cents;
+  el("offer-preview").textContent = chosen?.advance_cents ? money(chosen.advance_cents) + " early" : "";
+  if (chosen) {
+    el("offer-explain").textContent = (chosen.advance_cents ? (keepRoadCash ? "To keep the most cash at the stop, ask for "
+      : "The smallest workable request is ") + money(chosen.advance_cents) + " from the customer before fuel is due."
+      : "Your plan already works without an early customer payment.") + " Bring " + money(chosen.cash_cents) + " of your own cash.";
+    facts(el("offer-ledger"), [[chosen.sale_cents ? "Wallet pays, including " + money(chosen.sale_cents) + " from selling SOL" : "Wallet pays for fuel", money(chosen.wallet_cents)],
+      ["Cash kept at the stop", money(inputs().cash - chosen.cash_cents)],
+      ["Customer’s early-pay fee", money(chosen.fee_cents)], ["Freight still expected by payday", money(chosen.later_cents)],
+      ["Left after restoring funds at " + money(q.high_price_cents) + " per SOL", money(chosen.payday_cents)]]);
+  } else {
+    el("offer-explain").textContent = (offer.menu === "none" ? "The customer pays on regular terms." : "No allowed advance covers fuel and your payday target within your limits.")
+      + (offer.minimum_cash_cents !== null ? " These terms require at least " + money(offer.minimum_cash_cents) + " of your own cash." : "");
+  }
+  const justFuel = offer.fuel_only, why = el("offer-fuel-only");
+  why.hidden = !(justFuel?.advance_cents && justFuel.payday_cents < q.floor_cents);
+  if (!why.hidden) why.textContent = money(justFuel.advance_cents) + " early would cover fuel today, but even the best split at that amount falls "
+    + money(q.floor_cents - justFuel.payday_cents) + " below your payday target at the highest tested SOL price.";
+  const ceiling = offer.max_fee_per_99_cents;
+  el("offer-bound").textContent = ceiling !== null ? "With your cash and wallet limits, the highest fee that works is "
+    + money(ceiling) + " per $99 of early cash." : "";
+  el("offer-bound").hidden = ceiling === null;
+}
+
 function showMainnet(q) {
   const m = q.mainnet, button = el("mainnet-try");
   el("mainnet-check").hidden = false;
@@ -84,10 +128,11 @@ function showMainnet(q) {
     el("mainnet-result").textContent = "The saved production pool accounts could not be verified. The fuel plan above uses Devnet.";
     return;
   }
+  showOffer(q);
   const missing = m.fuel_short_cents, payday = m.payday_gap_cents;
   el("mainnet-status").textContent = missing ? money(missing) + " unpaid" : payday ? money(payday) + " short on payday" : "Fuel and payday covered";
-  el("mainnet-result").textContent = "We repriced the full " + money(q.bill_cents) + " bill using two recorded Orca markets. "
-    + (missing ? "Your current limits leave " + money(missing) + " of fuel unpaid." : "Your current limits cover the fuel bill.");
+  el("mainnet-result").textContent = "We repriced the full " + money(q.bill_cents) + " bill using two recorded Orca markets. Without early customer pay, "
+    + (missing ? "your current limits leave " + money(missing) + " of fuel unpaid." : "your current limits cover the fuel bill.");
   const rows = [["Cash needed at the stop", money(m.first_cash_cents)],
     ["Cash needed for fuel and the " + money(q.floor_cents) + " payday target", m.target_cash_cents === null ? "Outside these terms" : money(m.target_cash_cents)]];
   if (m.original) rows.push(["SOL budget needed for the demo’s wallet payment", money(m.original.wallet_limit_cents)]);
@@ -138,6 +183,8 @@ function render(q) {
     + (q.payment_slot ? "The exact wallet transfer was simulated at slot " + q.payment_slot.toLocaleString("en-US") + "."
       : q.wallet_cents ? "This exact transfer is priced from the pool accounts." : "This split uses no wallet transfer.");
   repairs(q); showPriceRoom(q); showMainnet(q);
+  if (focusOffer && q.mainnet) revealOffer();
+  focusOffer = false;
   if (focusMainnet) {
     el("mainnet-check").querySelector("summary").focus({preventScroll: true});
     focusMainnet = false;
@@ -186,6 +233,43 @@ function estimate(delay = 0) {
   timer = setTimeout(() => price("recorded", current, id), delay);
 }
 
+function revealOffer() {
+  el("mainnet-check").open = el("offer-result").open = true;
+  const summary = el("offer-result").querySelector("summary");
+  summary.focus({preventScroll: true});
+  summary.scrollIntoView({block: "start"});
+}
+el("review-offer").onclick = () => {
+  if (!form.reportValidity()) return;
+  if (last?.mainnet) revealOffer();
+  else if (!last) focusOffer = true;
+  else {
+    el("mainnet-check").open = true;
+    el("mainnet-check").querySelector("summary").focus();
+  }
+};
+el("edit-offer").onclick = () => {
+  el("offer-inputs").open = true;
+  el("offer-menu").focus();
+};
+el("offer-switch").onclick = () => {
+  if (!last?.mainnet) return;
+  keepRoadCash = !keepRoadCash;
+  showOffer(last);
+};
+el("offer-draft").onclick = () => {
+  if (!last?.mainnet) return;
+  const row = chosenOffer(last.mainnet.early_freight);
+  if (!row?.advance_cents) return;
+  const draft = [
+    "Draft early-payment request · FreightOS sample load FOS-2048", "",
+    "Could you send " + money(row.advance_cents) + " before the fuel stop on this load?",
+    "With an early-payment discount of " + money(row.fee_cents) + ", that would settle "
+      + money(row.advance_cents + row.fee_cents) + " of freight charges and leave " + money(row.invoice_balance_cents) + " on regular terms.",
+    "Please confirm the amount, discount and arrival time before we rely on the payment.", ""
+  ];
+  saveFile("FOS-2048-early-payment-request.txt", draft.join("\n"), "text/plain;charset=utf-8");
+};
 el("mainnet-try").onclick = () => {
   if (last?.mainnet?.target_cash_cents != null) {
     focusMainnet = true;
@@ -200,7 +284,7 @@ document.querySelector(".stop-edit").onclick = event => {
   event.preventDefault();
   el("cash").focus();
 };
-form.oninput = () => { undo = null; estimate(140); };
+form.oninput = () => { undo = null; keepRoadCash = false; el("offer_fee").disabled = el("offer-menu").value === "none"; estimate(140); };
 form.onsubmit = event => { event.preventDefault(); estimate(); };
 verify.onclick = () => {
   const current = inputs(); if (!current) return;
@@ -211,6 +295,9 @@ verify.onclick = () => {
 function openPreset() {
   const preset = new URLSearchParams(location.hash.slice(1));
   form.reset();
+  keepRoadCash = false;
+  el("offer-menu").value = ["none", "both"].includes(preset.get("terms")) ? preset.get("terms") : "partial";
+  el("offer_fee").disabled = el("offer-menu").value === "none";
   preference = preset.get("preference") === "price-room" ? "price-room" : "keep-cash";
   undo = null;
   for (const input of form.querySelectorAll("input")) {
@@ -219,7 +306,9 @@ function openPreset() {
       input.value = Number(value).toFixed(2);
   }
   el("price-room").open = preset.has("preference");
-  el("mainnet-check").open = preset.get("market") === "mainnet";
+  el("mainnet-check").open = ["mainnet", "early-pay"].includes(preset.get("market"));
+  focusOffer = preset.get("market") === "early-pay";
+  el("offer-result").open = focusOffer;
   estimate();
 }
 window.addEventListener("hashchange", openPreset);
