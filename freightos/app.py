@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, reserve_return, trip_cover
+from freightos import bill, devnet, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -561,6 +561,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/trip-cover":
             self.respond(200, {**trip_cover.saved(), "source": "recorded"})
             return
+        if self.path == "/evidence/fuel-credit":
+            self.reply(200, "application/json", gzip.decompress((freight_credit.DATA / "credit_examples.json.gz").read_bytes()), static=True)
+            return
         if self.path == "/evidence/regional-diesel":
             self.reply(200, "application/json", gzip.decompress(regional_diesel.SNAPSHOT.read_bytes()), static=True)
             return
@@ -626,6 +629,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
+            "/fuel_credit.js": ("fuel_credit.js", "text/javascript"),
             "/trip-cover": ("trip_cover.html", "text/html; charset=utf-8"),
             "/trip_cover.js": ("trip_cover.js", "text/javascript"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
@@ -673,6 +678,17 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/fuel-credit":
+                drop, days, source = data.get("drop"), data.get("days"), data.get("source")
+                freight_credit.terms(drop, days)
+                if source not in ("live", "recorded"):
+                    raise ValueError("Choose a supported credit preview")
+                try:
+                    run = self.server.credit_checks[drop, days].read() if source == "live" else freight_credit.saved(drop, days)
+                    self.respond(200, {**freight_credit.evaluate(run, drop, days), "source": source})
+                except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError, RuntimeError):
+                    self.respond(503, {"error": "The public network could not confirm the loan and fuel payment."})
+                return
             if self.path == "/api/trip-cover":
                 trip = {key: data.get(key) for key in trip_cover.EXAMPLE}
                 trip.update({key: data[key] for key in ("region", "spend_limit_cents", "pump_cash_cents") if key in data})
@@ -753,6 +769,8 @@ def main():
     args = parser.parse_args()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.settlement = LoadSettlement()
+    server.credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: freight_credit.capture(d, t))
+                            for drop in (20, 40, 60) for days in (23, 30)}
     server.trip_books = PublicCheck(trip_cover.capture)
     server.fuel_cover = PublicCheck(fuel_cover.live)
     server.offer_fuel = PublicCheck(fuel_update.live)

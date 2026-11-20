@@ -122,3 +122,8 @@
   .trial-workspace .case { padding: 1.1rem; }
   #load-map { --columns: 8; }
 }
+
+#credit-check { width: 100%; background: var(--citron); color: var(--ink); }
+#credit-status, .public-cover .credit-scope { margin-top: .8rem; font-size: .86rem; }
+#credit-result .spending-result { margin-block: 1.2rem; }
+#credit-result details p { margin-block: .7rem; }
