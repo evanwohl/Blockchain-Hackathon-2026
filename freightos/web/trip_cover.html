@@ -59,7 +59,20 @@
           <div class="trip-fields"><label>First invoice pays after<select id="payday-days">
             <option value="23">23 days · 4 weekly fills</option><option value="30">30 days · 5 weekly fills</option>
           </select></label></div>
-          <p id="payday-terms"></p><dl class="facts" id="payday-cash"></dl>
+          <p id="payday-terms"></p>
+          <details id="payday-cover" hidden><summary>Is oil protection worth buying for these fills?</summary>
+            <p id="payday-cover-summary"></p>
+            <table class="reference-prices"><caption>Extra cash needed through payday if the payout arrives at fill two</caption>
+              <thead><tr><th scope="col">Plan</th><th scope="col">Average</th><th scope="col">Hardest 10%</th></tr></thead>
+              <tbody id="payday-cover-rows"></tbody></table>
+            <div class="trip-fields"><label>Plan to preview<select id="payday-cover-choice">
+              <option value="">Original hedge</option><option value="horizon">Hedge for these fills</option>
+              <option value="cash_mix">Cash only</option><option value="other" hidden disabled>Other selected hedge</option>
+            </select></label></div>
+            <p id="payday-cover-dates"></p><details><summary>See how the plans were compared</summary>
+              <p id="payday-cover-method"></p><p id="payday-cover-shifts"></p>
+              <button type="button" class="secondary" id="payday-cover-download">Download the comparison</button></details>
+          </details><dl class="facts" id="payday-cash"></dl>
           <div id="payday-budget-fields" class="trip-fields"><label>Extra fuel cash I can add each fill ($)
             <input id="payday-weekly" type="number" min="0" max="1000000" step=".01" inputmode="decimal" aria-describedby="payday-budget-help">
           </label></div>
@@ -78,7 +91,7 @@
         <details id="fill-history" hidden><summary>Would my fuel money have lasted in past weeks?</summary>
           <div id="history-choice" class="trip-fields" hidden><label>Plan to preview<select id="history-plan">
             <option value="">Original trip hedge</option><option value="history_mix">Fit for on-time payouts</option>
-            <option value="delay_mix">Fit for one late payout</option><option value="cash_mix">Cash only</option>
+            <option value="delay_mix">Fit for one late payout</option><option value="cash_mix">Cash only</option><option value="payday_23">Fit for four fills</option><option value="payday_30">Fit for five fills</option>
           </select></label></div>
           <table id="history-costs" class="reference-prices" hidden><caption>Average extra cash in the hardest 10% of weeks</caption>
             <thead><tr><th scope="col">Timing</th><th scope="col">Cash only</th><th scope="col">Selected plan</th></tr></thead>

@@ -283,11 +283,53 @@ function showPayday(check, plan) {
   }
   credit.onclick = () => openLoan(needed, {payday: run, budget, onFlex: cents => applyFlex(cents, true)});
   el("payday-method").textContent = "Unused fuel cash carries to the next stop. "
-    + (plan?.legs.length ? "Only the first fill can receive the selected oil payout. Its premium of " + money(run.premium_cents) + " is paid separately. " : "These stops use cash alone. ")
+    + (plan?.legs.length ? (run.payout_stop === 2 ? "One oil payout becomes available at fill two. " : "Only the first fill can receive the selected oil payout. ") + "Its premium of " + money(run.premium_cents) + " is paid separately. " : "These stops use cash alone. ")
     + "We reprice consecutive weekly diesel changes from your starting price. Each estimate covers at least 25 of the last 26 complete historical runs. Training runs overlap. The later checks use separate stretches. New price shocks can exceed the estimate.";
   el("payday-evidence").textContent = runEvidence(run);
   el("payday-download").onclick = () => saveFile("FreightOS-fuel-until-payday.json", JSON.stringify({trip: current.trip,
     quoted_at: current.checked_at, plan: plan || {legs: [], upfront_cents: 0}, weekly_budget: budget, ...run}, null, 2), "application/json");
+}
+
+function showPaydayCover(target, later) {
+  const days = el("payday-days").value;
+  const key = "payday_" + days;
+  const fitted = target?.[key];
+  const report = later && fitted?.horizon;
+  el("payday-cover").hidden = !report;
+  if (!report) return;
+  const scores = report.scores;
+  const names = {cash: "Cash only", original: "Original hedge", fitted: "Hedge for these fills"};
+  const rows = Object.entries(names).map(([name, label]) => {
+    const row = document.createElement("tr");
+    const heading = document.createElement("th");
+    heading.scope = "row";
+    heading.textContent = label;
+    row.append(heading);
+    for (const cents of [scores[name].mean_late_cents, scores[name].late_cents]) {
+      const cell = row.insertCell();
+      cell.textContent = money(cents);
+    }
+    return row;
+  });
+  el("payday-cover-rows").replaceChildren(...rows);
+  const delta = scores.fitted.late_cents - scores.cash.late_cents;
+  el("payday-cover-summary").textContent = "Across " + report.count + " separate historical stretches, the hedge for these fills needed "
+    + (delta ? money(Math.abs(delta)) + (delta < 0 ? " less" : " more") + " cash than going without protection"
+      : "the same cash as going without protection") + " in the hardest tenth. Each amount includes the premium and fees.";
+  el("payday-cover-choice").value = mix === key ? "horizon" : !mix || mix === "cash_mix" ? mix || "" : "other";
+  el("payday-cover-dates").textContent = mix === key ? "Your fuel schedule below waits until fill two to count the payout. The oil contracts would cost "
+    + money(scores.fitted.premium_cents) + " upfront."
+    : mix === "cash_mix" ? "Your schedule below uses cash alone. Previewing a hedge updates the schedule and loan check."
+    : "Your current schedule counts a payout at the first fill. Preview the hedge for these fills to budget for a one-fill delay.";
+  el("payday-cover-method").textContent = "The engine priced positions in 0.01-contract steps at the quoted Gemini prices using " + report.training_count
+    + " earlier, overlapping stretches ending by " + report.trained_through + ". All plans use the same fuel reserve, pump cash and diesel paths. "
+    + "One paper position can pay once. Through payday, extra cash is the upfront price plus the biggest fuel shortfall at any fill. Each plan has its own hardest stretches. Regional diesel and oil-index proxies can differ from actual prices.";
+  const wins = report.starts.filter(r => r.fitted < r.cash).length;
+  el("payday-cover-shifts").textContent = "Starting the later replay in different weeks, the fitted hedge used less hard-stretch cash than cash alone in "
+    + wins + " of " + report.starts.length + " schedules. These schedules share weeks.";
+  el("payday-cover-download").onclick = () => saveFile("FreightOS-hedge-through-payday.json", JSON.stringify({
+    days: Number(days), checked_at: current.checked_at, trip: current.trip, reserve: current.reserve, source: current.source,
+    original: target.plan, fitted: fitted.plan, ...report}, null, 2), "application/json");
 }
 
 function showPastFills(target, selected, later) {
@@ -300,6 +342,7 @@ function showPastFills(target, selected, later) {
   const fundingCheck = target.backup_checks?.[plan?.legs.length ? mix || "original" : "cash_mix"];
   showBackup(fundingCheck, plan, current.trip);
   showPayday(fundingCheck, plan);
+  showPaydayCover(target, later);
   el("fill-history-answer").textContent = "Your fuel money ran short in " + sample.short_weeks + " of "
     + sample.weeks + " weekly scenarios. " + (peak.short_cents ? "The largest gap was " + money(peak.short_cents)
     + " using the price moves from the week ending " + peak.week + "." : "Your budget covered every replayed fill.");
@@ -537,6 +580,7 @@ form.oninput = () => {
 };
 el("history-plan").onchange = event => {
   mix = event.target.value || null;
+  if (mix?.startsWith("payday_")) el("payday-days").value = mix.slice(7);
   render();
 };
 el("usual-gap").onclick = () => {
@@ -570,11 +614,23 @@ el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("record
 document.querySelector(".trip-timing").onchange = () => { if (current) { mix = null; render(); } };
 el("payday-weekly").oninput = () => { if (current) render(); };
 el("payday-flex").oninput = () => { if (current) render(); };
-el("payday-days").onchange = () => { if (current) render(); };
+el("payday-cover-choice").onchange = event => {
+  mix = event.target.value === "horizon" ? "payday_" + el("payday-days").value : event.target.value || null;
+  render();
+};
+el("payday-days").onchange = () => {
+  if (!current) return;
+  if (mix?.startsWith("payday_")) {
+    const key = "payday_" + el("payday-days").value;
+    mix = current.pump_target?.[key] ? key : null;
+  }
+  render();
+};
 function openExample() {
   form.reset();
   const example = new URLSearchParams(location.hash.slice(1));
-  el("payday-run").open = example.has("payday");
+  el("payday-run").open = example.has("payday") || example.has("compare-hedges");
+  el("payday-cover").open = example.has("compare-hedges");
   const weekly = example.get("weekly");
   el("payday-weekly").value = weekly && /^\d{1,7}(\.\d{1,2})?$/.test(weekly) && Number(weekly) <= 1000000 ? Number(weekly).toFixed(2) : "";
   const flex = example.get("flex");

@@ -148,7 +148,7 @@ def funding_risk_problem(offers, gaps, capacity, rows, bounds, caps):
     return rows, caps, objective, integrality
 
 
-def tail_problem(n, caps, rows, bounds, samples, one_late):
+def tail_problem(n, caps, rows, bounds, samples, one_late, first_fill_floor):
     positive = [i for i, (_, need, *_) in enumerate(samples) if need]
     scenarios = (fill_replay.delay_candidates(samples) if one_late else []) or [None]
     start = len(caps)
@@ -170,12 +170,17 @@ def tail_problem(n, caps, rows, bounds, samples, one_late):
             row[threshold] = row[threshold+k] = -1
             rows.append(row)
             bounds.append(-need)
+            if first_fill_floor and samples[i][2]:
+                floor = np.zeros(size)
+                floor[threshold] = floor[threshold+k] = -1
+                rows.append(floor)
+                bounds.append(-samples[i][2])
     objective = np.zeros(size)
     objective[n:3*n], objective[start] = len(samples), 1
     return rows, caps + [np.inf]*(size-start), objective, [1]*start + [0]*(size-start)
 
 
-def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residual=False, risk_capacity=None, risk_limit=None, tail_samples=None, one_late=False):
+def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residual=False, risk_capacity=None, risk_limit=None, tail_samples=None, one_late=False, first_fill_floor=False):
     gap = gaps[-1]
     empty = {"cash_cents": gap, "upfront_cents": 0, "residual_cents": gap, "legs": []}
     n = len(offers)
@@ -222,7 +227,7 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residu
             objective = np.zeros(len(caps))
             objective[3*n] = 1
     if tail_samples:
-        rows, caps, objective, integrality = tail_problem(n, caps, rows, bounds, tail_samples, one_late)
+        rows, caps, objective, integrality = tail_problem(n, caps, rows, bounds, tail_samples, one_late, first_fill_floor)
     constraints = LinearConstraint(rows, -np.inf, bounds)
     sol = milp(objective, integrality=integrality, bounds=Bounds(0, caps), constraints=constraints,
                options={"mip_rel_gap": 0, "time_limit": 3})
@@ -259,6 +264,8 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residu
     if tail_samples:
         payouts = list(accumulate(lots, initial=0))
         misses = [max(0, need - payouts[band]) for band, need, *_ in tail_samples]
+        if first_fill_floor:
+            misses = [max(row[2], miss) for row, miss in zip(tail_samples, misses, strict=True)]
         tail = fill_replay.worst_single_delay(tail_samples, misses)[0] if one_late else fill_replay.tail_sum(misses)
         measured = upfront * len(misses) + tail
     if abs(measured - sol.fun) > .001 or (fuel_cash is not None and residual > fuel_cash):
@@ -405,10 +412,12 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
     checks = {}
     fill_day = expiry + timedelta(days=offsets[1]) if offsets else as_of + timedelta(days=(-as_of.weekday()) % 7)
 
-    def backup_check(plan, gaps):
+    def backup_check(plan, gaps, horizon=None):
         check = backup.estimate(later, gaps, as_of)
         if check:
-            check["payday"] = {days: payday.estimate(later, trip, fuel_cash, offers, plan, as_of, days) for days in (23, 30)}
+            check["payday"] = {days: payday.estimate(later, trip, fuel_cash, offers, plan, as_of, days,
+                                                     payout_stop=2 if horizon else 1)
+                               for days in ((horizon,) if horizon else (23, 30))}
             check["volatility"] = fuel_volatility.compare(check, later, trip, offers, plan, anchor, fuel_cash, offsets, fill_day)
         return check
 
@@ -417,7 +426,7 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
         checks["cash_mix"] = cash_check
         target["backup_checks"] = checks
 
-    def replay(plan, name):
+    def replay(plan, name, horizon=None):
         window = {"from": reference.isoformat(), "to": expiry.isoformat()} if offsets else None
         after = fill_replay.summary(later, offers, plan)
         after["one_late"] = fill_replay.one_late_summary(later, offers, plan)
@@ -426,7 +435,7 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
             if offsets:
                 after["pump_value"] = pump_price_check(later, offers, plan, trip, expiry + timedelta(days=offsets[1]), as_of)
             if cash_check:
-                checks[name] = backup_check(plan, ready)
+                checks[name] = backup_check(plan, ready, horizon)
             after["delays"] = fill_replay.delay_threshold(ready, [row[1] for row in later], plan["upfront_cents"])
         return {"before": cash, "after": after, "oil_window": window}
 
@@ -445,6 +454,15 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
     if not early:
         return
     residual_cap = base["residual_cents"] + trip["pump_mills"] // 10
+
+    def preview(candidate, name, horizon=None):
+        residual = candidate["residual_cents"]
+        draw = min(residual, fuel_cash)
+        short = max(0, residual - capacity)
+        return {"plan": candidate, "after": {"reserve_cents": draw, "outside_cents": residual-draw, "short_cents": short},
+                "protection_change": protection_change(offers, gaps, capacity, candidate, loan_free) if short and loan_free else None,
+                "fill_replay": replay(candidate, name, horizon)}
+
     for key, one_late in (("history_mix", False), ("delay_mix", True)):
         candidate = portfolio(offers, gaps, fuel_cash=residual_cap, spend_limit=base["upfront_cents"],
                               tail_samples=early, one_late=one_late)
@@ -455,19 +473,28 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
         fitted = evaluate(early, offers, candidate)["tail_cash_cents"]
         if fitted >= original:
             continue
-        residual = candidate["residual_cents"]
-        draw = min(residual, fuel_cash)
-        short = max(0, residual - capacity)
-        change = None
-        if short and loan_free:
-            change = protection_change(offers, gaps, capacity, candidate, loan_free)
-        choice = {"plan": candidate, "training_weeks": len(early), "short_training_weeks": sum(row[1] > 0 for row in early),
-                  "original_train_cents": original,
-                  "train_cents": fitted, "after": {"reserve_cents": draw, "outside_cents": residual-draw, "short_cents": short},
-                  "protection_change": change, "fill_replay": replay(candidate, key)}
+        choice = {**preview(candidate, key), "training_weeks": len(early), "short_training_weeks": sum(row[1] > 0 for row in early),
+                  "original_train_cents": original, "train_cents": fitted}
         if not one_late:
             choice["sensitivity"] = fill_replay.month_sensitivity(later, offers, base, candidate)
         target[key] = choice
+
+    cutoff = datetime.fromisoformat(regional_diesel.TEST_START).date() - timedelta(days=1)
+    for days in (23, 30):
+        stops = (days + 6) // 7
+        train = payday.hedge_paths(early, trip, fuel_cash, offers, stops, cutoff)
+        if len(train) < backup.WINDOW:
+            continue
+        candidate = portfolio(offers, gaps, fuel_cash=residual_cap, spend_limit=base["upfront_cents"],
+                              tail_samples=train, first_fill_floor=True)
+        if not candidate or not candidate["legs"]:
+            continue
+        future = payday.hedge_paths(later, trip, fuel_cash, offers, stops, as_of - backup.WEEK)
+        report = payday.hedge_replay(train, future, stops, offers, {"cash": cash_plan, "original": base, "fitted": candidate})
+        if not report or report["scores"]["fitted"]["training"]["late_cents"] >= report["scores"]["original"]["training"]["late_cents"]:
+            continue
+        name = f"payday_{days}"
+        target[name] = {**preview(candidate, name, days), "horizon": report}
 
 
 def analyze(snapshot, trip, *, reserve=None):

@@ -3,7 +3,7 @@ import gzip
 import hashlib
 import json
 from contextlib import suppress
-from functools import cache
+from functools import cache, lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock, RLock
@@ -20,6 +20,16 @@ from hedging.quick_pay import integer, price_calendar
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
 ASSETS = Path(__file__).with_name("web")
+
+
+@lru_cache(maxsize=16)
+def recorded_trip(inputs, road):
+    reserve = None
+    if road is not None:
+        saved = next_stop.saved()
+        reserve = {"available_cents": saved["available_raw"] // saved["raw_units_per_cent"],
+                   "road_cents": road, "slot": saved["slot"]}
+    return trip_cover.analyze(trip_cover.recorded(), dict(inputs), reserve=reserve)
 
 
 @cache
@@ -783,17 +793,17 @@ class Handler(BaseHTTPRequestHandler):
                 if source not in ("live", "recorded"):
                     raise ValueError("Unknown market source")
                 try:
-                    snapshot = self.server.trip_books.read() if source == "live" else trip_cover.recorded()
-                    reserve = None
-                    if road is not None:
-                        if source == "live":
+                    if source == "recorded":
+                        result = recorded_trip(tuple(sorted(trip.items())), road)
+                    else:
+                        snapshot = self.server.trip_books.read()
+                        reserve = None
+                        if road is not None:
                             budget = next_stop.reserve_budget(self.server.public_payment.read(), self.server.public_offer.read(), devnet.request)
-                            raw = budget["return_raw"]
-                        else:
-                            budget = next_stop.saved()
-                            raw = budget["available_raw"]
-                        reserve = {"available_cents": raw // budget["raw_units_per_cent"], "road_cents": road, "slot": budget["slot"]}
-                    self.respond(200, {**trip_cover.analyze(snapshot, trip, reserve=reserve), "source": source})
+                            reserve = {"available_cents": budget["return_raw"] // budget["raw_units_per_cent"],
+                                       "road_cents": road, "slot": budget["slot"]}
+                        result = trip_cover.analyze(snapshot, trip, reserve=reserve)
+                    self.respond(200, {**result, "source": source})
                 except diesel_model.CalibrationUnavailable as exc:
                     self.respond(422, {"error": str(exc)})
                 except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError):
