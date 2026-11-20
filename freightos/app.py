@@ -639,8 +639,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/credit-exits":
             self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
             return
-        if self.path == "/evidence/atomic-fuel":
-            self.reply(200, "application/json", gzip.decompress(atomic_fuel.SAMPLE.read_bytes()), static=True)
+        if self.path in ("/evidence/atomic-fuel", "/evidence/atomic-late"):
+            artifact = atomic_fuel.LATE_SAMPLE if self.path.endswith("-late") else atomic_fuel.SAMPLE
+            self.reply(200, "application/json", gzip.decompress(artifact.read_bytes()), static=True)
             return
         if self.path == "/evidence/reserve-credit":
             self.reply(200, "application/json", gzip.decompress(reserve_credit.SNAPSHOT.read_bytes()), static=True)
@@ -839,18 +840,28 @@ class Handler(BaseHTTPRequestHandler):
                 freight_credit.terms(drop, days)
                 if source not in ("live", "recorded"):
                     raise ValueError("Choose a supported credit preview")
+                protect = data.get("protect_payday", False)
+                if type(protect) is not bool:
+                    raise ValueError("Choose a supported payday assumption")
+                fee = integer(data.get("offer_fee_cents", 1000), "early payment fee", reserve_credit.INVOICE_CENTS)
+                other = integer(data.get("other_cents", 0), "other borrowing costs", 100_000_000)
                 if self.path == "/api/atomic-fuel/prepare" and (source != "live" or data.get("address") != str(freight_credit.OWNER)):
                     raise ValueError("Connect the demo carrier that owns the two reserve receipts")
                 try:
                     if self.path == "/api/atomic-fuel/prepare":
-                        quote = atomic_fuel.live(drop, days, prepare=True)
+                        quote = atomic_fuel.live(drop, days, prepare=True, protect=protect)
                     elif self.path == "/api/atomic-fuel":
-                        quote = self.server.atomic_checks[drop, days].read() if source == "live" else atomic_fuel.saved(drop, days)
+                        quote = self.server.atomic_checks[drop, days, protect].read() if source == "live" else atomic_fuel.saved(drop, days, protect)
                     elif self.path == "/api/reserve-credit":
                         quote = self.server.reserve_credit_checks[drop, days].read() if source == "live" else reserve_credit.saved(drop, days)
                     else:
                         run = self.server.credit_checks[drop, days].read() if source == "live" else freight_credit.saved(drop, days)
                         quote = freight_credit.evaluate(run, drop, days)
+                    if self.path.startswith("/api/atomic-fuel"):
+                        decision = atomic_fuel.compare_offer(quote, fee, other)
+                        quote = {**quote, "offer": decision}
+                        if decision["choice"] != "loan":
+                            quote.pop("transaction", None)
                     self.respond(200, {**quote, "source": source})
                 except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError, RuntimeError):
                     self.respond(503, {"error": "The public network could not confirm the loan and fuel payment."})
@@ -981,8 +992,8 @@ def main():
     server.trip_credit_lock = Lock()
     server.credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: freight_credit.capture(d, t))
                             for drop in (20, 40, 60) for days in (23, 30)}
-    server.atomic_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: atomic_fuel.live(d, t))
-                            for drop, days in server.credit_checks}
+    server.atomic_checks = {(drop, days, protect): PublicCheck(lambda d=drop, t=days, p=protect: atomic_fuel.live(d, t, protect=p))
+                           for drop, days in server.credit_checks for protect in (False, True)}
     server.reserve_credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: reserve_credit.live(d, t))
                                   for drop, days in server.credit_checks}
     server.settled_credit = PublicCheck(lambda: load_credit.settled(devnet.request))

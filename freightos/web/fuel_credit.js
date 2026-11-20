@@ -79,8 +79,11 @@ function displaySplit(d) {
 
 function displayCombined(d) {
   const reserve = money(d.reserve_raw / d.scale), debt = money(d.borrow_raw / d.scale);
-  el("credit-heading").textContent = "One fuel payment";
-  el("combined-wallet-link").href = "/load#combined?days=" + d.days + "&drop=" + d.drop;
+  const stress = d.payday_stress, offer = d.offer;
+  const target = new URLSearchParams({days: d.days, drop: d.drop, late: Number(stress.protected), fee: offer.fee_cents, other: offer.other_cents});
+  el("combined-wallet-link").href = "/load#combined?" + target;
+  el("combined-wallet-link").hidden = offer.choice !== "loan";
+  el("combined-download").href = stress.protected ? "/evidence/atomic-late" : "/evidence/atomic-fuel";
   el("combined-total").textContent = money(d.bill_cents);
   el("combined-sources").textContent = reserve + " from your reserve and " + debt + " borrowed against SOL. Both sources pay the vendor together.";
   el("combined-bar").style.width = (100 * d.reserve_raw / d.vendor_raw) + "%";
@@ -90,9 +93,36 @@ function displayCombined(d) {
   el("combined-failure").textContent = "If either source fails, your reserve stays put, no debt opens and you still owe the full bill. A submitted attempt can still cost a network fee.";
   el("combined-terms").textContent = "At demo scale the pledge is " + sol(d.pledge_lamports) + " on Devnet. The payment needs "
     + sol(d.setup_lamports) + " for loan account setup. Its network fee is " + sol(d.fee_lamports) + ".";
-  el("combined-comparison").textContent = "Taking the $200 freight invoice early costs " + money(d.early_pay_fee_cents)
-    + ". Borrowing costs an estimated " + money(d.interest_cents) + " plus " + money(d.missed_yield_cents)
-    + " in missed reserve earnings. " + (d.cost_room_cents > 0 ? "Other costs could reach " + money(d.cost_room_cents) + " before the two choices tie." : "The combined plan already reaches or exceeds the invoice fee.");
+  const early = offer.choice === "early", short = offer.choice === "short";
+  const choice = early ? "Take the early freight payment" : short ? "Both plans leave a gap" : "Use the reserve and loan";
+  el("credit-heading").textContent = choice;
+  el("combined-choice").textContent = "What the two options cost";
+  el("combined-failure-title").textContent = "If the money falls short";
+  if (early || short) {
+    el("combined-label").textContent = early ? "Cash from the early invoice" : "Fuel still due with early pay";
+    el("combined-total").textContent = money(early ? offer.early_net_cents : offer.shortfall_cents);
+    el("combined-sources").textContent = early ? "Confirm the early date with your customer, then pay the vendor from the invoice proceeds."
+      : "The early invoice does not cover all the fuel. The loan would leave too little cash on payday.";
+    facts(el("combined-facts"), early ? [["Pay the vendor", money(d.bill_cents)], ["Cash left after fuel", money(offer.early_net_cents - d.bill_cents)], ["SOL to pledge", "None"]]
+      : [["Fuel-day gap with early pay", money(offer.shortfall_cents)], ["Payday gap with the loan", money(-offer.payday_cash_cents)]]);
+    el("combined-failure-title").textContent = early ? "Before you rely on the payment" : "What needs to change";
+    el("combined-failure").textContent = early ? "The offer assumes cleared cash by the fuel stop. The customer still needs to confirm those terms."
+      : "Ask for a lower early-pay fee or identify cash that can cover the shortfall.";
+    el("combined-choice").textContent = "How the loan compares";
+  } else {
+    el("combined-label").textContent = "Fuel vendor would receive";
+  }
+  el("combined-bar").parentElement.hidden = early || short;
+  const costs = "Loan costs of " + money(offer.loan_cost_cents) + " include interest, missed reserve earnings and the expenses entered. Early pay costs " + money(offer.fee_cents) + ".";
+  const limit = offer.payday_cash_cents < 0 ? "The loan is also short " + money(-offer.payday_cash_cents) + " after repayment and reserve refill."
+    : "After loan payoff, reserve refill and cash expenses, the invoice leaves " + money(offer.payday_cash_cents) + ".";
+  el("combined-comparison").textContent = costs + " " + limit + " The highest early-pay fee this plan would accept is " + money(offer.early_fee_ceiling_cents) + ".";
+  el("combined-payday").textContent = stress.protected
+    ? "If freight pays on day " + stress.days + " after borrowing and the rate doubles, estimated payoff is " + money(stress.repay_cents) + ". The loan plan pledges "
+      + sol(d.pledge_lamports - stress.ordinary_pledge_lamports) + " extra in test collateral to keep its safety margin."
+    : "If the check takes another week and the borrowing rate doubles, estimated repayment rises to " + money(stress.repay_cents) + ".";
+  el("combined-terms").textContent += " Of the setup deposit, " + sol(d.obligation_rent_lamports) + " funds the loan account and "
+    + sol(d.profile_rent_lamports) + " funds the borrower profile. Closing the loan releases the loan account deposit.";
   el("combined-risk").textContent = "The loan is sized for a " + d.drop + "% SOL drop. Falling collateral can be liquidated. The "
     + money(d.interest_cents) + " projected borrowing cost assumes today’s rate through payday. The three-gallon target uses the recorded Gemini $" + d.holdback.threshold + " oil scenario.";
   el("combined-proof").textContent = "Unsigned public Devnet simulation at slot " + d.slot.toLocaleString("en-US") + ". The vendor received "
@@ -105,6 +135,14 @@ async function compare(source) {
   const route = el("credit-route").value;
   const split = route === "reserve", combined = route === "combined";
   const body = { drop: Number(el("credit-drop").value), days: Number(el("credit-days").value), source };
+  el("combined-settings").hidden = !combined;
+  for (const id of ["offer-fee", "offer-other", "protect-payday"]) el(id).disabled = !combined;
+  if (combined) {
+    el("credit-check").disabled = false;
+    if (!el("credit-form").reportValidity()) { el("credit-status").textContent = "Check the offer amounts."; return; }
+    Object.assign(body, {protect_payday: el("protect-payday").checked,
+      offer_fee_cents: Math.round(el("offer-fee").valueAsNumber * 100), other_cents: Math.round(el("offer-other").valueAsNumber * 100)});
+  }
   const button = el("credit-check");
   button.disabled = true;
   el("credit-status").textContent = source === "live" ? "Checking collateral, loan and vendor payment on Devnet…" : "Opening the recorded simulation…";
@@ -114,7 +152,7 @@ async function compare(source) {
     if (combined) displayCombined(data);
     else if (split) displaySplit(data);
     else display(data);
-    el("credit-jump").textContent = combined ? "See the full fuel payment ↓" : split ? "See the " + money(data.borrow_cents) + " loan and " + money(data.reserve_cents) + " reserve payment ↓" : "See the " + money(data.cost_cents) + " financing estimate ↓";
+    el("credit-jump").textContent = combined ? "See the funding decision ↓" : split ? "See the " + money(data.borrow_cents) + " loan and " + money(data.reserve_cents) + " reserve payment ↓" : "See the " + money(data.cost_cents) + " financing estimate ↓";
     el("credit-jump").hidden = false;
     const time = new Date(data.checked_at).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" });
     el("credit-status").textContent = (source === "live" ? "Public Devnet check" : "Recorded Devnet check") + (combined ? " · slot " + data.slot.toLocaleString("en-US") : " · " + time + " UTC");

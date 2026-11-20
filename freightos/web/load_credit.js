@@ -175,12 +175,16 @@ export function setupLoadCredit(inputs, form) {
     const days = Number(query.get("days") || 23), drop = Number(query.get("drop") || 40);
     status("Checking both funding sources on Devnet…");
     try {
-      const q = await request("/api/atomic-fuel/prepare", {address: account.address, source: "live", days, drop}, AbortSignal.timeout(90000));
+      const q = await request("/api/atomic-fuel/prepare", {address: account.address, source: "live", days, drop,
+        protect_payday: query.get("late") === "1", offer_fee_cents: Number(query.get("fee") ?? 1000), other_cents: Number(query.get("other") ?? 0)}, AbortSignal.timeout(90000));
       if (revision !== version || q.borrower !== account.address) return;
+      if (q.offer.choice !== "loan") {
+        status(q.offer.choice === "early" ? "At the current quote, use the early freight payment. Confirm its date with your customer." : "These terms leave a shortfall. Return to the comparison before arranging funds."); return;
+      }
       facts(el("combined-review"), [["Vendor receives", usdc(q.vendor_raw)], ["From reserve", usdc(q.reserve_raw)],
         ["New debt principal", usdc(q.borrow_raw)], ["Test SOL pledged", sol(q.pledge_lamports)],
         ["Loan account setup", sol(q.setup_lamports)], ["Network fee", sol(q.fee_lamports)],
-        ["Projected repayment in " + days + " days", money(q.repay_cents) + " at sample scale"], ["Vendor account", q.vendor]]);
+        ["Projected repayment in " + days + " days", money(q.repay_cents) + " at sample scale"], ...(q.payday_stress.protected ? [["Repay in the late, double-rate case", money(q.payday_stress.repay_cents) + " at sample scale"]] : []), ["Vendor account", q.vendor]]);
       status("Both sources must clear together. Review the amounts before approving.");
       review({...q, address: q.borrower}, "combined");
     } catch (err) { if (revision === version) status(err.message); }

@@ -112,7 +112,7 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor
 
 
 def evaluate_deltas(run, drop, days, advance, step, destination, keys, borrower, obligation_key, check_supply,
-                    *, reserve_paid=0, change_returned=0):
+                    *, reserve_paid=0, change_returned=0, rate_multiplier=1):
     value = run["response"]["value"]
     collateral = run["collateral"]
     proof = json.loads(devnet.SAMPLE.read_text())
@@ -147,7 +147,7 @@ def evaluate_deltas(run, drop, days, advance, step, destination, keys, borrower,
     principal = Decimal(uint(obligation, 1296)) / UNIT
     if price <= 0 or stable_price <= 0 or abs(pledged - price * collateral / LAMPORTS) > Decimal(".00001") or principal < advance:
         raise ValueError("Debt or collateral value differs from the payment")
-    apr = configured_rate(debt)
+    apr = configured_rate(debt) * rate_multiplier
     repayment = principal * (apr * days / 365).exp()
     factor = Decimal(uint(debt, 5008, 8)) / 100
     initial, liquidation = backing[4872], backing[4873]

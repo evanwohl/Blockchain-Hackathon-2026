@@ -58,3 +58,31 @@ def test_payoff_reconstructs_only_the_combined_opening():
 
     with pytest.raises(ValueError, match="signed combined payment"):
         load_credit.opening(str(tx.signatures[0]), fuel.credit.OWNER, unsigned)
+
+
+@pytest.mark.parametrize("days", [23, 30])
+@pytest.mark.parametrize("drop", [20, 40, 60])
+def test_one_pledge_covers_both_paydays(days, drop):
+    q = fuel.saved(drop, days, True)
+    stress = q["payday_stress"]
+    assert stress["days"] == days + 7 and stress["repay_cents"] > q["repay_cents"]
+    assert stress["protected"] and q["pledge_lamports"] == stress["required_lamports"]
+    assert q["pledge_lamports"] >= stress["ordinary_pledge_lamports"]
+    assert stress["stress_ltv_bps"] <= stress["target_ltv_bps"]
+    accepted = fuel.snapshot(True)["cases"][f"{drop}-{days}"][-3]
+    tx = VersionedTransaction.from_bytes(base64.b64decode(accepted["params"][0]))
+    assert fuel.opening_amounts(tx.message, accepted["response"]["value"], fuel.credit.OWNER) == (q["pledge_lamports"], q["borrow_raw"])
+
+
+def test_customer_fee_and_payday_cash_boundaries():
+    q = fuel.saved(40, 23, True)
+    assert q["setup_lamports"] == q["obligation_rent_lamports"] + q["profile_rent_lamports"]
+    assert q["payday_stress"]["repay_cents"] == 17369
+    for fee, other, choice, cash in [(319, 0, "early", 687), (320, 0, "loan", 687),
+                                    (1001, 687, "loan", 0), (1001, 688, "short", -1),
+                                    (1000, 688, "early", -1)]:
+        result = fuel.compare_offer(q, fee, other)
+        assert (result["choice"], result["payday_cash_cents"]) == (choice, cash)
+    assert fuel.compare_offer(fuel.saved(40, 23), 320, 0)["loan_cost_cents"] == 124
+    with pytest.raises(ValueError):
+        fuel.compare_offer(q, 20001, 0)

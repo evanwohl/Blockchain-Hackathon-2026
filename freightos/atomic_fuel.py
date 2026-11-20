@@ -16,8 +16,10 @@ from solders.transaction import VersionedTransaction
 
 from freightos import devnet, freight_credit as credit, funding, next_stop, public_offer, reserve_credit
 from freightos.reserve import payment_instructions
+from hedging.quick_pay import integer
 
 SAMPLE = credit.DATA / "atomic_fuel.json.gz"
+LATE_SAMPLE = credit.DATA / "atomic_late.json.gz"
 LOAD = "FOS-RESERVE-LOAN-190"
 
 
@@ -77,14 +79,25 @@ def price(reserve, collateral, rent, block, slot, drop, days, rpc):
             or after < reserve["retained_shares_raw"] or value["preBalances"][i] or value["postBalances"][i]
             or vault_before - vault_after != reserve["vendor_raw"] + reserve["wallet_increase_raw"]):
         raise ValueError("Vault shares, isolated payment funds or the next-stop reserve do not reconcile")
-    q = credit.evaluate_deltas({"collateral": collateral, "response": result, "checked_at": ""}, drop, days,
-                               reserve["shortfall_raw"], reserve_credit.PLEDGE_STEP, "vendor", keys, plan.payer,
-                               Pubkey.from_string(credit.route()["obligation"]), True, reserve_paid=reserve["vendor_raw"],
-                               change_returned=reserve["wallet_increase_raw"])
+    def project(horizon, rate_multiplier):
+        return credit.evaluate_deltas({"collateral": collateral, "response": result, "checked_at": ""}, drop, horizon,
+                                     reserve["shortfall_raw"], reserve_credit.PLEDGE_STEP, "vendor", keys, plan.payer,
+                                     Pubkey.from_string(credit.route()["obligation"]), True, reserve_paid=reserve["vendor_raw"],
+                                     change_returned=reserve["wallet_increase_raw"], rate_multiplier=rate_multiplier)
+    q = project(days, 1)
+    q["late"] = project(days + 7, 2)
+
+    obligation = keys.index(Pubkey.from_string(credit.route()["obligation"]))
+    metadata = keys.index(Pubkey.from_string(credit.route()["ixs"][4]["a"][2][0]))
+    q["obligation_rent"] = value["postBalances"][obligation] - value["preBalances"][obligation]
+    q["profile_rent"] = value["postBalances"][metadata] - value["preBalances"][metadata]
+    if min(q["obligation_rent"], q["profile_rent"]) <= 0 or q["obligation_rent"] + q["profile_rent"] != q["setup_lamports"]:
+        raise ValueError("The loan account deposits do not match the carrier's setup funds")
+
     return q, size
 
 
-def terms(reserve, drop, days, rpc, *, prepare=False):
+def terms(reserve, drop, days, rpc, *, prepare=False, protect=False):
     credit.terms(drop, days)
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("Use public Solana Devnet for this payment")
@@ -96,9 +109,10 @@ def terms(reserve, drop, days, rpc, *, prepare=False):
     for _ in range(4):
         q, size = price(reserve, pledge, rent, block, slot, drop, days, rpc)
         slot = q["slot"]
-        if q["minimum_lamports"] == pledge:
+        required = max(q["minimum_lamports"], q["late"]["minimum_lamports"]) if protect else q["minimum_lamports"]
+        if required == pledge:
             break
-        pledge = q["minimum_lamports"]
+        pledge = required
     else:
         raise ValueError("Collateral prices moved while sizing the combined payment")
     msg, _, vendor_index, refused, _ = simulate(reserve, pledge, rent, block, slot, rpc, reject=True)
@@ -121,9 +135,14 @@ def terms(reserve, drop, days, rpc, *, prepare=False):
             or balance["vendor"][1] != reserve["vendor_raw"] + reserve["shortfall_raw"]):
         raise ValueError("The remaining shares do not cover the next stop")
     total = reserve["fuel_cents"] * reserve["raw_units_per_cent"]
-    yield_quote = funding.refill_cost(json.loads((funding.DATA / "case_report.json").read_bytes()), days)
+    report = json.loads((funding.DATA / "case_report.json").read_bytes())
     redeemed_cents = Decimal(reserve["vendor_raw"] + reserve["wallet_increase_raw"]) / reserve["raw_units_per_cent"]
-    missed = credit.ceiling(redeemed_cents * ((1 + Decimal(yield_quote["apy"])) ** (Decimal(days) / 365) - 1))
+    def forgone_yield(horizon):
+        apy = Decimal(funding.refill_cost(report, horizon)["apy"])
+        return credit.ceiling(redeemed_cents * ((1 + apy) ** (Decimal(horizon) / 365) - 1))
+    missed = forgone_yield(days)
+    late = q["late"]
+    delayed_cost = late["cost_cents"] + forgone_yield(days + 7)
     early_pay_fee = reserve_credit.INVOICE_CENTS - reserve["fuel_cents"]
     prepared = {}
     if prepare:
@@ -133,13 +152,37 @@ def terms(reserve, drop, days, rpc, *, prepare=False):
         prepared = {"transaction": base64.b64encode(bytes(VersionedTransaction.populate(msg, [Signature.default()]))).decode(),
                     "last_valid_height": validity["lastValidBlockHeight"], "borrower": str(credit.OWNER),
                     "vendor": str(next_stop.payment().destination)}
-    return {**prepared, "bill_cents": reserve["fuel_cents"], "scale": reserve["raw_units_per_cent"], "vendor_raw": total,
+    stress = {"protected": protect, "days": days + 7, "repay_cents": late["repay_cents"],
+              "cost_cents": delayed_cost, "rate_bps": late["rate_bps"], "original_rate_bps": q["rate_bps"],
+              "ordinary_pledge_lamports": q["minimum_lamports"], "required_lamports": late["minimum_lamports"],
+              "stress_ltv_bps": late["stress_ltv_bps"], "target_ltv_bps": (late["liquidation_pct"] - 10) * 100}
+    return {**prepared, "payday_stress": stress, "bill_cents": reserve["fuel_cents"], "scale": reserve["raw_units_per_cent"], "vendor_raw": total,
             "reserve_raw": reserve["vendor_raw"], "borrow_raw": reserve["shortfall_raw"], "retained_raw": retained,
             "holdback": reserve["holdback"], "repay_cents": q["repay_cents"], "pledge_lamports": pledge,
-            "setup_lamports": q["setup_lamports"], "fee_lamports": q["fee_lamports"], "slot": slot,
+            "setup_lamports": q["setup_lamports"], "obligation_rent_lamports": q["obligation_rent"],
+            "profile_rent_lamports": q["profile_rent"], "fee_lamports": q["fee_lamports"], "slot": slot,
             "interest_cents": q["cost_cents"], "missed_yield_cents": missed, "early_pay_fee_cents": early_pay_fee,
             "cost_room_cents": early_pay_fee - q["cost_cents"] - missed, "remainder_slot": follow["context"]["slot"],
             "refused_slot": refused["context"]["slot"], "wire_bytes": size, "days": days, "drop": drop}
+
+
+def compare_offer(quote, fee_cents, other_cents):
+    invoice = reserve_credit.INVOICE_CENTS
+    fee = integer(fee_cents, "early payment fee", invoice)
+    other = integer(other_cents, "other borrowing costs", 100_000_000)
+    ordinary = quote["interest_cents"] + quote["missed_yield_cents"]
+    late = quote["payday_stress"]
+    loan_cost = other + (max(ordinary, late["cost_cents"]) if late["protected"] else ordinary)
+    net = invoice - fee
+    payoff = max(quote["repay_cents"], late["repay_cents"]) if late["protected"] else quote["repay_cents"]
+    refill = credit.ceiling(Decimal(quote["reserve_raw"]) / quote["scale"])
+    payday = invoice - payoff - refill - other
+    fuel_room = invoice - quote["bill_cents"]
+    ceiling = min(loan_cost, fuel_room) if payday >= 0 else fuel_room
+    choice = "early" if fee <= ceiling else "loan" if payday >= 0 else "short"
+    return {"choice": choice, "payday_cash_cents": payday, "fee_cents": fee, "other_cents": other,
+            "early_net_cents": net, "shortfall_cents": max(0, quote["bill_cents"] - net),
+            "loan_cost_cents": loan_cost, "early_fee_ceiling_cents": ceiling}
 
 
 def opening_amounts(msg, meta, owner):
@@ -183,56 +226,57 @@ def record(calls, rpc):
     return observe
 
 
-def replay(reserve, drop, days, calls):
+def replay(reserve, drop, days, calls, *, protect=False):
     rows = iter(calls)
     def read(method, params):
         row = next(rows, None)
         if row is None or method != row["method"] or params != row["params"]:
             raise ValueError("The recorded transaction differs from the payment")
         return row["response"]
-    result = terms(reserve, drop, days, read)
+    result = terms(reserve, drop, days, read, protect=protect)
     if next(rows, None) is not None:
         raise ValueError("Unexpected calls after the combined payment")
     return result
 
 
 @cache
-def snapshot():
-    return json.loads(gzip.decompress(SAMPLE.read_bytes()))
+def snapshot(protect=False):
+    return json.loads(gzip.decompress((LATE_SAMPLE if protect else SAMPLE).read_bytes()))
 
 
 @cache
-def saved_reserve():
-    return reserve_credit.replay_reserve(snapshot()["reserve"])
+def saved_reserve(protect=False):
+    return reserve_credit.replay_reserve(snapshot(protect)["reserve"])
 
 
 @cache
-def saved(drop, days):
+def saved(drop, days, protect=False):
     credit.terms(drop, days)
-    return replay(saved_reserve(), drop, days, snapshot()["cases"][f"{drop}-{days}"])
+    return replay(saved_reserve(protect), drop, days, snapshot(protect)["cases"][f"{drop}-{days}"], protect=protect)
 
 
-def live(drop, days, rpc=devnet.request, *, prepare=False):
+def live(drop, days, rpc=devnet.request, *, prepare=False, protect=False):
     credit.terms(drop, days)
-    return terms(reserve_credit.reserve_leg(rpc), drop, days, rpc, prepare=prepare)
+    return terms(reserve_credit.reserve_leg(rpc), drop, days, rpc, prepare=prepare, protect=protect)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Verify a combined Kamino fuel payment simulation")
     parser.add_argument("evidence", type=Path, nargs="?")
+    parser.add_argument("--protect-payday", action="store_true", help="Size the pledge for seven extra days at twice the quoted rate")
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--unsigned-out", type=Path, help="Save a fresh Devnet transaction for the demo carrier")
     parser.add_argument("--drop", type=int, default=40, choices=(20, 40, 60))
     parser.add_argument("--days", type=int, default=23, choices=(23, 30))
     args = parser.parse_args()
     if args.live:
-        result = live(args.drop, args.days, prepare=bool(args.unsigned_out))
+        result = live(args.drop, args.days, prepare=bool(args.unsigned_out), protect=args.protect_payday)
         if args.unsigned_out:
             args.unsigned_out.write_bytes(base64.b64decode(result.pop("transaction")))
     else:
         if args.unsigned_out:
             parser.error("--unsigned-out requires --live")
-        sample = json.loads(args.evidence.read_bytes()) if args.evidence else snapshot()
+        sample = json.loads(args.evidence.read_bytes()) if args.evidence else snapshot(args.protect_payday)
         result = replay(reserve_credit.replay_reserve(sample["reserve"]), args.drop, args.days,
-                        sample["cases"][f"{args.drop}-{args.days}"])
+                        sample["cases"][f"{args.drop}-{args.days}"], protect=args.protect_payday or sample.get("protected_payday") is True)
     print(json.dumps(result, indent=2))
