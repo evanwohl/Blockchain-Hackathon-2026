@@ -133,6 +133,10 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
                                      topup_limit=topup, wallet_spare=spare)
             row["cash_payoff"]["midtrip"] = decision
             alternative = decision.get("topup", {})
+            sale = alternative.get("sale")
+            if sale:
+                floor = Fraction(midprice * (10_000 - drop), 10_000) if drop else None
+                sale["outcomes"] = midtrip.sale_outcomes(sale, alternative["payday_cents"], path, midprice, floor)
             if alternative.get("deposit_limit_lamports") and partial_payment.matches_opening(row):
                 payment = alternative["payment_cents"] * partial_payment.SCALE
                 added = alternative["deposit_limit_lamports"] // partial_payment.SCALE
@@ -141,6 +145,14 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
                     record = partial_payment.RECORDS.get((payment, added))
                     if record:
                         alternative["evidence"] = "/evidence/" + record[0]
+                if sale and sale["payment_cents"] * partial_payment.SCALE < partial_payment.bill.LOAN:
+                    cap_test = sale["max_lamports"] // partial_payment.SCALE
+                    if 0 < cap_test <= 10_000_000:
+                        sale["preview"] = dict(payment_cents=sale["payment_cents"], output_cents=sale["output_cents"], sale_cap=cap_test)
+                        record = partial_payment.SALES.get((sale["payment_cents"]*partial_payment.SCALE,
+                                                            sale["output_cents"]*partial_payment.SCALE, cap_test))
+                        if record:
+                            sale["evidence"] = "/evidence/" + record[0]
             if drop:
                 amount = partial_payment.matching_payment(row, decision)
                 if amount:
@@ -155,16 +167,26 @@ def selected_topup(data):
     plan = data.get("plan")
     if not isinstance(plan, dict) or not plan.get("midtrip_topup_lamports"):
         raise ValueError("Choose a funding plan and a spare SOL limit")
-    payment = integer(data.get("payment_cents"), "early cash payment", 7298) * partial_payment.SCALE
-    added = integer(data.get("added_lamports"), "scaled test pledge", 10_000_000)
+    cents = integer(data.get("payment_cents"), "early payment", 7298)
+    sale = "sale_cap" in data
+    if sale:
+        output = integer(data.get("output_cents"), "sale proceeds", 7298)
+        limit = integer(data.get("sale_cap"), "scaled sale limit", 10_000_000)
+        expected = dict(payment_cents=cents, output_cents=output, sale_cap=limit)
+    else:
+        added = integer(data.get("added_lamports"), "scaled test pledge", 10_000_000)
+        expected = dict(payment_raw=cents * partial_payment.SCALE, added_lamports=added)
     opening = integer(data.get("opening_lamports"), "original wallet requirement", 10**15)
     result = quote(plan)
     rows = result.get("series") or result["mainnet"]["secured_loan"]["combined"]
     for row in rows.values():
         if isinstance(row, dict) and row.get("opening_lamports") == opening:
             alternative = row.get("cash_payoff", {}).get("midtrip", {}).get("topup", {})
-            if alternative.get("preview") == dict(payment_raw=payment, added_lamports=added):
-                return payment, added
+            choice = alternative.get("sale", {}) if sale else alternative
+            if choice.get("preview") == expected:
+                if sale:
+                    return cents * partial_payment.SCALE, 0, output * partial_payment.SCALE, limit
+                return cents * partial_payment.SCALE, added
     raise ValueError("The cash or collateral amount differs from the selected plan")
 
 

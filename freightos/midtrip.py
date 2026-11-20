@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from fractions import Fraction
 from math import ceil, floor
 
-from freightos import collateral_path, mainnet_loan, pledge_topup
+from freightos import collateral_path, mainnet_loan, pledge_topup, stop_backup
 
 CENT = mainnet_loan.RAW_PER_CENT
 MIDPOINT = 30
@@ -45,6 +45,24 @@ def prior_windows(path, price, annual_rate):
             later, _ = checkpoints({"traces": {start: trace}}, price, annual_rate)
             folds.append((start, max(earlier), count, training, later))
     return folds
+
+
+def sale_outcomes(sale, pledge_due, path, price, stress_floor=None):
+    advantage = pledge_due - sale["payday_cents"]
+
+    def difference(mark):
+        return floor(advantage - Fraction(sale["max_lamports"], mainnet_loan.LAMPORTS) * mark)
+
+    histories = []
+    for start, trace in path["traces"].items():
+        points = dict(trace)
+        if MIDPOINT in points and 60 in points:
+            closing_price = price * points[60] / points[MIDPOINT]
+            histories.append(dict(start=start, difference_cents=difference(closing_price)))
+    outcomes = dict(histories=histories, debt_reduction_cents=advantage)
+    if stress_floor is not None:
+        outcomes["stress_difference_cents"] = difference(stress_floor)
+    return outcomes
 
 
 def quote(row, budget, marks, windows, terms, folds=(), drop_bps=0, *, topup_limit=0, wallet_spare=0):
@@ -139,6 +157,18 @@ def quote(row, budget, marks, windows, terms, folds=(), drop_bps=0, *, topup_lim
             topup.update(unused_cents=budget-cash, short_cents=max(0, topup["needed_cents"]-budget),
                          cash_kept_cents=paid-cash, peak_bps=ceil(peak(residual, marks, topup["represented_lamports"])),
                          payday_cents=ceil(Fraction(ceil(residual * maturity_growth), CENT)))
+            if topup["deposit_limit_lamports"] and not topup["short_cents"]:
+                original = topup["initial_represented_lamports"]
+                required, _ = payment_for(marks, original)
+                proceeds = required - cash
+                if proceeds > 0:
+                    units = ceil(Fraction(proceeds * mainnet_loan.LAMPORTS, current_price))
+                    sale_cap = min(stop_backup.buffered(units), topup["deposit_limit_lamports"])
+                    due = ceil(Fraction(ceil(max(0, debt-required*CENT)*maturity_growth), CENT))
+                    topup["sale"] = dict(output_cents=proceeds, payment_cents=required, max_lamports=sale_cap,
+                                         cash_cents=cash, payday_cents=due,
+                                         min_net_price_cents=ceil(Fraction(proceeds*mainnet_loan.LAMPORTS, sale_cap)),
+                                         crossover_cents=ceil(Fraction((topup["payday_cents"]-due)*mainnet_loan.LAMPORTS, sale_cap)))
             later_trials = []
             for test_start, _, _, training, later in folds:
                 early = allocate([*training, *extra])

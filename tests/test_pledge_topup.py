@@ -88,3 +88,38 @@ def test_midtrip_quotes_reuse_opening_terms_without_sharing_driver_decisions():
     assert driver_desk._opening.cache_info().misses == 1
     driver_desk.quote(dict(opening, offer_fee=501))
     assert driver_desk._opening.cache_info().misses == 2
+
+
+@pytest.mark.parametrize("limit,output,cap,due,crossover", [
+    (250_000_000, 671, 122_610_000, 5909, 5498),
+    (10**9, 1447, 264_406_365, 5909, 5496),
+])
+def test_sale_preserves_road_cash_and_replays_borrower_swap_with_a_binding_limit(limit, output, cap, due, crossover):
+    args, row = route(limit)
+    topup = row["cash_payoff"]["midtrip"]["topup"]
+    sale = topup["sale"]
+    assert sale["payment_cents"] == topup["payment_cents"] + output
+    assert sale["payday_cents"] == due and sale["max_lamports"] == cap <= topup["deposit_limit_lamports"]
+    outcomes = sale["outcomes"]
+    assert outcomes["stress_difference_cents"] == (topup["payday_cents"] - due) - ceil(Fraction(cap * 3850, 10**9))
+    assert len(outcomes["histories"]) == 9 and sum(h["difference_cents"] > 0 for h in outcomes["histories"]) == 3
+    assert sale["crossover_cents"] == crossover
+    for dollars, cents in ((sale["min_net_price_cents"], output), (crossover, topup["payday_cents"] - due)):
+        assert (dollars - 1) * cap < cents * 10**9 <= dollars * cap
+    request = dict(plan=args, opening_lamports=row["opening_lamports"], **sale["preview"])
+    proof = partial_payment.saved(*driver_desk.selected_topup(request))
+    assert proof["loan_raw"] - proof["remaining_raw"] == proof["cash_raw"] + proof["sale_raw"] == 144_700
+    assert proof["cash_raw"] == sale["cash_cents"] * 100 and proof["sale_raw"] == output * 100
+    assert 0 < proof["sold_lamports"] <= proof["sale_cap"] == cap // 100
+    assert proof["rollback_slot"] >= proof["slot"] and proof["vendor_raw"] == 950_000
+    assert proof["pledge_lamports"] * 100 == row["pledge_lamports"]
+    with pytest.raises(ValueError, match="differs"):
+        driver_desk.selected_topup(dict(request, sale_cap=cap//100+1))
+    with pytest.raises(ValueError, match="differs"):
+        driver_desk.selected_topup(dict(request, output_cents=output-1))
+
+
+def test_sale_needs_an_eligible_pledge_that_meets_the_tested_cushion():
+    for args in (dict(payoff_cash=500), dict(midtrip_price=4000), dict(midtrip_price=15000)):
+        _, row = route(250_000_000, **args)
+        assert "sale" not in row["cash_payoff"]["midtrip"].get("topup", {})

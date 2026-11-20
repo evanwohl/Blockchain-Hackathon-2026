@@ -1032,7 +1032,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if self.path == "/api/midtrip-payment/preview":
                 try:
-                    amount, added = driver_desk.selected_topup(data) if "plan" in data else (partial_payment.selected_payment(data), 0)
+                    terms = driver_desk.selected_topup(data) if "plan" in data else (partial_payment.selected_payment(data), 0)
                 except RuntimeError:
                     self.respond(503, {"error": "The opening wallet or loan terms could not be verified."})
                     return
@@ -1040,7 +1040,7 @@ class Handler(BaseHTTPRequestHandler):
                 if source not in ("recorded", "live"):
                     raise ValueError("Choose saved evidence or a public simulation")
                 try:
-                    result = (self.server.partial_previews(amount, added).read() if source == "live" else partial_payment.saved(amount, added))
+                    result = (self.server.partial_previews(*terms).read() if source == "live" else partial_payment.saved(*terms))
                 except (OSError, ValueError, KeyError, TypeError, RuntimeError):
                     self.respond(503, {"error": "The selected partial payment could not be verified."})
                     return
@@ -1248,8 +1248,8 @@ def main():
     server.policy_checks = {menu: PublicCheck(lambda m=menu: payday_policy.quotes(m, True)) for menu in customer_credit.MENUS}
     server.swap_checks = {net: PublicCheck(lambda n=net: fuel_swap.capture(n)[0]) for net in customer_credit.ADVANCES}
     server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
-    server.partial_previews = lru_cache(maxsize=32)(lambda amount, added: PublicCheck(
-        lambda: partial_payment.simulate(payment=amount, extra_pledge=added), wait_seconds=8))
+    server.partial_previews = lru_cache(maxsize=32)(lambda amount, added, sale=0, cap=0: PublicCheck(
+        lambda: partial_payment.simulate(payment=amount, extra_pledge=added, sale_raw=sale, sale_cap=cap), wait_seconds=8))
     server.midtrip_payment = PublicCheck(partial_payment.simulate, wait_seconds=8)
     server.cash_exit = PublicCheck(lambda: flash_exit.simulate(cash_raw=flash_exit.SAMPLE_CASH))
     server.flash_exit = PublicCheck(flash_exit.simulate)

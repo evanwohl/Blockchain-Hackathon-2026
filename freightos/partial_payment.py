@@ -24,11 +24,15 @@ DOWNSIDE_SAMPLE = credit.DATA / "downside_payment.json.gz"
 SAMPLE = credit.DATA / "partial_fuel_payment.json.gz"
 
 
-def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0):
+def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0, sale_raw=0, sale_cap=0):
     if type(extra_pledge) is not int or not 0 <= extra_pledge <= 10_000_000:
         raise ValueError("Enter a valid sample collateral top-up")
     if type(payment) is not int or not 0 <= payment < bill.LOAN or not (payment or extra_pledge):
         raise ValueError("Enter a partial payment below the sample principal")
+    if (type(sale_raw) is not int or not 0 <= sale_raw <= payment or type(sale_cap) is not int
+            or not 0 <= sale_cap <= 10_000_000 or bool(sale_cap) != bool(sale_raw) or sale_raw and extra_pledge):
+        raise ValueError("Enter the selected borrower sale and its SOL limit")
+    contribution = payment - sale_raw
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("The partial repayment requires Solana Devnet")
     owner, obligation, _, _, cash = repeat_credit.accounts()
@@ -45,15 +49,23 @@ def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0):
     repay = Instruction(credit.KLEND, tag + struct.pack("<Q", payment), accounts)
     vendor_owner = Pubkey.from_string(json.loads(devnet.SAMPLE.read_bytes())["vendor_owner"])
 
-    def run(entry_cap, sponsor_cap):
+    def run(entry_cap, sponsor_cap, *, decline=False):
         ops = bill.opening_instructions(owner, cash, route, entry_cap, rent)
         if extra_pledge:
             topup = load_credit.instructions(owner, extra_pledge, bill.LOAN)
             deposit, = [ix for ix in topup if ix.program_id == credit.KLEND and ix.data[:8] == bytes.fromhex("d8e0bf1bcc9766af")]
             ops.extend([*topup[:3], *close[1:-2], deposit, topup[-2]])
+        swaps = [(owner, cash, bill.SALE, entry_cap)]
+        if sale_raw:
+            swaps.append((owner, cash, sale_raw, 1 if decline else sale_cap))
+        if contribution:
+            swaps.append((sponsor, sponsor_cash, contribution, sponsor_cap))
+        for payer, dest, output, cap in swaps[1:]:
+            ops.extend(fuel_swap.swap_instructions(payer, dest, route, output, cap, rent))
+        if contribution:
+            ops.append(public_offer.transfer(sponsor_cash, sponsor, cash, contribution))
         if payment:
-            ops.extend(fuel_swap.swap_instructions(sponsor, sponsor_cash, route, payment, sponsor_cap, rent))
-            ops.extend([public_offer.transfer(sponsor_cash, sponsor, cash, payment), *close[1:-2], repay])
+            ops.extend([*close[1:-2], repay])
         config = TransactionConfig(compute_unit_limit=1_000_000, loaded_accounts_data_size_limit=16*1024*1024, heap_size=32768)
         msg = MessageV1.try_compile(sponsor, ops, Hash.from_string(block["value"]["blockhash"]), config)
         wire = bytes(VersionedTransaction.populate(msg, [Signature.default()] * msg.header.num_required_signatures))
@@ -63,7 +75,18 @@ def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0):
             "commitment": "confirmed", "minContextSlot": slot, "encoding": "base64", "sigVerify": False,
             "innerInstructions": True, "accounts": {"encoding": "base64", "addresses": [str(obligation)]}}])
         v = result["value"]
-        if result["context"]["slot"] < slot or v["err"] is not None:
+        if result["context"]["slot"] < slot:
+            raise ValueError("The public simulation predates its quote")
+        if decline:
+            swap_index = [i for i, ix in enumerate(ops) if ix.program_id == fuel_swap.ORCA][1]
+            expected = v["preBalances"].copy()
+            expected[list(msg.account_keys).index(sponsor)] -= v["fee"]
+            if (v["err"] != {"InstructionError": [swap_index, {"Custom": 6037}]}
+                    or v["postBalances"] != expected or v["postTokenBalances"] != v["preTokenBalances"]
+                    or not any(line.startswith("Program " + str(fuel_swap.ORCA) + " failed:") for line in v["logs"])):
+                raise ValueError("The capped borrower sale did not roll back as expected")
+            return result["context"]["slot"]
+        if v["err"] is not None:
             raise ValueError("Public Devnet could not verify this partial repayment")
         keys = list(msg.account_keys)
         record = {"meta": v}
@@ -75,9 +98,6 @@ def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0):
             return [ix["parsed"]["info"] for ix in moves[index] if ix["programId"] == str(devnet.TOKEN)
                     and ix.get("parsed", {}).get("type") == kind]
         spends = []
-        swaps = [(owner, cash, bill.SALE, entry_cap)]
-        if payment:
-            swaps.append((sponsor, sponsor_cash, payment, sponsor_cap))
         for i, (payer, dest, output, cap) in zip((i for i, ix in enumerate(ops) if ix.program_id == fuel_swap.ORCA), swaps, strict=True):
             a, b = transfers(i, "transfer")
             spent = int(a["amount"])
@@ -101,7 +121,7 @@ def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0):
             leg, = transfers(len(ops)-1, "transferChecked")
             if (leg["source"] != str(cash) or leg["destination"] != str(combined[5].pubkey)
                     or leg["mint"] != str(devnet.MINT) or int(leg["tokenAmount"]["amount"]) != payment
-                    or token(sponsor_cash, sponsor)):
+                    or (contribution and token(sponsor_cash, sponsor))):
                 raise ValueError("The early payment differs from the plan")
         data = credit.read_program_account(v["accounts"][0], "a8ce8d6a584caca7", 3344)
         remaining = bill.LOAN - payment
@@ -114,12 +134,19 @@ def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0):
                 or data[1208:1240] != bytes(combined[3].pubkey) or credit.uint(data, 1296) != remaining * (1 << 60)):
             raise ValueError("The partial repayment, remaining debt or collateral did not reconcile")
         return dict(slot=result["context"]["slot"], loan_raw=bill.LOAN, payment_raw=payment, remaining_raw=remaining,
-                    vendor_raw=bill.LOAN+bill.SALE, pledge_lamports=bill.PLEDGE + extra_pledge, entry_lamports=spends[0], sponsor_lamports=spends[1] if payment else 0,
+                    vendor_raw=bill.LOAN+bill.SALE, pledge_lamports=bill.PLEDGE + extra_pledge, entry_lamports=spends[0], sponsor_lamports=spends[-1] if contribution else 0,
+                    **(dict(sale_raw=sale_raw, sale_cap=sale_cap, sold_lamports=spends[1],
+                            cash_raw=contribution) if sale_raw else {}),
                     **({"added_lamports": extra_pledge} if extra_pledge else {}))
 
     probe = run(40_000_000, 40_000_000)
     slot = probe["slot"]
-    return run(stop_backup.buffered(probe["entry_lamports"]), stop_backup.buffered(probe["sponsor_lamports"]))
+    caps = stop_backup.buffered(probe["entry_lamports"]), stop_backup.buffered(probe["sponsor_lamports"])
+    result = run(*caps)
+    if sale_raw:
+        slot = result["slot"]
+        result["rollback_slot"] = run(*caps, decline=True)
+    return result
 
 
 RECORDS = {
@@ -128,19 +155,24 @@ RECORDS = {
     (77_600, 2_500_000): ("pledge-and-cash", credit.DATA / "pledge_and_cash.json.gz", "4cf6e66a6b5dcb2888928c448e7462f1e1220eacc99a9139a64f556185979171"),
     (0, 5_391_000): ("pledge-only", credit.DATA / "pledge_only.json.gz", "e0b06b134f2dd8f5dedcfc3c2b8a3b4fdbc8400e553541fd3e450913fdaee50f"),
 }
-EVIDENCE = {"/evidence/" + name: path for name, path, _ in RECORDS.values()}
+SALES = {
+    (144_700, 67_100, 1_226_100): ("sell-and-pay", credit.DATA / "sale_and_cash.json.gz", "1bb393b7da13c7aa7e299a1c3c25d7a8a4affd0e2d81861964f335ae76224cef"),
+    (144_700, 144_700, 2_644_063): ("sell-only", credit.DATA / "sale_only.json.gz", "dc2d46b430eeb9c93bc79937c99e3d54a548e5f17221e24305585e90132ff4e4"),
+}
+EVIDENCE = {"/evidence/" + name: path for name, path, _ in (*RECORDS.values(), *SALES.values())}
 
 
 @cache
-def saved(payment=PAYMENT, extra_pledge=0):
-    record = RECORDS.get((payment, extra_pledge))
+def saved(payment=PAYMENT, extra_pledge=0, sale_raw=0, sale_cap=0):
+    record = SALES.get((payment, sale_raw, sale_cap)) if sale_raw else RECORDS.get((payment, extra_pledge))
     if record is None:
         raise ValueError("There is no saved simulation for this amount")
     _, path, digest = record
     raw = path.read_bytes()
     if hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError("The recorded partial repayment changed")
-    return atomic_fuel.replay_calls(json.loads(gzip.decompress(raw)), lambda rpc: simulate(rpc, payment=payment, extra_pledge=extra_pledge))
+    return atomic_fuel.replay_calls(json.loads(gzip.decompress(raw)), lambda rpc: simulate(
+        rpc, payment=payment, extra_pledge=extra_pledge, sale_raw=sale_raw, sale_cap=sale_cap))
 
 
 def matches_opening(row):
