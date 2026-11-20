@@ -97,3 +97,34 @@ def test_keep_more_sol_splits_the_sale_and_loan_while_meeting_the_payday_floor()
 def test_wallet_frontier_changes_at_exact_payday_floors(floor, expected):
     row = driver_desk.quote(dict(CASE, target=floor))["mainnet"]["secured_loan"]["combined"]["keep_sol"]
     assert ((row["draw_cents"], row["sale_cents"]) if row else None) == expected
+
+
+def test_first_borrower_pays_setup_only_on_loan_plans_and_recovers_the_obligation_on_close():
+    ready = driver_desk.quote(dict(CASE, target=230000))["mainnet"]["secured_loan"]
+    first = driver_desk.quote(dict(CASE, target=230000, first_loan=True))["mainnet"]["secured_loan"]
+    setup = first["setup"]
+    assert (setup["deposit_lamports"], setup["refunded_lamports"], setup["retained_lamports"]) == (28854400, 17637760, 11216640)
+    assert first["combined"]["most_cash_without_loan"] == ready["combined"]["most_cash_without_loan"]
+    a, b = (loan["combined"]["most_cash"] for loan in (ready, first))
+    assert a["draw_cents"] == b["draw_cents"] == 9500
+    assert b["opening_lamports"] - a["opening_lamports"] == setup["deposit_lamports"] + setup["setup_fee_lamports"]
+    assert b["restore_lamports"] - a["restore_lamports"] == setup["retained_lamports"] + setup["setup_fee_lamports"]
+    assert (a["payday_cents"], b["payday_cents"]) == (234913, 234744)
+    row = first["combined"]["keep_sol"]
+    assert (row["draw_cents"], row["sale_cents"], row["payday_cents"]) == (5071, 4429, 230000)
+
+
+def test_setup_reverses_the_small_loan_and_all_price_result_requires_every_offer():
+    case = dict(bill=18600, invoice=20000, cash=7500, budget=8000, stable=2043, target=300,
+                stress=15000, offer_menu="counter", offer_amount=9000, offer_fee=300)
+    def mix(**terms):
+        return driver_desk.quote(dict(case, **terms))["mainnet"]["secured_loan"]["combined"]
+    ready = mix()["most_cash"]
+    fresh = mix(first_loan=True)
+    assert ready["draw_cents"] == 57 and ready["payday_cents"] == 1095
+    assert fresh["most_cash"]["sale_cents"] == 57 and fresh["most_cash"]["payday_cents"] == 1038
+    assert fresh["best_loan"]["payday_cents"] == 926 and fresh["best_loan"]["all_loans_dominated"]
+    assert not mix(first_loan=True, budget=200000)["best_loan"]["all_loans_dominated"]
+    assert mix(first_loan=True, cash=18600)["best_loan"] is None
+    with pytest.raises(ValueError):
+        mix(first_loan="false")

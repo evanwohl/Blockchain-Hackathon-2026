@@ -7,6 +7,8 @@
 
 **Show why combining DeFi products matters.** On the default funding desk, choose **Compare keeping $4.18 more in SOL today**. FreightOS borrows $0.91, sells enough SOL for $3.66 and still leaves the requested $3 on payday in the highest tested price scenario. For the $745 stop above, set the payday target to $2,300. The blended plan leaves $53.66 more of the driver's SOL available today and $49.12 less cash on payday than borrowing the full $95. Pure sale misses the payday target by $52.56. These amounts compare modeled plans.
 
+**Show a loan FreightOS would turn down.** Restore the $190 sample. Change the bill to $186. With accounts ready, borrowing 57¢ leaves $10.95 on payday at $150/SOL. Check **Include first-time loan setup**. Selling enough SOL for 57¢ now leaves $10.38. Open **What does my first loan need?** to see why the best new loan leaves $9.26. With this wallet and these customer terms, selling also wins at every nonnegative payday SOL price. The comparison assumes the same recorded terms and freight payment in full.
+
 Allow two minutes. Use one narrator and one person at the keyboard. The other two teammates can cover the funding model and settlement questions after the demo.
 
 | Time | Show | Say |

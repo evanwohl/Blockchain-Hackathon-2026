@@ -22,13 +22,16 @@ def quote(data):
     stress = integer(data.get("stress"), "additional SOL price", 10_000_000)
     if not stress:
         raise ValueError("Enter a positive SOL price")
+    first_loan = data.get("first_loan", False)
+    if type(first_loan) is not bool:
+        raise ValueError("Choose whether to include first-loan setup")
     try:
-        return _price(bill, invoice, values, stress, (menu, fee, amount))
+        return _price(bill, invoice, values, stress, (menu, fee, amount), first_loan)
     except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError) as exc:
         raise RuntimeError("Recorded funding terms could not be verified") from exc
 
 
-def _price(bill, invoice, values, stress, offer):
+def _price(bill, invoice, values, stress, offer, first_loan):
     lending = mainnet_loan.saved()
     reference = int((lending["sol_price"] * 100).to_integral_value(rounding=ROUND_HALF_UP))
     cases, _ = payday_policy.price_cases(reference, stress)
@@ -43,5 +46,6 @@ def _price(bill, invoice, values, stress, offer):
     costs, _ = mainnet_stop.split_costs(pools, min(gap, max_sale))
     loan = mainnet_loan.compare(plan, costs, values["stable"], values["cash"], cap, cap, VENDOR_FEE_LAMPORTS, observation["rent"],
                                 lending, [c["price_cents"] for c in cases if "start" in c],
-                                offer_terms=offer, path=collateral_path.saved())
+                                offer_terms=offer, path=collateral_path.saved(),
+                                setup=mainnet_loan.first_loan_setup() if first_loan else None)
     return {**plan, "mainnet": {"slot": observation["accounts"]["context"]["slot"], "secured_loan": loan}}

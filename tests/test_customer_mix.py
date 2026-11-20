@@ -101,3 +101,18 @@ def test_certified_boundaries_match_all_draws_at_rent_discontinuity_and_payday_t
     assert used and max(used) <= 3
     monkeypatch.setattr(mainnet_loan, "_ordered_draws", lambda *args: None)
     assert actual == [mix(*case) for case in cases]
+
+
+def test_all_price_dominance_requires_a_fundable_sale_and_allows_equal_buybacks():
+    policy = dict(bill_cents=1, receipt_cents=10, high_price_cents=12000, floor_cents=0)
+    def compare(wallet):
+        return mainnet_loan.customer_mix(policy, [0, 4], [(0, 0), (2, 1)], 0, 0, wallet, 0, 3, "none", 0,
+                                         None, loan_spend=4, show_loan=True)
+    tight = compare(6)
+    assert tight["most_cash_without_loan"] is None
+    assert not tight["best_loan"]["all_loans_dominated"]
+    fits = compare(7)
+    loan, sale = fits["best_loan"], fits["most_cash_without_loan"]
+    assert loan["all_loans_dominated"]
+    assert loan["restore_lamports"] == sale["restore_lamports"]
+    assert sale["payday_cents"] - loan["payday_cents"] == loan["repay_cents"] == 1

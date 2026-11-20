@@ -2,7 +2,7 @@
 from bisect import bisect_left
 import hashlib
 import json
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from functools import cache
 from pathlib import Path
 
@@ -49,7 +49,8 @@ def verify(raw):
     room = min(uint(usd, 224, 8), uint(usd, 5024, 8) - borrowed,
                uint(usd, 5504, 8) - uint(usd, 6704, 8), daily_cap - max(0, drawn_today))
     sol_supply_upper = uint(sol, 224, 8) + credit.ceiling(Decimal(uint(sol, 232)) / credit.UNIT)
-    return dict(slot=data["accounts"]["context"]["slot"], apr=credit.configured_rate(usd),
+    return dict(slot=data["accounts"]["context"]["slot"], collateral_farm=str(Pubkey.from_bytes(sol[64:96])),
+                debt_farm=str(Pubkey.from_bytes(usd[96:128])), apr=credit.configured_rate(usd),
                 min_value=Decimal(uint(market, 3224)) / credit.UNIT, max_value=uint(market, 152, 8),
                 sol_price=Decimal(uint(sol, 248)) / credit.UNIT, usd_price=Decimal(uint(usd, 248)) / credit.UNIT,
                 factor=uint(usd, 5008, 8), initial=initial, liquidation=liquidation,
@@ -60,6 +61,35 @@ def verify(raw):
 @cache
 def saved():
     return verify(EVIDENCE.read_bytes())
+
+
+SETUP_EVIDENCE = EVIDENCE.with_name("borrower_setup.json")
+
+
+@cache
+def first_loan_setup():
+    raw = SETUP_EVIDENCE.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != "8283e41a0eb0a4e94007a21908637695da07549b062c6acd9fa0d5e3e5b64b41":
+        raise ValueError("The recorded account deposits changed")
+    evidence = json.loads(raw)
+    lending = saved()
+    if (evidence["collateral_farm"] != lending["collateral_farm"] or evidence["debt_farm"] != lending["debt_farm"]
+            or lending["debt_farm"] != str(Pubkey.default())):
+        raise ValueError("The account setup differs from the recorded lending route")
+    accounts = evidence["accounts"]
+    obligation = accounts["obligation"]["lamports"]
+    retained = accounts["profile"]["lamports"] + accounts["collateral_farm_user"]["lamports"]
+    mark = lending["sol_price"] * 100 / LAMPORTS
+
+    def value_cents(raw):
+        return int((raw * mark).to_integral_value(rounding=ROUND_HALF_UP))
+
+    opening = obligation + retained + LOAN_FEE_ALLOWANCE
+    return dict(refunded_lamports=obligation, retained_lamports=retained, setup_fee_lamports=LOAN_FEE_ALLOWANCE,
+                deposit_lamports=obligation + retained, opening_value_cents=credit.ceiling(opening * mark),
+                refund_value_cents=value_cents(obligation), retained_value_cents=value_cents(retained),
+                setup_fee_value_cents=value_cents(LOAN_FEE_ALLOWANCE),
+                slot=evidence["through_slot"])
 
 
 def loan_schedule(limit, low, lending, marks=()):
@@ -94,7 +124,7 @@ def loan_schedule(limit, low, lending, marks=()):
         yield pledge, ceil_div(payoff, RAW_PER_CENT)
 
 
-def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None, path=None):
+def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None, path=None, setup=None):
     bill, reference = plan["bill_cents"], plan["reference_cents"]
     low, high = plan["low_price_cents"], plan["high_price_cents"]
     own = min(bill, cash)
@@ -106,14 +136,19 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
                    / (LAMPORTS * lending["usd_price"]) * 100 / lending["factor"])
     schedule = list(loan_schedule(min(gap, max_draw), low, lending, marks))
     target = plan["floor_cents"]
+    loan_spend = 2 * LOAN_FEE_ALLOWANCE
+    close_refund = 0
+    if setup:
+        loan_spend += setup["retained_lamports"] + setup["setup_fee_lamports"]
+        close_refund = setup["refunded_lamports"]
     baseline = chosen = minimum = best = None
     for draw, terms in enumerate(schedule):
         sale = gap - draw
         if terms is None or sale >= len(costs):
             continue
         pledge, repay = terms
-        restore = costs[sale] + (fee if vendor else 0) + (2 * LOAN_FEE_ALLOWANCE if draw else 0)
-        opening = pledge + restore + (rent if sale else 0)
+        restore = costs[sale] + (fee if vendor else 0) + (loan_spend if draw else 0)
+        opening = pledge + restore + (rent if sale else 0) + (close_refund if draw else 0)
         proceeds = plan["receipt_cents"] - bill + sale + draw - repay
         payday = proceeds - ceil_div(restore * high, LAMPORTS)
         row = dict(draw_cents=draw, sale_cents=sale, pledge_lamports=pledge, repay_cents=repay,
@@ -137,7 +172,7 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
         history_result = dict(windows=len(history), ahead=sum(d > 0 for d in differences), ties=differences.count(0))
     combined = None
     if offer_terms is not None:
-        combined = customer_mix(plan, costs, schedule, stable, cash, wallet_cap, fee, rent, *offer_terms)
+        combined = customer_mix(plan, costs, schedule, stable, cash, wallet_cap, fee, rent, *offer_terms, loan_spend=loan_spend, close_refund=close_refund, show_loan=bool(setup))
         for row in combined.values():
             if row:
                 remaining = wallet_cap - row["opening_lamports"]
@@ -172,7 +207,7 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
             debt = raw + ceil_div(raw * lending["origination"], 2**60)
             row["path_check"] = collateral_path.replay(path, marks, debt, row["pledge_lamports"], lending)
     coverage = {key: path[key] for key in ("windows", "observations", "omitted", "max_gap_hours")} if path else None
-    return dict(path_coverage=coverage, combined=combined, history=history_result, selected=chosen, best_funded=best, minimum=minimum, sell_only=baseline, cash_cents=own,
+    return dict(setup=setup, path_coverage=coverage, combined=combined, history=history_result, selected=chosen, best_funded=best, minimum=minimum, sell_only=baseline, cash_cents=own,
                 stable_cents=min(stable, vendor), slot=lending["slot"], apr_bps=credit.ceiling(rate * 10000),
                 stressed_apr_bps=credit.ceiling(2 * rate * 10000), liquidation_pct=lending["liquidation"],
                 low_cents=low, high_cents=high)
@@ -207,7 +242,8 @@ def _boundary_draws(first, last, gap, cap, allowance, pledged, repayments, start
     return np.array(sorted(set(candidates)), dtype=np.intp)
 
 
-def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offer_fee, amount):
+def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offer_fee, amount, *,
+                 loan_spend=2 * LOAN_FEE_ALLOWANCE, close_refund=0, show_loan=False):
     bill, received = plan["bill_cents"], plan["receipt_cents"]
     high = plan["high_price_cents"]
     invoice = plan.get("invoice_cents", reserve_credit.INVOICE_CENTS)
@@ -222,12 +258,13 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
     pledged = np.array([t[0] if ok else 0 for t, ok in zip(schedule, valid)], dtype=np.int64)
     repayments = np.array([t[1] if ok else 0 for t, ok in zip(schedule, valid)], dtype=np.int64)
     last_draw = int(np.flatnonzero(valid)[-1])
-    with_loan = [c + fee + 2 * LOAN_FEE_ALLOWANCE for c in costs]
-    startup = np.array([c + (rent if s else 0) for s, c in enumerate(with_loan)], dtype=np.int64)
+    with_loan = [c + fee + loan_spend for c in costs]
+    startup = np.array([c + close_refund + (rent if s else 0) for s, c in enumerate(with_loan)], dtype=np.int64)
     buyback = np.array([ceil_div(c * high, LAMPORTS) for c in with_loan], dtype=np.int64)
     ordered_from = _ordered_draws(valid, pledged, repayments, startup, buyback)
     chosen = no_debt = most_cash = best_debt_free = None
     least_opening = least_debt_free = None
+    every_loan_dominated = True
     inf = np.iinfo(np.int64).max
 
     def describe(net, draw):
@@ -237,11 +274,11 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
         dollars = min(vendor, stable)
         sale = vendor - dollars - draw
         pledge, repay = schedule[draw]
-        restore = costs[sale] + (fee if vendor else 0) + (2 * LOAN_FEE_ALLOWANCE if draw else 0)
+        restore = costs[sale] + (fee if vendor else 0) + (loan_spend if draw else 0)
         return dict(advance_cents=net, fee_cents=discount, invoice_balance_cents=invoice-net-discount,
                     cash_cents=own, stable_cents=dollars, surplus_cents=max(0, net-bill), draw_cents=draw,
                     sale_cents=sale, pledge_lamports=pledge, repay_cents=repay,
-                    restore_lamports=restore, opening_lamports=restore + pledge + (rent if sale else 0),
+                    restore_lamports=restore, opening_lamports=restore + pledge + (rent if sale else 0) + (close_refund if draw else 0),
                     payday_cents=received - bill + sale + draw - discount - repay - ceil_div(restore * high, LAMPORTS))
 
     for early in amounts:
@@ -252,10 +289,12 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
         gap = max(0, vendor - stable)
         proceeds = received - bill + gap - discount
         allowance = proceeds - plan["floor_cents"]
+        full_sale_fits = False
         if gap < len(costs):
             restore = costs[gap] + (fee if vendor else 0)
             opening = restore + (rent if gap else 0)
             if opening <= cap:
+                full_sale_fits = True
                 cost = ceil_div(restore * high, LAMPORTS)
                 key = (cost - proceeds, 0, early)
                 best_debt_free = key if best_debt_free is None else min(best_debt_free, key)
@@ -282,6 +321,9 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
         funded = valid[draws] & (opening <= cap)
         if not funded.any():
             continue
+        # A funded full sale spending no more SOL than the fixed loan outlay also avoids every positive payoff.
+        if show_loan and (not full_sale_fits or costs[gap] > loan_spend):
+            every_loan_dominated = False
         cost = np.where(funded, repayments[draws] + buyback[sales], inf)
         index = int(cost.argmin())
         key = (int(cost[index]) - proceeds, int(numbers[index]), early)
@@ -299,7 +341,11 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
                     least_opening = wallet_key
     best = min((k for k in (most_cash, best_debt_free) if k is not None), default=None)
     wallet = min((k for k in (least_opening, least_debt_free) if k is not None), default=None)
-    return dict(keep_sol=describe(wallet[3], wallet[2]) if wallet else None,
+    borrowed = describe(most_cash[2], most_cash[1]) if show_loan and most_cash else None
+    if borrowed:
+        borrowed["all_loans_dominated"] = every_loan_dominated
+    return dict(best_loan=borrowed,
+                keep_sol=describe(wallet[3], wallet[2]) if wallet else None,
                 keep_sol_without_loan=describe(least_debt_free[3], 0) if least_debt_free else None,
                 plan=describe(*chosen) if chosen else None,
                 without_loan=describe(no_debt, 0) if no_debt is not None else None,

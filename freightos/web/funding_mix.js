@@ -75,6 +75,12 @@ function showPaydayChoice(q, options, row) {
     tradeoff = advantage ? "At " + money(q.high_price_cents) + " per SOL, borrowing adds " + money(advantage) + " to the best debt-free payday balance and locks "
       + (best.pledge_lamports / 1e9).toFixed(4) + " SOL until repayment." : "The highest balance is available without a loan.";
   }
+  if (q.mainnet.secured_loan.setup && other && !best.draw_cents && options.best_loan) {
+    const difference = best.payday_cents - options.best_loan.payday_cents;
+    tradeoff = difference ? "Including first-loan setup, going debt-free leaves " + money(difference) + " more on payday at "
+      + money(q.high_price_cents) + " per SOL." : "A first loan and the debt-free plan leave the same payday balance.";
+    if (options.best_loan.all_loans_dominated) tradeoff += " Selling also wins at every other payday SOL price under these funding terms.";
+  }
   el("mix-reason").textContent = (gap > 0 ? "Fuel clears, but even this choice misses the " + money(q.floor_cents) + " target. " : "")
     + tradeoff;
 }
@@ -152,7 +158,9 @@ export function showMix(q) {
     + (r.advance_cents ? "Confirm the amount and date with the customer before relying on it. " : "");
   el("mix-risk").hidden = !r.draw_cents && !r.advance_cents;
   el("mix-assumptions").textContent = "We use your available cash first. Orca pool prices tell us what a sale would cost. Kamino supplies the borrowing terms. Settled Gemini prediction markets and the extra SOL price set the payday range."
-    + (r.draw_cents ? " The 30-day payoff assumes an existing lending account and twice the recorded variable rate. We include borrowing and repayment fee allowances." : "")
+    + (r.draw_cents ? " The 30-day payoff uses twice the recorded variable rate. The wallet budget also includes borrowing and repayment fee allowances." : "")
+    + (q.mainnet.secured_loan.setup ? " First-loan quotes include the new account deposits and a setup transaction allowance."
+      : r.draw_cents ? " This quote assumes existing borrowing accounts." : "")
     + (keepSol ? " We keep as much of your SOL budget available as possible after sales, fees, account rent and collateral, while meeting your payday target. Its dollar value uses the recorded Kamino price. It remains SOL." : "")
     + (payday ? " We maximize the smallest payday balance across tested prices. Ties favor less debt, then a smaller advance." : "")
     + " This is a mainnet estimate. Reviewing it moves no funds.";

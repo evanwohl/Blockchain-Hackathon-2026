@@ -1,4 +1,4 @@
-import {el, money, request, saveFile} from "./common.js";
+import {el, facts, money, request, saveFile} from "./common.js";
 import {downloadOffer, mixKey, showMix} from "./funding_mix.js";
 import {showCycle} from "./load_credit.js";
 
@@ -8,13 +8,24 @@ let current, controller, timer, revision = 0;
 function terms() {
   const cents = id => Math.round(el(id).valueAsNumber * 100);
   const menu = el("terms").value;
-  return {bill: cents("bill"), invoice: cents("invoice"), stable: cents("stable"), stress: cents("stress"), cash: cents("cash"), budget: cents("budget"),
+  return {first_loan: el("first-loan").checked, bill: cents("bill"), invoice: cents("invoice"), stable: cents("stable"), stress: cents("stress"), cash: cents("cash"), budget: cents("budget"),
     target: cents("target"), offer_menu: menu, offer_amount: menu === "counter" ? cents("advance") : null,
     offer_fee: menu === "counter" ? cents("discount") : menu === "partial" ? cents("fee") : 0};
 }
 
 function selected() {
   return current?.quote.mainnet.secured_loan.combined[mixKey()];
+}
+
+const solAmount = lamports => (lamports / 1e9).toLocaleString("en-US", {maximumFractionDigits: 9}) + " SOL";
+
+function setupLines(loan) {
+  const setup = loan.setup;
+  const opening = setup.deposit_lamports + setup.setup_fee_lamports;
+  return [
+    "If you borrow, allow " + solAmount(opening) + " for setup (about " + money(setup.opening_value_cents) + " at the recorded price). This includes " + solAmount(setup.setup_fee_lamports) + " for an extra transaction.",
+    "Fully repaying and closing the loan releases " + solAmount(setup.refunded_lamports) + ". The plan keeps " + solAmount(setup.retained_lamports) + " in the profile and collateral-tracking accounts after payday. It assumes your wallet’s token accounts are ready."
+  ];
 }
 
 function paint() {
@@ -36,6 +47,25 @@ function paint() {
     if (wallet) parts.push(money(wallet) + " from the wallet");
     el("desk-split").textContent = parts.length ? "The plan uses " + parts.join(" and ") + "." : "Your separate cash covers the full fuel bill.";
   }
+  const loan = quote.mainnet.secured_loan;
+  el("desk-basis").textContent = "Recorded mainnet estimate · " + (loan.setup ? "First loan" : "Loan accounts ready");
+  el("desk-first-quote").hidden = !!loan.setup || !row?.draw_cents;
+  el("desk-setup").hidden = !loan.setup;
+  if (loan.setup) {
+    const [upfront, closing] = setupLines(loan);
+    const setup = loan.setup;
+    el("setup-opening").textContent = (row && !row.draw_cents ? "Your selected plan needs no loan setup. A first loan would need about " : "Allow about ")
+      + money(setup.opening_value_cents) + " upfront for loan setup at the recorded SOL price.";
+    facts(el("setup-costs"), [["Returned when the loan closes", money(setup.refund_value_cents)],
+      ["Still held after payday", money(setup.retained_value_cents)], ["Setup transaction allowance", setup.setup_fee_value_cents <= 1 ? "About 1¢" : money(setup.setup_fee_value_cents)]]);
+    el("setup-return").textContent = upfront + " " + closing;
+    const bestLoan = loan.combined.best_loan, sale = loan.combined.most_cash_without_loan;
+    el("setup-alternatives").textContent = bestLoan && sale
+      ? "At " + money(quote.high_price_cents) + " per SOL, the best plan using a new loan leaves " + money(bestLoan.payday_cents)
+        + " after restoring balances. Without a loan the best plan leaves " + money(sale.payday_cents) + "."
+      : bestLoan ? "Only the loan can fund this stop within your limits." : "No loan-funded plan is available for this stop.";
+    if (bestLoan?.all_loans_dominated) el("setup-alternatives").textContent += " For every offer a loan can fund here, selling uses no more SOL and avoids repayment. That holds at any payday SOL price on these terms.";
+  }
   const priority = el("mix-priority").value;
   const suffix = el("payday-allow").checked ? "" : "_without_loan";
   const options = quote.mainnet.secured_loan.combined;
@@ -52,6 +82,7 @@ function price(delay, focus) {
   const id = ++revision;
   clearTimeout(timer); controller?.abort();
   current = null;
+  el("desk-basis").textContent = "Recorded mainnet estimate";
   el("plan-heading").textContent = "Your payment plan";
   el("desk-split").hidden = el("desk-stress-range").hidden = el("desk-liquidity").hidden = true;
   el("mix").hidden = el("desk-retry").hidden = true;
@@ -116,6 +147,9 @@ function fundingSheet() {
     "Early cash remaining after fuel: " + money(row.surplus_cents), "Invoice still owed: " + money(row.invoice_balance_cents),
     "SOL locked until repayment: " + (row.pledge_lamports / 1e9).toFixed(4),
     "SOL still available after funding: " + (row.available_lamports / 1e9).toFixed(9) + " SOL (worth " + money(row.available_sol_value_cents) + " at the recorded Kamino price)",
+    ...(loan.setup ? ["First-loan setup included in loan comparisons.", ...setupLines(loan),
+      "Setup used by this plan: " + solAmount(row.draw_cents ? loan.setup.deposit_lamports + loan.setup.setup_fee_lamports : 0),
+      "Finalized account-deposit observation slot: " + loan.setup.slot] : ["Assumes existing Kamino borrowing accounts."]),
     "Estimated Kamino payoff: " + money(row.repay_cents),
     "After restoring balances at " + money(quote.high_price_cents) + "/SOL: " + money(row.payday_cents), "",
     ...(loan.combined.switch_prices && el("mix-priority").value === "most_cash"
@@ -134,7 +168,7 @@ el("mix-priority").value = "most_cash";
 el("mix-priority").onchange = el("payday-choices").onchange = paint;
 form.oninput = event => { if (event.target.id !== "trip-ref") price(180, false); };
 form.onreset = () => {
-  el("mix-priority").value = "most_cash"; el("payday-allow").checked = true;
+  el("mix-priority").value = "most_cash"; el("payday-allow").checked = true; el("desk-setup").open = false;
   setTimeout(() => price(0, false), 0);
 };
 form.onsubmit = event => { event.preventDefault(); price(0, true); };
@@ -142,6 +176,11 @@ el("desk-liquidity").onclick = () => {
   el("mix-priority").value = el("mix-priority").value === "keep_sol" ? "most_cash" : "keep_sol";
   paint();
   el("mix-priority").focus();
+};
+el("desk-first-quote").onclick = () => {
+  el("first-loan").checked = true;
+  el("desk-setup").open = true;
+  price(0, true);
 };
 el("desk-retry").onclick = () => price(0, false);
 el("desk-save").onclick = fundingSheet;

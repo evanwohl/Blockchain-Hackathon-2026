@@ -642,6 +642,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/gemini-collateral-paths":
             self.reply(200, "application/json", gzip.decompress(collateral_path.EVIDENCE.read_bytes()), static=True)
             return
+        if self.path == "/evidence/borrower-setup":
+            self.reply(200, "application/json", mainnet_loan.SETUP_EVIDENCE.read_bytes(), static=True)
+            return
         if self.path == "/evidence/mainnet-fuel-lending":
             self.reply(200, "application/json", mainnet_loan.EVIDENCE.read_bytes(), static=True)
             return
