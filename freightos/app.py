@@ -19,6 +19,7 @@ from freightos.surcharge import larger_offer_budget, offer_decision, partial_off
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
 from freightos.load_calendar import funding_options, project as project_load
+from freightos import rate_confirmation
 from hedging.quick_pay import integer, price_calendar
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
@@ -827,6 +828,7 @@ class Handler(BaseHTTPRequestHandler):
             "/browser_wallet.js": ("browser_wallet.js", "text/javascript"),
             "/load_credit.js": ("load_credit.js", "text/javascript"),
             "/load.js": ("load.js", "text/javascript"),
+            "/rate-confirmation-sample.txt": ("../artifacts/rate_confirmation/sample.txt", "text/plain; charset=utf-8"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
             "/next_stop.js": ("next_stop.js", "text/javascript"),
             "/public-offer": ("public_offer.html", "text/html; charset=utf-8"),
@@ -864,10 +866,28 @@ class Handler(BaseHTTPRequestHandler):
                     content = content.replace(marker, (ASSETS / (fragment + ".html")).read_bytes())
         self.reply(200, mime, content, static=True)
 
+    def read_rate_confirmation(self):
+        """Propose load fields from an uploaded rate confirmation; the driver confirms them in the form."""
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            size = 0
+        if not 0 < size <= rate_confirmation.MAX_BYTES:
+            self.respond(400, {"error": "Upload a file under 5 MB"})
+            return
+        raw = self.rfile.read(size)
+        try:
+            self.respond(200, rate_confirmation.read(raw, self.headers.get_content_type()))
+        except rate_confirmation.DocumentError as exc:
+            self.respond(400, {"error": str(exc)})
+
     def do_POST(self):
         host = self.headers.get("Host", "")
         if not allowed_demo_request(host, self.headers.get("Origin"), self.server.server_port):
             self.respond(403, {"error": "Local demo requests only"})
+            return
+        if self.path == "/api/rate-confirmation":
+            self.read_rate_confirmation()
             return
         try:
             size = int(self.headers.get("Content-Length", "0"))
