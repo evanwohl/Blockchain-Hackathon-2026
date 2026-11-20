@@ -166,3 +166,55 @@ def test_missing_yield_evidence_preserves_basic_quote_and_withholds_strict_sale(
     _, row = route(250_000_000, sale_policy="historical")
     sale = row["cash_payoff"]["midtrip"]["topup"]["sale"]
     assert sale["max_lamports"] == 0 and "preview" not in sale
+
+
+@pytest.mark.parametrize("limit,minimum,spend,cap", [
+    (250_000_000, 297, 122_233_227, 122_302_932),
+    (10**9, 640, None, 263_624_675),
+])
+def test_minimum_downside_to_fill_and_public_sale_replay(limit, minimum, spend, cap):
+    args, row = route(limit, sale_policy="budget", sale_loss_cents=minimum)
+    s = row["cash_payoff"]["midtrip"]["topup"]["sale"]
+    carry = s["outcomes"]["carry"]
+    assert carry["minimum_loss_limit_cents"] == minimum and s["modeled_fill"]
+    if spend is not None:
+        assert s["modeled_input_lamports"] == spend
+    assert s["modeled_input_lamports"] <= s["max_lamports"] == cap
+    assert min(h["difference_cents"] for h in carry["histories"]) == -minimum
+    _, previous = route(limit, sale_policy="budget", sale_loss_cents=minimum-1)
+    previous_sale = previous["cash_payoff"]["midtrip"]["topup"]["sale"]
+    assert previous_sale["modeled_input_lamports"] == s["modeled_input_lamports"] > previous_sale["max_lamports"]
+    assert not previous_sale["modeled_fill"]
+    assert [t["action"] for t in previous_sale["later_trips"]] == ["pledge"]*4
+    assert [t["difference_cents"] for t in previous_sale["later_trips"]] == [0]*4
+    request = dict(plan=args, opening_lamports=row["opening_lamports"], **s["preview"])
+    proof = partial_payment.saved(*driver_desk.selected_topup(request))
+    assert proof["sold_lamports"] <= proof["sale_cap"] == cap//100
+    assert proof["sale_raw"] == s["output_cents"] * 100 and proof["remaining_raw"] == 585_100
+    with pytest.raises(ValueError, match="differs"):
+        driver_desk.selected_topup(dict(request, plan=dict(args,sale_loss_cents=minimum-1)))
+
+
+def test_later_payday_changes_the_score_but_cannot_size_its_own_sale(monkeypatch):
+    _, row = route(250_000_000, sale_policy="budget", sale_loss_cents=297)
+    base = row["cash_payoff"]["midtrip"]["topup"]["sale"]["later_trips"]
+    assert [t["difference_cents"] for t in base] == [-135,112,138,154]
+    assert [t["prior_windows"] for t in base] == [1,6,6,6]
+    original = collateral_path.saved()
+    start = base[-1]["start"]
+    altered = [(step, ratio * (2 if step == 60 else 1)) for step,ratio in original["traces"][start]]
+    monkeypatch.setattr(collateral_path,"saved",lambda: dict(original,traces={**original["traces"],start:altered}))
+    _, row = route(250_000_000, sale_policy="budget", sale_loss_cents=297)
+    later = row["cash_payoff"]["midtrip"]["topup"]["sale"]["later_trips"]
+    assert later[:-1] == base[:-1]
+    assert {k:v for k,v in later[-1].items() if k != "difference_cents"} == {k:v for k,v in base[-1].items() if k != "difference_cents"}
+    assert later[-1]["difference_cents"] < -297
+
+
+def test_unavailable_pool_depth_has_no_fill_and_no_spend_threshold(monkeypatch):
+    monkeypatch.setattr(driver_desk.sale_replay, "modeled_input", lambda *args: None)
+    _, row = route(250_000_000, sale_policy="budget", sale_loss_cents=297)
+    s = row["cash_payoff"]["midtrip"]["topup"]["sale"]
+    assert s["modeled_input_lamports"] is None and not s["modeled_fill"]
+    assert "minimum_loss_limit_cents" not in s["outcomes"]["carry"]
+    assert all(t["action"] == "pledge" for t in s["later_trips"])

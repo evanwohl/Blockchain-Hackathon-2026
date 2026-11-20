@@ -117,10 +117,10 @@
 
 #payoff-check > label:not([hidden]) { display: grid; gap: .35rem; margin: .8rem 0; }
 #payoff-check select { background: var(--paper); color: var(--ink); border: 1px solid #849284; border-radius: 0; padding: .55rem; min-height: 44px; max-width: 100%; }
-#sale-amounts:not([hidden]), #exit-amounts, #midtrip-amounts:not([hidden]), #exit-receipt:not([hidden]) { display: grid; gap: .65rem; margin: .8rem 0; padding: .8rem 1rem; background: #e8eedb; color: #243d2b; }
-#sale-amounts > div, #exit-amounts > div, #midtrip-amounts > div, #exit-receipt > div { display: flex; justify-content: space-between; gap: .6rem; align-items: baseline; }
-#sale-amounts dt, #exit-amounts dt, #midtrip-amounts dt, #exit-receipt dt { font-size: .82rem; }
-#sale-amounts dd, #exit-amounts dd, #midtrip-amounts dd, #exit-receipt dd { flex: 0 0 auto; white-space: nowrap; margin: 0; text-align: end; font-weight: 650; font-variant-numeric: tabular-nums; }
+#sale-later-results, #sale-amounts:not([hidden]), #exit-amounts, #midtrip-amounts:not([hidden]), #exit-receipt:not([hidden]) { display: grid; gap: .65rem; margin: .8rem 0; padding: .8rem 1rem; background: #e8eedb; color: #243d2b; }
+#sale-later-results > div, #sale-amounts > div, #exit-amounts > div, #midtrip-amounts > div, #exit-receipt > div { display: flex; justify-content: space-between; gap: .6rem; align-items: baseline; }
+#sale-later-results dt, #sale-amounts dt, #exit-amounts dt, #midtrip-amounts dt, #exit-receipt dt { font-size: .82rem; }
+#sale-later-results dd, #sale-amounts dd, #exit-amounts dd, #midtrip-amounts dd, #exit-receipt dd { flex: 0 0 auto; white-space: nowrap; margin: 0; text-align: end; font-weight: 650; font-variant-numeric: tabular-nums; }
 #payoff-check { border-block: 1px solid var(--line); margin: .75rem 0; padding: .65rem 0; font-size: .91rem; line-height: 1.5; }
 #payoff-check summary { cursor: pointer; font-weight: 600; }
 #payoff-check details { border-top: 1px solid var(--line); padding: .65rem 0; }
@@ -144,3 +144,7 @@
 #pledge-compare tr > :last-child { background: #e8eedb; color: #243d2b; }
 #pledge-compare thead { font-size: .8rem; }
 #pledge-compare tbody tr:nth-child(2) { font-weight: 700; }
+
+#sale-budget { margin-block: .65rem; }
+#sale-budget > div { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+#sale-loss { background: var(--paper); color: var(--ink); border: 1px solid #849284; border-radius: 0; padding: .55rem; min-height: 44px; width: 6rem; }

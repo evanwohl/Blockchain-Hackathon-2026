@@ -3,14 +3,18 @@ import {el, facts, money, request} from "./common.js";
 const minSol = raw => (Math.floor(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const maxSol = raw => (Math.ceil(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const initialView = new URLSearchParams(location.search).get("view");
-let jumpToPayoff = ["payoff", "cash-budget", "midtrip", "downside", "pledge", "sale", "sale-limit"].includes(initialView);
-const openMidtrip = ["midtrip", "downside", "pledge", "sale", "sale-limit"].includes(initialView);
-if (["pledge", "sale", "sale-limit"].includes(initialView)) el("midtrip-topup").value = "250000000";
-if (["downside", "pledge", "sale", "sale-limit"].includes(initialView)) el("midtrip-drop").value = "3000";
+let jumpToPayoff = ["payoff", "cash-budget", "midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay"].includes(initialView);
+const openMidtrip = ["midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay"].includes(initialView);
+if (["pledge", "sale", "sale-limit", "sale-replay"].includes(initialView)) el("midtrip-topup").value = "250000000";
+if (["downside", "pledge", "sale", "sale-limit", "sale-replay"].includes(initialView)) el("midtrip-drop").value = "3000";
 if (initialView === "sale-limit") el("sale-policy").value = "historical";
+if (initialView === "sale-replay") {
+  el("sale-policy").value = "budget";
+  el("sale-later").open = true;
+}
 if (openMidtrip) el("midtrip").open = true;
-if (["sale", "sale-limit"].includes(initialView)) el("midtrip-sale").open = true;
-if (["midtrip", "downside", "pledge", "sale", "sale-limit", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
+if (["sale", "sale-limit", "sale-replay"].includes(initialView)) el("midtrip-sale").open = true;
+if (["midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
 
 let focusMidtrip = openMidtrip;
 let budgetResult, pending, budgetRevision = 0;
@@ -106,7 +110,7 @@ function showSale(q, row, inputs) {
   const t = q?.topup, s = t?.sale, panel = el("midtrip-sale");
   panel.hidden = !s;
   const data = s?.preview ? {plan: {...inputs, payoff_cash: budgetCents(), midtrip_price: q.price_cents,
-    midtrip_drop_bps: q.downside?.drop_bps || 0, midtrip_topup_lamports: t.cap_lamports, sale_policy: s.policy},
+    midtrip_drop_bps: q.downside?.drop_bps || 0, midtrip_topup_lamports: t.cap_lamports, sale_policy: s.policy, sale_loss_cents: s.loss_limit_cents},
     opening_lamports: row.opening_lamports, ...s.preview} : null;
   const key = JSON.stringify(data);
   if (key !== saleKey) {
@@ -120,13 +124,39 @@ function showSale(q, row, inputs) {
   const unavailable = !s.max_lamports;
   for (const id of ["sale-amounts", "sale-limit", "sale-crossover"]) el(id).hidden = unavailable;
   el("sale-stress").closest("details").hidden = unavailable;
+  el("sale-budget").hidden = s.policy !== "budget";
+  const minimum = s.outcomes.carry?.minimum_loss_limit_cents;
+  const button = el("sale-minimum");
+  button.hidden = minimum == null || s.modeled_fill || minimum === s.loss_limit_cents;
+  if (!button.hidden) {
+    button.dataset.cents = String(minimum);
+    button.textContent = "Compare a " + money(minimum) + " downside limit";
+  }
+  el("sale-fill").hidden = unavailable;
+  const trials = s.later_trips || [];
+  el("sale-later").hidden = !trials.length;
+  if (trials.length) {
+    const fills = trials.filter(t => t.action === "sale").length;
+    const pledges = trials.filter(t => t.action === "pledge").length;
+    el("sale-later-summary").textContent = "The sale fit in " + fills + " of " + trials.length
+      + " later trips. " + pledges + " used the pledge fallback. Payday amounts below are relative to pledging.";
+    const misses = trials.filter(t => t.cushion_missed).length;
+    if (misses) el("sale-later-summary").textContent += " The selected plan crossed the target debt cushion on " + misses + ".";
+    facts(el("sale-later-results"), trials.map(t => {
+      const amount = t.difference_cents;
+      const result = t.action === "no_sale_plan" ? "No sale to compare" : amount == null ? "Liquidation threshold reached"
+        : t.action === "pledge" ? "Pledged · same result" : amount === 0 ? "Sold · even to the cent"
+        : "Sold · " + money(Math.abs(amount)) + (amount > 0 ? " ahead" : " behind");
+      return [t.start, result];
+    }));
+  }
   if (unavailable) {
     el("sale-title").textContent = "Keep the pledge option";
-    el("sale-result").textContent = "A sale limit that beats pledging in every replay could not be verified. You can compare the regular sale or keep the pledge plan.";
+    el("sale-result").textContent = "A sale within the selected payday limit could not be verified. You can compare the regular sale or keep the pledge plan.";
     el("sale-proof").hidden = true;
     return;
   }
-  el("sale-title").textContent = s.min_net_price_cents > q.price_cents
+  el("sale-title").textContent = !s.modeled_fill
     ? "Which sale price would keep " + money(t.unused_cents) + " for the road?"
     : "Sell some SOL and keep the same " + money(t.unused_cents);
   el("sale-result").textContent = "Sell enough spare SOL for " + money(s.output_cents)
@@ -136,6 +166,17 @@ function showSale(q, row, inputs) {
     el("sale-result").textContent = "This sale needs about " + money(s.min_net_price_cents)
       + " per SOL after swap costs. At your " + money(q.price_cents) + " estimate, keep the pledge option available. Recheck the loan before acting if prices move.";
   }
+  if (s.policy === "budget") {
+    el("sale-result").textContent = "With a " + money(s.loss_limit_cents) + " downside limit, "
+      + (s.modeled_fill ? "the modeled sale fits." : "keep the pledge option available.")
+      + " Both choices leave " + money(t.unused_cents) + " for the road.";
+  }
+  el("sale-fill").textContent = s.modeled_input_lamports == null
+    ? "The recorded pools lack enough verified liquidity for this sale."
+    : "At " + money(q.price_cents) + " per SOL, the modeled Orca swap needs about "
+      + (s.modeled_input_lamports / 1e9).toFixed(6) + " SOL for " + money(s.output_cents) + " after swap costs. "
+      + (s.modeled_fill ? "That fits the sale limit." : "That exceeds the sale limit.")
+      + (button.hidden ? "" : " The smallest payday downside limit that fits this estimate is " + money(minimum) + ".");
   facts(el("sale-amounts"), [["Cash left for the road", money(t.unused_cents)], ["Due on payday after selling", money(s.payday_cents)],
     ["Due on payday after pledging", money(t.payday_cents)]]);
   el("sale-limit").textContent = "The swap must deliver " + money(s.output_cents) + " within a limit of "
@@ -295,7 +336,7 @@ export function showExit(rows, low, inputs) {
         : "the permitted collateral covers the payoff on paper. The actual sale still depends on available liquidity.");
   }
   async function checkBudget(event) {
-    const restorePolicy = event?.target === el("sale-policy");
+    const restorePolicy = ["sale-policy", "sale-minimum", "sale-apply"].includes(event?.currentTarget?.id);
     if (!cashInput.reportValidity()) return;
     if (el("midtrip").open && !checkpoint.reportValidity()) return;
     const cents = budgetCents();
@@ -303,6 +344,7 @@ export function showExit(rows, low, inputs) {
     if (checkpoint.validity.valid) {
       params.midtrip_price = Math.round(checkpoint.valueAsNumber * 100);
       params.sale_policy = el("sale-policy").value;
+      if (params.sale_policy === "budget") params.sale_loss_cents = Number(el("sale-loss").dataset.applied || 100);
       params.midtrip_topup_lamports = Number(el("midtrip-topup").value);
       params.midtrip_drop_bps = Number(el("midtrip-drop").value);
     }
@@ -331,7 +373,7 @@ export function showExit(rows, low, inputs) {
         update();
         if (budgetResult && focusMidtrip) {
           focusMidtrip = false;
-          const focus = ["sale", "sale-limit"].includes(initialView) && !el("midtrip-sale").hidden ? el("sale-title") : el("midtrip").querySelector("summary");
+          const focus = ["sale", "sale-limit", "sale-replay"].includes(initialView) && !el("midtrip-sale").hidden ? el("sale-title") : el("midtrip").querySelector("summary");
           focus.focus();
         } else if (budgetResult && restorePolicy && document.activeElement === document.body && !el("midtrip-sale").hidden) {
           el("sale-policy").focus();
@@ -353,6 +395,22 @@ export function showExit(rows, low, inputs) {
     update();
   };
   checkpoint.onkeydown = cashInput.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); checkBudget(); } };
+  el("sale-apply").onclick = event => {
+    const input = el("sale-loss");
+    if (!input.reportValidity()) return;
+    input.dataset.applied = String(Math.round(input.valueAsNumber * 100));
+    checkBudget(event);
+  };
+  el("sale-loss").onkeydown = event => {
+    if (event.key === "Enter") { event.preventDefault(); el("sale-apply").click(); }
+  };
+  el("sale-minimum").onclick = event => {
+    const cents = el("sale-minimum").dataset.cents;
+    el("sale-policy").value = "budget";
+    el("sale-loss").value = (Number(cents) / 100).toFixed(2);
+    el("sale-loss").dataset.applied = cents;
+    checkBudget(event);
+  };
   el("sale-policy").onchange = el("midtrip-topup").onchange = el("midtrip-drop").onchange = checkBudget;
   el("midtrip-check").onclick = el("cash-exit-check").onclick = checkBudget;
   stage.onchange = update;
@@ -446,6 +504,8 @@ function earlyPaymentLine(q) {
   const sell = sale && !sale.max_lamports ? " Historical sale limit unavailable. Recheck the pledge option." : sale ? " Sell instead for the same road cash: receive " + money(sale.output_cents) + " using at most "
     + sale.max_lamports + " lamports, add " + money(sale.cash_cents) + " of cash, and owe " + money(sale.payday_cents)
     + " on day 30. The swap must fill within the cap. Network fees are separate."
+    + (sale.policy === "budget" ? " Applied payday downside limit: " + money(sale.loss_limit_cents) + ". " : "")
+    + (sale.modeled_fill ? " The modeled Orca input fits." : " The modeled Orca sale does not fit.")
     + (sale.policy === "historical" ? " This limit requires at least one cent over pledging in each matched historical finish, including collateral earnings." : "")
     : "";
   return begin + "Pay " + money(q.payment_cents) + " early, keep " + money(q.unused_cents) + " cash, still owe "

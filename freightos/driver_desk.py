@@ -6,7 +6,7 @@ from fractions import Fraction
 from math import ceil
 
 from hedging.quick_pay import integer
-from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, midtrip, partial_payment, payday_policy, payoff_budget, pledge_yield, route_booking, route_sizing
+from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, midtrip, partial_payment, payday_policy, payoff_budget, pledge_yield, route_booking, route_sizing, sale_replay
 
 MAX_BILL = 250_000
 VENDOR_FEE_LAMPORTS = 5_000
@@ -53,10 +53,11 @@ def quote(data):
     if (drop or topup) and midprice is None:
         raise ValueError("Enter a day-15 SOL price to check a further fall")
     sale_policy = data.get("sale_policy", "standard")
-    if sale_policy not in ("standard", "historical"):
+    if sale_policy not in ("standard", "historical", "budget"):
         raise ValueError("Choose a sale limit")
+    loss_limit = integer(data.get("sale_loss_cents"), "payday downside limit", 100_000_000) if sale_policy == "budget" else None
     try:
-        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance, budget, midprice, drop, topup, sale_policy)
+        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance, budget, midprice, drop, topup, sale_policy, loss_limit)
     except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError) as exc:
         raise RuntimeError("Recorded funding terms could not be verified") from exc
 
@@ -119,7 +120,7 @@ def _opening(bill, invoice, funding, stress, offer, state, stops, booked, balanc
     return result, debt_rows, cap, prices
 
 
-def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, budget, midprice, drop, topup, sale_policy):
+def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, budget, midprice, drop, topup, sale_policy, loss_limit):
     lending = mainnet_loan.saved()
     observation, pools = mainnet_stop.saved()
     path = collateral_path.saved()
@@ -141,20 +142,28 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
             if sale:
                 floor = Fraction(midprice * (10_000 - drop), 10_000) if drop else None
                 sale["policy"] = sale_policy
+                sale["loss_limit_cents"] = loss_limit
+                spend = sale_replay.modeled_input(pools, sale["output_cents"], midprice)
                 strict = sale_policy == "historical"
                 try:
-                    carry = pledge_yield.compare(alternative, sale, row["pledge_lamports"], lending, path, midprice, floor, strict)
+                    carry = pledge_yield.compare(alternative, sale, row["pledge_lamports"], lending, path, midprice, floor, strict,
+                                                 loss_limit=loss_limit, estimated_input=spend)
                 except (OSError, ValueError, KeyError, ArithmeticError):
                     carry = None
-                if strict:
+                if strict or loss_limit is not None:
                     sale["regular_cap_lamports"] = sale["max_lamports"]
-                    sale["max_lamports"] = carry["strict_cap_lamports"] if carry else 0
+                    sale["max_lamports"] = carry["cap_lamports"] if carry else 0
                     if sale["max_lamports"]:
                         sale["min_net_price_cents"] = ceil(Fraction(sale["output_cents"] * mainnet_loan.LAMPORTS, sale["max_lamports"]))
                         sale["crossover_cents"] = ceil(Fraction((alternative["payday_cents"] - sale["payday_cents"]) * mainnet_loan.LAMPORTS,
                                                                 sale["max_lamports"]))
                 sale["outcomes"] = midtrip.sale_outcomes(sale, alternative["payday_cents"], path, midprice, floor)
                 sale["outcomes"]["carry"] = carry
+                sale["modeled_input_lamports"] = spend
+                sale["modeled_fill"] = spend is not None and spend <= sale["max_lamports"]
+                if carry:
+                    sale["later_trips"] = sale_replay.evaluate(row, budget, lending, path, midprice, drop, topup,
+                                                               spare, folds, pools, strict, loss_limit)
             if alternative.get("deposit_limit_lamports") and partial_payment.matches_opening(row):
                 payment = alternative["payment_cents"] * partial_payment.SCALE
                 added = alternative["deposit_limit_lamports"] // partial_payment.SCALE

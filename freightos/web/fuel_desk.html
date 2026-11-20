@@ -90,9 +90,15 @@
             </tbody></table><p id="pledge-tradeoff" hidden></p>
             <details id="midtrip-sale" hidden><summary id="sale-title">Sell some spare SOL</summary>
               <label for="sale-policy">When could I sell?</label>
-              <select id="sale-policy"><option value="standard">At my estimated price</option><option value="historical">Beat pledging in all replays</option></select>
-              <p id="sale-result"></p><dl id="sale-amounts"></dl><p id="sale-limit"></p><p id="sale-crossover"></p><details><summary>What if SOL falls or recovers?</summary>
+              <select id="sale-policy"><option value="standard">At my estimated price</option><option value="historical">Beat pledging in all replays</option><option value="budget">Set a payday downside limit</option></select>
+              <div id="sale-budget" hidden><label for="sale-loss">Most I could give up versus pledging on payday ($)</label>
+              <div><input id="sale-loss" type="number" value="1.00" min="0" max="1000000" step=".01" inputmode="decimal" required><button id="sale-apply" type="button">Compare limit</button></div></div>
+              <p id="sale-result" role="status"></p><p id="sale-fill"></p><button type="button" id="sale-minimum" hidden></button><dl id="sale-amounts"></dl><p id="sale-limit"></p><p id="sale-crossover"></p><details><summary>What if SOL falls or recovers?</summary>
               <p id="sale-stress"></p><p id="sale-histories"></p><p id="sale-yield"></p><a href="/evidence/pledge-yield" id="sale-yield-link">View the Kamino share history</a></details>
+              <details id="sale-later" hidden><summary>Would this sale have gone through on later trips?</summary>
+                <p id="sale-later-summary"></p><dl id="sale-later-results"></dl>
+                <p>The opening loan and your settings stay fixed. Each replay sizes the payment, pledge and sale limit using trips that had already ended. We model a day-15 fill using recorded Orca pool fees and liquidity at your assumed price. Later trips can overlap. These are hypothetical fills.</p><a href="/evidence/mainnet-fuel-pools">View the recorded Orca pools</a>
+              </details>
               <div id="sale-proof" hidden><button type="button" id="sale-live">Check sale and repayment on Devnet</button>
               <p id="sale-receipt" role="status"></p><a id="sale-evidence" hidden>Download the saved simulation</a></div>
             </details>
