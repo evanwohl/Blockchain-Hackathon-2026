@@ -308,7 +308,11 @@ if (location.hash === "#partial-advance") {
   el("allow-partial").checked = el("protect-payday").checked = true;
   el("offer-fee").value = "3.00";
 }
-if (["#choose-funding", "#fuel-backup", "#cash-split"].includes(location.hash)) el("credit-route").value = "policy";
+if (["#choose-funding", "#fuel-backup", "#cash-split", "#keep-road-cash"].includes(location.hash)) el("credit-route").value = "policy";
+if (location.hash === "#keep-road-cash") {
+  el("policy-stress").value = "150.00";
+  el("policy-floor").value = "3.00";
+}
 if (location.hash === "#pay-without-loan") {
   el("credit-route").value = "sale";
   el("customer-menu").value = "none";

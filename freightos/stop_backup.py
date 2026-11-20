@@ -69,7 +69,7 @@ def pool_backup(plan, pool, reserve, wallet, base, rent, fee, cap, first_slot, s
     return {**sized, "retained_raw": follow["retained_raw"], "next_cent_entry_lamports": next_entry}, slot
 
 
-def observe(cap, rpc, *, outside_cents=None):
+def observe(cap, rpc, *, outside_cents=None, inspect_market=None):
     integer(cap, "SOL available for the backup", 10**12)
     if outside_cents is not None:
         integer(outside_cents, "separate fuel cash", 100000000)
@@ -120,6 +120,11 @@ def observe(cap, rpc, *, outside_cents=None):
         if slot - first_slot > 240:
             raise ValueError("The two cash choices were observed too far apart")
         result.update(separate_cents=outside_cents, fixed_routes=alternatives, last_slot=slot)
+    if inspect_market:
+        result["market"], slot = inspect_market(plan, reserve, wallet, cap, rent, fee, slot, rpc)
+        if slot - first_slot > 240:
+            raise ValueError("The cash comparison changed while checking the pool curves")
+        result["last_slot"] = slot
     return result
 
 

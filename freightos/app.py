@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cash, fuel_cover, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, stop_backup, trip_cover
+from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, stop_backup, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -639,6 +639,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/credit-exits":
             self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
             return
+        if self.path == "/evidence/fuel-floor":
+            self.reply(200, "application/json", gzip.decompress(fuel_floor.SAMPLE.read_bytes()), static=True)
+            return
         if self.path == "/evidence/fuel-cash":
             self.reply(200, "application/json", gzip.decompress(fuel_cash.SAMPLE.read_bytes()), static=True)
             return
@@ -962,6 +965,12 @@ class Handler(BaseHTTPRequestHandler):
                 separate = data.get("separate_cents")
                 if separate is not None:
                     integer(separate, "separate fuel cash", 100000000)
+                receipts = data.get("receipt_amounts")
+                if receipts is not None:
+                    if separate is None or not isinstance(receipts, list) or not 1 <= len(receipts) <= 4:
+                        raise ValueError("Choose the freight receipts to compare")
+                    for received in receipts:
+                        integer(received, "freight receipt", reserve_credit.INVOICE_CENTS)
                 source = data.get("source")
                 matches_recording = cap == stop_backup.DEFAULT_CAP and separate in (None, fuel_cash.SAMPLE_CASH)
                 if not reference or source not in ("recorded", "live") or (source == "recorded" and not matches_recording):
@@ -971,15 +980,25 @@ class Handler(BaseHTTPRequestHandler):
                     self.respond(503, {"error": "A public funding check is running. Try again shortly."})
                     return
                 try:
-                    if live:
+                    cases, _ = payday_policy.price_cases(reference, stress)
+                    prices = [c["price_cents"] for c in cases]
+                    if receipts:
+                        q = fuel_floor.public_quotes(cap, separate, receipts[0], floor, max(prices), devnet.read_with_retry()) if live else fuel_floor.saved()
+                    elif live:
                         q = stop_backup.observe(cap, devnet.read_with_retry(), outside_cents=separate)
                     else:
                         q = stop_backup.saved() if separate is None else fuel_cash.saved()
-                    cases, _ = payday_policy.price_cases(reference, stress)
-                    prices = [c["price_cents"] for c in cases]
                     result = {**q, "payday": stop_backup.payday(q, prices, floor), "source": source}
                     if separate is not None:
                         result["cash_comparison"] = fuel_cash.compare(q, prices)
+                    if receipts and q.get("market"):
+                        try:
+                            result["cash_floor"] = fuel_floor.decisions(q, receipts, floor, prices)
+                        except ValueError:
+                            result["cash_floor"] = None
+                    if not live:
+                        result["evidence_path"] = "/evidence/fuel-floor" if receipts else "/evidence/fuel-cash" if separate is not None else "/evidence/stop-backup"
+                    result.pop("market", None)
                     self.respond(200, result)
                 except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):
                     self.respond(503, {"error": "Could not verify the fuel amount and protected reserve within the same market window."})
