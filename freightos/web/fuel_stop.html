@@ -51,6 +51,23 @@
         <p id="mainnet-result"></p><div id="mainnet-quoted"><dl id="mainnet-ledger"></dl>
         <p id="mainnet-plan"></p>
         <button type="button" id="mainnet-try" hidden></button>
+        <details id="loan-result" class="stop-offer">
+          <summary>Borrow against SOL to cover fuel <strong id="loan-preview"></strong></summary>
+          <p id="loan-verdict" role="status"></p>
+          <button type="button" id="loan-budget" hidden></button>
+          <div id="loan-figures" hidden><dl id="loan-ledger"></dl>
+            <table id="loan-outcomes"><caption>Money left after freight pays and balances are restored</caption>
+              <thead><tr><th scope="col">SOL on payday</th><th scope="col">With loan</th><th scope="col">Sell only</th></tr></thead>
+              <tbody id="loan-prices"></tbody></table>
+          </div>
+          <details><summary>Loan terms and liquidation risk</summary>
+            <p id="loan-terms"></p>
+            <p>The model starts with an empty, ready-to-use lending account and token accounts. It allows 0.0001 SOL each for borrowing and repayment, plus the vendor payment fee. A sale also needs temporary account rent. New account setup, future collateral earnings and priority fees above those allowances are excluded.</p>
+            <p>Kamino can sell the pledged SOL before payday if its value drops too far. The tested prices are scenarios. The loan remains due if freight pays late.</p>
+            <a href="/evidence/mainnet-fuel-lending" download="FreightOS-lending.json">Download recorded lending accounts</a>
+            <a href="/load#credit">See a completed fuel loan on Devnet →</a>
+          </details>
+        </details>
         <details id="offer-result" class="stop-offer"><summary>Use early freight pay <strong id="offer-preview"></strong></summary>
           <p id="offer-explain"></p><p id="offer-fuel-only"></p><dl id="offer-ledger"></dl><p id="offer-tradeoff"></p>
           <button type="button" id="offer-switch" hidden></button>

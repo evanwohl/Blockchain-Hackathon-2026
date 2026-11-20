@@ -56,9 +56,9 @@
 #budget-help { display: block; margin-top: .25rem; color: var(--muted); font-size: .78rem; }
 
 #mainnet-check summary strong { display: inline-block; margin-inline-start: .4rem; font-weight: 500; color: #466045; }
-#range-ledger > div, #offer-ledger > div, #mainnet-ledger > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding: .6rem 0; }
-#range-ledger dt, #offer-ledger dt, #mainnet-ledger dt { font-size: .86rem; }
-#range-ledger dd, #offer-ledger dd, #mainnet-ledger dd { margin: 0; text-align: end; font-weight: 600; font-variant-numeric: tabular-nums; }
+#loan-ledger > div, #range-ledger > div, #offer-ledger > div, #mainnet-ledger > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding: .6rem 0; }
+#loan-ledger dt, #range-ledger dt, #offer-ledger dt, #mainnet-ledger dt { font-size: .86rem; }
+#loan-ledger dd, #range-ledger dd, #offer-ledger dd, #mainnet-ledger dd { margin: 0; text-align: end; font-weight: 600; font-variant-numeric: tabular-nums; }
 #mainnet-terms, #mainnet-quoted > a { font-size: .8rem; }
 
 #offer-menu { width: 100%; padding: .65rem; color: var(--ink); background: #fbfaf5; border: 1px solid #89937d; font: inherit; }
@@ -78,3 +78,10 @@
 
 #range-offer label { display: block; margin-bottom: .35rem; font-size: .85rem; }
 #range-title { margin-top: .9rem; }
+
+#loan-outcomes { width: 100%; border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
+#loan-outcomes caption { text-align: start; font-weight: 600; padding-block: .8rem .4rem; }
+#loan-outcomes th, #loan-outcomes td { text-align: end; padding: .5rem .2rem; border-bottom: 1px solid var(--line); }
+#loan-outcomes :is(th, td):first-child { text-align: start; }
+#loan-result details { margin-block-start: .8rem; }
+#loan-result details a { display: block; margin-block: .6rem; }

@@ -10,7 +10,7 @@ import numpy as np
 from solders.pubkey import Pubkey
 from hedging.quick_pay import integer
 
-from freightos import customer_credit, fuel_floor, fuel_swap, payday_policy, reserve, reserve_credit, stop_backup
+from freightos import customer_credit, fuel_floor, fuel_swap, mainnet_loan, payday_policy, reserve, reserve_credit, stop_backup
 
 EVIDENCE = Path(__file__).with_name("artifacts") / "mainnet_fuel" / "pools.json"
 DIGEST = "3de18210abdfd86e2a7e72cf91284099c623dadd28daf38f211c5466052c7134"
@@ -347,7 +347,13 @@ def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="pa
         offer = {"menu": "counter", "counter": counter}
     else:
         offer = early_freight(bill, stable, received, target, cash, wallet_cap, price, offer_menu, offer_fee)
-    return {"early_freight": offer, "slot": data["accounts"]["context"]["slot"], "date": datetime.fromtimestamp(data["block_time"], timezone.utc).isoformat(),
+    try:
+        lending = mainnet_loan.saved()
+    except (OSError, ValueError):
+        loan = None
+    else:
+        loan = mainnet_loan.compare(plan, costs, stable, cash, wallet_cap, native * scale_factor, fee, rent, lending, history_prices)
+    return {"secured_loan": loan, "early_freight": offer, "slot": data["accounts"]["context"]["slot"], "date": datetime.fromtimestamp(data["block_time"], timezone.utc).isoformat(),
             "covers_full_range": covered_range, "original": comparable, "first_cash_cents": first,
             "fuel_short_cents": max(0, first - cash), "target_cash_cents": preserving,
             "target_sale_cents": target_sale, "target_second_pool_cents": second_legs[target_sale] if target_sale is not None else None,

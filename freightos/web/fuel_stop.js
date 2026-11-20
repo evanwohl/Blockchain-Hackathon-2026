@@ -2,7 +2,7 @@ import {el, facts, money, request, saveFile} from "./common.js";
 
 const form = el("stop-inputs"), verify = el("verify"), note = el("check-status");
 let focusMainnet = false, focusOffer = false, keepRoadCash = false;
-let originalCounter;
+let originalCounter, focusLoan = false;
 let focusWait = false, focusRange = false;
 let preference = "keep-cash";
 let revision = 0, timer, pending, last, undo;
@@ -248,6 +248,59 @@ function showOffer(q) {
   el("offer-bound").hidden = ceiling === null;
 }
 
+function showLoan(q) {
+  const loan = q.mainnet.secured_loan, button = el("loan-budget");
+  button.hidden = el("loan-figures").hidden = true;
+  el("loan-terms").textContent = "";
+  if (!loan) {
+    el("loan-preview").textContent = "Unavailable";
+    el("loan-verdict").textContent = "We couldn’t verify the recorded Kamino lending terms.";
+    return;
+  }
+  const row = loan.selected, minimum = loan.minimum, sale = loan.sell_only;
+  const balance = cents => cents < 0 ? money(-cents) + " short" : money(cents);
+  el("loan-preview").textContent = row ? row.draw_cents ? money(row.draw_cents) + " loan" : "No loan needed" : "Outside your limits";
+  el("loan-terms").textContent = "Recorded Kamino slot " + loan.slot.toLocaleString("en-US")
+    + ". The observed annual borrowing rate was about " + (loan.apr_bps / 100).toFixed(2)
+    + "%. We price 30 days at twice that rate and keep stressed debt at least 10 percentage points below the "
+    + loan.liquidation_pct + "% liquidation threshold. Orca sale prices come from a separate observation.";
+  if (!row) {
+    el("loan-verdict").textContent = "With " + money(loan.cash_cents) + " of your cash and no early freight pay, "
+      + (loan.best_funded ? "fuel clears, but the best tested split leaves " + balance(loan.best_funded.high_payday_cents)
+        + " at the high SOL price." : "your SOL budget cannot cover the fuel gap.")
+      + (minimum ? " The smallest SOL budget that also keeps " + money(q.floor_cents) + " on payday is " + money(minimum.opening_cents) + "."
+        : " The tested splits cannot meet both goals with the available wallet.");
+    if (minimum) {
+      button.hidden = false; button.textContent = "Preview a " + money(minimum.opening_cents) + " wallet limit";
+    }
+    return;
+  }
+  el("loan-verdict").textContent = row.draw_cents ? "Bring " + money(loan.cash_cents) + " to the "
+    + money(q.bill_cents) + " stop. Borrowing " + money(row.draw_cents) + " keeps " + money(q.floor_cents)
+    + " on payday even at " + money(loan.high_cents) + " per SOL. A smaller loan misses that target. Your SOL stays locked until repayment."
+    : "You can cover this bill and keep your payday target with the cash, reserve and sale available.";
+  el("loan-figures").hidden = false;
+  facts(el("loan-ledger"), [["Cash you bring", money(loan.cash_cents)], ["Wallet dollars and fuel reserve", money(loan.stable_cents)],
+    ["Sell SOL for", money(row.sale_cents)], ["Borrow for fuel", money(row.draw_cents)],
+    ["SOL locked until repayment", (row.pledge_lamports / 1e9).toFixed(4) + " SOL"], ["Estimated repayment on day 30", money(row.repay_cents)]]);
+  el("loan-outcomes").hidden = !row.draw_cents || !sale;
+  el("loan-prices").replaceChildren();
+  if (row.draw_cents && sale) {
+    for (const [price, key] of [[loan.low_cents, "low_payday_cents"], [q.reference_cents, "start_payday_cents"], [loan.high_cents, "high_payday_cents"]]) {
+      const tr = document.createElement("tr");
+      for (const value of [money(price), balance(row[key]), balance(sale[key])]) {
+        const td = document.createElement("td"); td.textContent = value; tr.append(td);
+      }
+      el("loan-prices").append(tr);
+    }
+    if (loan.history) {
+      const h = loan.history;
+      el("loan-terms").textContent += " Replaying " + h.windows + " overlapping Gemini 30-day moves, this loan leaves more payday cash than selling in "
+        + h.ahead + " cases, with " + h.ties + " ties. This count describes the sample.";
+    }
+  }
+}
+
 function showMainnet(q) {
   const m = q.mainnet, button = el("mainnet-try");
   el("mainnet-check").hidden = false;
@@ -257,7 +310,7 @@ function showMainnet(q) {
     el("mainnet-result").textContent = "The saved production pool accounts could not be verified. The fuel plan above uses Devnet.";
     return;
   }
-  showOffer(q);
+  showOffer(q); showLoan(q);
   const missing = m.fuel_short_cents, payday = m.payday_gap_cents;
   el("mainnet-status").textContent = missing ? money(missing) + " unpaid" : payday ? money(payday) + " short on payday" : "Fuel and payday covered";
   el("mainnet-result").textContent = "We repriced the full " + money(q.bill_cents) + " bill using two recorded Orca markets. Without early customer pay, "
@@ -321,7 +374,11 @@ function render(q) {
       summary.focus({preventScroll: true}); summary.scrollIntoView({block: "start"});
     }
   }
-  focusRange = focusWait = focusOffer = false;
+  if (focusLoan && q.mainnet) {
+    const summary = el("loan-result").querySelector("summary");
+    summary.focus({preventScroll: true}); summary.scrollIntoView({block: "start"});
+  }
+  focusLoan = focusRange = focusWait = focusOffer = false;
   if (focusMainnet) {
     el("mainnet-check").querySelector("summary").focus({preventScroll: true});
     focusMainnet = false;
@@ -450,6 +507,10 @@ el("fee-range").onchange = () => {
   if (counter) showRange(last, counter);
 };
 el("range-draft").onclick = () => downloadOffer(last?.mainnet?.early_freight.counter?.ranges[el("fee-range").value]?.split);
+el("loan-budget").onclick = () => {
+  const budget = last?.mainnet?.secured_loan?.minimum?.opening_cents;
+  if (budget) { focusLoan = true; tryAmount("budget", budget); }
+};
 el("mainnet-try").onclick = () => {
   if (last?.mainnet?.target_cash_cents != null) {
     focusMainnet = true;
@@ -486,7 +547,8 @@ function openPreset() {
       input.value = Number(value).toFixed(2);
   }
   el("price-room").open = preset.has("preference");
-  el("mainnet-check").open = ["mainnet", "early-pay"].includes(preset.get("market"));
+  el("mainnet-check").open = ["mainnet", "early-pay", "loan"].includes(preset.get("market"));
+  el("loan-result").open = focusLoan = preset.get("market") === "loan";
   focusOffer = preset.get("market") === "early-pay";
   el("offer-result").open = focusOffer;
   focusWait = focusOffer && preset.get("view") === "buyback";
