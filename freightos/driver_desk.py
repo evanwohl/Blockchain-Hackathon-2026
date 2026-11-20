@@ -104,12 +104,13 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
         exit_costs = costs if len(costs) > limit else mainnet_stop.split_costs(pools, limit)[0]
         if midprice is not None:
             marks, windows = midtrip.checkpoints(path, midprice, lending["apr"] * 2)
+            folds = midtrip.prior_windows(path, midprice, lending["apr"] * 2)
         for row in debt_rows:
             row["payoff_options"] = collateral_exit.options(row, exit_costs, lending, min(prices))
             if budget is not None:
                 row["cash_payoff"] = payoff_budget.quote(row, budget, pools, lending, prices)
             if midprice is not None:
-                row["cash_payoff"]["midtrip"] = midtrip.quote(row, budget, marks, windows, lending)
+                row["cash_payoff"]["midtrip"] = midtrip.quote(row, budget, marks, windows, lending, folds)
     return result
 
 

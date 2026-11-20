@@ -1,6 +1,7 @@
 import base64
 import gzip
 import json
+from datetime import date, timedelta
 from decimal import Decimal
 from fractions import Fraction
 from math import ceil, floor
@@ -80,6 +81,25 @@ def test_early_cash_cannot_leave_a_subminimum_kamino_balance():
     assert partial["budget_price_cents"] == partial["no_payment_price_cents"]
     full = midtrip.quote(row, 2, marks, count, terms)
     assert full["payment_cents"] == 2 and full["payday_cents"] == 0
+
+
+def test_later_trip_audit_excludes_overlapping_training_paths_and_freezes_the_earlier_cash_election():
+    trials = route(3000, 5500)["cash_payoff"]["midtrip"]["later_trials"]
+    assert [t["prior_windows"] for t in trials] == [1, 6, 6, 6]
+    assert [t["peak_bps"] for t in trials] == [6079, 7342, 7700, 8194]
+    assert all(t["payment_cents"] == 0 for t in trials)
+    assert sum(t["missed"] for t in trials) == 3 and sum(t["reached_liquidation"] for t in trials) == 1
+    for t in trials:
+        assert date.fromisoformat(t["last_training_start"]) + timedelta(days=30) < date.fromisoformat(t["start"])
+    path = {"traces": {"2020-01-01": [(30, Fraction(1)), (60, Fraction(3, 5))],
+                       "2020-03-01": [(30, Fraction(1)), (60, Fraction(1))]}}
+    terms = mainnet_loan.saved()
+    row = dict(draw_cents=7298, pledge_lamports=2192000000)
+    marks, count = midtrip.checkpoints(path, 5500, terms["apr"]*2)
+    folds = midtrip.prior_windows(path, 5500, terms["apr"]*2)
+    q = midtrip.quote(row, 3000, marks, count, terms, folds)
+    trial, = q["later_trials"]
+    assert trial["payment_cents"] == q["payment_cents"] > 0 and trial["peak_bps"] < 6000
 
 
 def test_replay_rejects_changed_remaining_debt_even_if_token_balances_match():

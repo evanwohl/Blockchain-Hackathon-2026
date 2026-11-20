@@ -36,6 +36,14 @@ function showEarlyPayment(q) {
   el("midtrip-trigger").textContent = q ? "At these terms, you can keep all your cash if the day-15 SOL price is "
     + money(q.no_payment_price_cents) + " or higher. Below " + money(q.budget_price_cents)
     + ", the plan cannot maintain that cushion with this budget." : "";
+  el("midtrip-history").hidden = !q?.eligible;
+  if (q?.eligible) {
+    const trials = q.later_trials;
+    el("midtrip-audit").textContent = trials.length ? "Using only price paths that ended before each later history began, the rule missed the cushion in "
+      + trials.filter(t => t.missed).length + " of " + trials.length + " cases. Debt reached the liquidation limit in "
+      + trials.filter(t => t.reached_liquidation).length + ". These cases use the same assumed price, cash budget and loan terms. The later histories can overlap."
+      : "This history has no later window with a completed earlier comparison.";
+  }
   amounts.hidden = !q?.eligible;
   risk.textContent = "";
   if (!q) {
@@ -261,7 +269,8 @@ function earlyPaymentLine(q) {
   if (!q.eligible) return begin + "Loan may already be eligible for liquidation." + thresholds;
   return begin + "Pay " + money(q.payment_cents) + " early, keep " + money(q.unused_cents) + " cash, still owe "
     + money(q.payday_cents) + " on day 30. Additional cash needed for the tested cushion: " + money(q.short_cents)
-    + ". Worst modeled debt as a share of collateral: " + percent(q.paid_peak_bps) + " across " + q.windows + " Gemini paths." + thresholds;
+    + ". Worst modeled debt as a share of collateral: " + percent(q.paid_peak_bps) + " across " + q.windows + " Gemini paths." + thresholds
+    + " Earlier-only sizing missed the cushion in " + q.later_trials.filter(t => t.missed).length + " of " + q.later_trials.length + " eligible later cases.";
 }
 
 let partialReceipt = "";
