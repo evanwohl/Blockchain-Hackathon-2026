@@ -89,6 +89,8 @@ For a fresh public run use a dedicated Devnet payer holding at least 5.7001 Circ
 
 ## Presenting to a first-time judge
 
+Overview links to **For judges: the three-minute demo** at `/judge`. This read-only entry point uses the verified `/api/public-offer` response for payment amounts, modeled costs and the practice-offer link, and `/api/trial` for the same-reserve comparison. Saved signed evidence and a public RPC recheck have separate source labels. An unavailable recheck retains the last verified result. The page makes no deposits, approvals or payment entries. The default practice bill and the completed customer-offer payment use different terms; the README provides a timed presentation that identifies both. Keep all new judge assets in the explicit server asset map and verify them from an installed wheel.
+
 Open Overview on a fresh demo. Point out the $745 fuel bill, the 23-day gap and the two fee amounts on the slip. Early pay on the smaller $200 return-trip invoice yields $190. That lets the driver cover the rest from the reserve while collecting the full $3,000 main invoice later. Walk through this bill opens the actual approval flow. For a quick proof without changing the bill, Verify sample payment replays a **different** completed load, SYN-004, and checks that its vendor received $541.68 in test dollars. The 128-load comparison measures modeled fees under synthetic terms. The signed receipts establish what the reserve actually transferred on the fork.
 
 ## How to evaluate the decision engine

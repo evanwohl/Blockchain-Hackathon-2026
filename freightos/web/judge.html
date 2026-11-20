@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#1a1d19">
+  <meta name="description" content="Follow a FreightOS funding decision to a co-signed Solana Devnet fuel payment. Inspect the signed evidence and the same-reserve benchmark.">
+  <title>Three-minute demo · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css">
+  <script type="module" src="/judge.js"></script>
+</head>
+<body class="workspace">
+<a class="judge-skip" href="#judge-main">Skip to demo</a>
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/judge" aria-current="page">Judge demo</a><a href="/public-offer">Paid receipt</a></nav><span class="sandbox"><i aria-hidden="true"></i>Test funds</span></div></header>
+<main id="judge-main" class="public-ledger judge-ledger">
+  <div class="public-spread judge-hero">
+    <section class="public-cover">
+      <p class="panel-label">DeFi &amp; Onchain Applications · Solana</p>
+      <h1>Fuel is due.<br> <em>Freight pays later.</em></h1>
+      <p>FreightOS helps an owner-operator cover diesel before the freight invoice pays. It compares dated funding options, preserves cash for the road, and turns the chosen plan into an authorized vendor payment.</p>
+      <div class="receipt-links"><a class="paper-action" href="#payment-proof">Inspect the signed payment ↓</a><a href="/">Walk through the driver’s workspace →</a></div>
+      <p class="judge-scope">Three minutes. No wallet connection needed. The completed payment used sponsored test funds on public Solana Devnet.</p>
+    </section>
+    <section id="payment-proof" class="public-slip" aria-labelledby="judge-payment-title">
+      <p class="panel-label">Completed payment · Public Devnet</p>
+      <h2 id="judge-payment-title">The fuel vendor received</h2>
+      <strong class="public-amount"><span id="judge-received">—</span> <small>test USDC</small></strong>
+      <p>One test cent represents one modeled dollar of the fuel bill.</p>
+      <dl id="judge-sources" class="facts"></dl>
+      <p id="judge-proof-source" class="judge-scope">Opening the signed evidence…</p>
+      <div class="check-bar"><button id="judge-verify" class="secondary">Verify on public Solana</button><button id="judge-retry" class="secondary" hidden>Reload saved evidence</button></div>
+      <p id="judge-proof-status" role="status" aria-live="polite"></p>
+      <div class="receipt-links"><a href="/public-offer">Open the full receipt →</a><a href="/evidence/public-offer" download="FreightOS-public-offer.json">Download signed evidence</a></div>
+    </section>
+  </div>
+  <section class="judge-story" aria-labelledby="judge-story-title">
+    <header class="paper-heading"><h2 id="judge-story-title">One bill. <em>Three checks.</em></h2><span class="folio">Decision → authorization → evidence</span></header>
+    <ol class="judge-checks">
+      <li><p class="folio">01 / Choose the funds · Modeled</p><h3>Keep the freight invoices whole.</h3>
+        <p id="judge-choice">The customer offers an earlier fuel surcharge for a fee. FreightOS compares taking it with waiting, using the same fuel budgets and reserve pricing.</p>
+        <dl id="judge-costs" class="facts"></dl><p id="judge-fee-scope" class="judge-scope">Estimated funding costs exclude Solana network fees.</p>
+        <a id="judge-practice" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer">Try the offer in the practice bill →</a>
+      </li>
+      <li><p class="folio">02 / Pay the vendor · Signed</p><h3>Approve exactly where it goes.</h3>
+        <p>The customer and driver co-signed one transaction. Customer proceeds and a Kamino withdrawal reached the fuel vendor together. The FreightOS program enforces the approved recipient, reserve amount and share limit; a failed transaction rolls back.</p>
+        <a href="/public-offer#offer-trace">Trace the signed money movements →</a>
+      </li>
+      <li><p class="folio">03 / Test the advantage · Synthetic</p><h3>Give both strategies the reserve.</h3>
+        <p id="judge-trial">The bundled trial compares FreightOS with the cheaper of conventional funding and a reserve-plus-invoices plan. Both strategies have access to the same reserve.</p>
+        <p id="judge-trial-result" class="judge-trial-result"></p><p id="judge-trial-status" role="status"></p><button id="judge-trial-retry" class="secondary" hidden>Reload comparison</button>
+        <a href="/trial#same-access">Inspect every load and its baseline →</a>
+      </li>
+    </ol>
+  </section>
+  <section class="judge-details" aria-label="Technical evidence and scope">
+    <details><summary>What do Gemini, Kamino and Solana each do?</summary>
+      <p><b>Gemini:</b> recorded oil-market thresholds stress the modeled diesel budget. The conversion to a pump bill is a sample assumption. The payment decision checks six fuel budgets; it buys no oil contracts.</p>
+      <p><b>Kamino:</b> the driver’s own USDC reserve supplies the approved fuel payment through a vault withdrawal.</p>
+      <p><b>Solana:</b> signatures authorize the parties, the program binds the reserve transfer to the approved bill, and atomic execution settles the contributions together. The receipt verifier checks signed instructions, token balances and the settled program record.</p>
+      <a href="/evidence/gemini-settlements">Inspect the recorded Gemini settlement inputs</a>
+    </details>
+    <details><summary>What has shipped, and what is still a model?</summary>
+      <p>The public payment is finalized on Devnet. The interactive bill executes on a local Solana fork. Both use test tokens. Fee savings, freight dates, customer terms and diesel estimates are modeled; the synthetic trial measures neither customer traction nor investment returns.</p>
+      <p>The driver supplies reserve capital. FreightOS does not eliminate invoice default, vault or liquidity risk. Live broker approval, invoice ingestion and commodity order execution remain roadmap work.</p>
+      <a href="/forward-fill">Inspect the separate prospective paper trip</a>
+    </details>
+    <details><summary>Reproduce the payment check from the repository</summary>
+      <p>After installing the locked Python dependencies, check the bundled evidence without a network connection:</p>
+      <pre><code>uv run --locked python -m freightos.public_offer</code></pre>
+      <p>Fetch the finalized public records and run the same verification:</p>
+      <pre><code>uv run --locked python -m freightos.public_offer --live</code></pre>
+    </details>
+  </section>
+  <noscript><p class="judge-scope">Enable JavaScript for verified amounts, or open the full receipt and download the signed evidence above. The repository verifier also works without a browser.</p></noscript>
+</main>
+<footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Verifiable test payments</span><span>Modeled savings. Sponsored Devnet funds.</span></div></footer>
+</body>
+</html>

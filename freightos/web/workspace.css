@@ -6,6 +6,39 @@
   --sheet-gap: clamp(1.25rem, 3vw, 2.75rem);
 }
 
+.judge-skip { position: absolute; top: .5rem; left: 1rem; z-index: 5; padding: .7rem 1rem; background: var(--paper); transform: translateY(-200%); }
+.judge-skip:focus { transform: none; }
+.judge-ledger { scroll-margin-top: 1rem; }
+.judge-hero .public-cover { padding-bottom: 2rem; }
+.judge-hero .public-cover h1 { font-size: clamp(3.3rem,6.2vw,6rem); }
+.judge-hero .public-cover .paper-action { color: white; }
+.judge-hero .public-cover .judge-scope { font-size: .87rem; }
+.judge-scope { color: var(--muted); font-size: .87rem; line-height: 1.55; margin-block: 1rem; }
+#judge-sources dd { white-space: nowrap; }
+.judge-story { margin-block: 3rem; }
+.judge-checks { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-block: 2px solid var(--ink); background: var(--sheet); }
+.judge-checks > li { padding: clamp(1.1rem,2.3vw,2rem); display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.judge-checks > li + li { border-left: 1px solid var(--paper-edge); }
+.judge-checks h3 { margin: 0; font: 600 clamp(2rem,3vw,3rem)/1.05 var(--display); letter-spacing: -.025em; }
+.judge-checks > li > a { margin-top: auto; padding-block: .5rem; }
+.judge-checks .facts { margin: 0; }
+.judge-checks .facts > div { gap: .8rem; }
+.judge-checks .facts dd { flex-shrink: 0; }
+.judge-checks .judge-scope { margin: 0; }
+.judge-trial-result { font: 600 1.7rem/1.15 var(--display); }
+.judge-details { border-top: 1px solid var(--paper-edge); margin-bottom: 3rem; }
+.judge-details details { border-bottom: 1px solid var(--paper-edge); padding-block: .4rem; }
+.judge-details summary { padding-block: .85rem; font-weight: 600; }
+.judge-details p { margin-block: .75rem; max-width: 85ch; }
+.judge-details pre { padding: 1rem; background: #eaeae0; overflow-x: auto; }
+.judge-details a { display: inline-block; padding-block: .6rem; }
+@media (max-width: 760px) {
+  .judge-checks { grid-template-columns: 1fr; }
+  .judge-checks > li + li { border-left: 0; border-top: 1px solid var(--paper-edge); }
+  .judge-story .paper-heading { flex-wrap: wrap; }
+  .judge-story .paper-heading .folio { max-width: none; text-align: start; }
+}
+
 .money-story { margin: clamp(2.5rem,5vw,5rem) var(--inset) 0; padding-bottom: clamp(2rem,4vw,4rem); }
 .paper-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding-bottom: 1.15rem; }
 .paper-heading h2 { font: 600 clamp(3rem,5.3vw,5rem)/.98 var(--display); letter-spacing: -.035em; }

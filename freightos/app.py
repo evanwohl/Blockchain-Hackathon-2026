@@ -700,6 +700,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/judge": ("judge.html", "text/html; charset=utf-8"),
+            "/judge.js": ("judge.js", "text/javascript"),
             "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
             "/fuel_credit.js": ("fuel_credit.js", "text/javascript"),
             "/forward-fill": ("forward.html", "text/html; charset=utf-8"),
