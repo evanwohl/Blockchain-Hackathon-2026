@@ -71,6 +71,11 @@ def priced_plan(case, profile, scenario, gemini, input_digest, elections=None):
             for invoice in case["invoices"]
         ]}
     decision = price_calendar(selected)
+    if decision["status"] != "funded":
+        raise ValueError(
+            "No feasible funding plan covers this bill and the later obligations. "
+            "Check available cash, payment dates and funding terms."
+        )
     fallback = price_calendar({**case, "funding": [s for s in offers if s["id"] != "reserve redemption"]})
     amount = case["bills"][0]["cents"]
     draw = sum(
