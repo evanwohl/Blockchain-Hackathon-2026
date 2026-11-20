@@ -56,11 +56,23 @@
           <label><input type="radio" name="timing" value="after"> After I can spend a payout</label>
         </fieldset>
         <details id="fill-history" hidden><summary>Would my fuel money have lasted in past weeks?</summary>
+          <div id="history-choice" class="trip-fields" hidden><label>Plan to preview<select id="history-plan">
+            <option value="">Original trip hedge</option><option value="history_mix">Fit for on-time payouts</option>
+            <option value="delay_mix">Fit for one late payout</option><option value="cash_mix">Cash only</option>
+          </select></label></div>
+          <table id="history-costs" class="reference-prices" hidden><caption>Average extra cash in the hardest 10% of weeks</caption>
+            <thead><tr><th scope="col">Timing</th><th scope="col">Cash only</th><th scope="col">Selected plan</th></tr></thead>
+            <tbody><tr><th scope="row">On time</th><td id="history-cash-ready"></td><td id="history-plan-ready"></td></tr>
+            <tr><th scope="row">One payout late</th><td id="history-cash-late"></td><td id="history-plan-late"></td></tr></tbody></table>
+          <p id="history-tradeoff" hidden></p>
           <p id="fill-history-answer"></p><p id="history-peak-moves"></p><dl class="facts" id="fill-history-facts"></dl>
           <p id="history-delays" hidden></p>
           <details><summary>Which prices did you use?</summary><p id="fill-history-method"></p>
             <a href="/evidence/fill-prices" download="FreightOS-fill-prices.json">Download dated fuel and oil prices</a></details>
-          <div id="history-choice" hidden><p id="history-tradeoff"></p><details><summary>Does the result depend on one month?</summary><p id="history-sensitivity"></p></details><button type="button" id="history-switch" class="secondary"></button></div>
+          <details id="history-months" hidden><summary>Does the on-time result depend on one month?</summary><p id="history-sensitivity"></p></details>
+          <details id="history-standby" hidden><summary>How would I pay if the payout came late?</summary>
+            <p id="standby-need"></p><button type="button" class="secondary" id="standby-loan"></button>
+          </details>
           <button type="button" id="history-loan" class="secondary" hidden></button>
         </details>
         <section class="spending-result" id="spending-result" aria-labelledby="limit-title" hidden>
@@ -93,7 +105,7 @@
           <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>
           <p id="gap-status" role="status"></p><div id="gap-answer" hidden>
             <h3 id="gap-verdict"></h3><dl class="facts" id="gap-facts"></dl>
-            <p id="gap-comparison"></p><p id="gap-protection" hidden></p><p id="gap-risk"></p>
+            <p id="gap-payout" hidden></p><p id="gap-comparison"></p><p id="gap-protection" hidden></p><p id="gap-risk"></p>
             <details><summary>What if I sold some SOL instead?</summary><p id="gap-sale"></p></details>
             <details><summary>How was the loan checked?</summary><p id="gap-proof"></p></details>
           </div>

@@ -4,6 +4,7 @@ let gap = 0;
 let revision = 0;
 let protection;
 let replayWeek;
+let laterPayout;
 
 function clear() {
   revision++;
@@ -12,16 +13,17 @@ function clear() {
   el("gap-check").disabled = false;
 }
 
-export function setFuelGap(cents, alternative = null, week = null) {
-  if (gap !== cents || week !== replayWeek) el("gap-offer").value = "";
+export function setFuelGap(cents, alternative = null, week = null, payout = null) {
+  if (gap !== cents || week !== replayWeek || payout !== laterPayout) el("gap-offer").value = "";
   replayWeek = week;
+  laterPayout = payout;
   el("usual-gap").hidden = !week;
   protection = alternative;
   clear();
   gap = cents;
   el("gap-credit").hidden = !gap;
   if (!gap) el("gap-credit").open = false;
-  el("gap-title").textContent = "Could a loan cover the " + money(gap) + (week ? " gap from the week ending " + week + "?" : " fuel gap?");
+  el("gap-title").textContent = "Could a loan cover the " + money(gap) + (payout !== null ? " late-payout gap from the week ending " + week + "?" : week ? " gap from the week ending " + week + "?" : " fuel gap?");
 }
 
 function show(data) {
@@ -37,6 +39,13 @@ function show(data) {
     ["Amount to repay in " + q.days + " days", money(q.repay_cents)],
     ["Cash for setup and network fee at entry", money(q.entry_cash_cents)]
   ]);
+  el("gap-payout").hidden = laterPayout === null;
+  if (laterPayout !== null) {
+    const used = Math.min(laterPayout, q.repay_cents);
+    el("gap-payout").textContent = "If the " + money(laterPayout) + " oil payout arrives by repayment and you use "
+      + money(used) + " toward this loan, " + money(q.repay_cents - used)
+      + " still comes from other funds. Entry costs are separate.";
+  }
   const comparison = data.comparison;
   let verdict = "Compare fees once the rest of the fuel payment is funded.";
   if (comparison) {

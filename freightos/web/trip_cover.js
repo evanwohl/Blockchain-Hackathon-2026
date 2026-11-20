@@ -179,8 +179,14 @@ function showPastFills(target, selected, later) {
     el("history-peak-moves").textContent = "That week, diesel " + move(peak.diesel_move_mills, diesel + "¢ per gallon")
       + ". Oil " + move(peak.oil_move_cents, oil + " per barrel") + " by the contract deadline.";
   }
-  const rows = [["Cash alone · hardest 10% of weeks", money(history.before.tail_cash_cents)]];
-  if (later) rows.push(["Selected plan · same measure, including premium", money(sample.tail_cash_cents)]);
+  const compareCosts = later && selected.plan.legs.length > 0;
+  el("history-costs").hidden = !compareCosts;
+  if (compareCosts) {
+    el("history-cash-ready").textContent = el("history-cash-late").textContent = money(history.before.tail_cash_cents);
+    el("history-plan-ready").textContent = money(sample.tail_cash_cents);
+    el("history-plan-late").textContent = money(sample.one_late.tail_cash_cents);
+  }
+  const rows = compareCosts ? [] : [["Average extra cash in the hardest 10% of weeks", money(sample.tail_cash_cents)]];
   if (peak.short_cents) rows.push(["Fuel bill in the largest-gap week", money(peak.bill_cents)],
     ["Oil payout spendable at that stop", money(peak.payout_cents)]);
   facts(el("fill-history-facts"), rows);
@@ -200,27 +206,46 @@ function showPastFills(target, selected, later) {
     : "The replay uses regional pump prices and assumes zero oil payout.";
   el("fill-history-method").textContent = timing + " We apply Monday-to-Monday regional diesel changes to your entered pump price, through "
     + sample.end + ". The 10% rows average extra cash in each plan’s hardest weeks, including upfront costs. Actual station prices, Gemini index settlements and fill dates can differ.";
-  const other = later && mix !== "risk" && target.history_mix;
-  el("history-choice").hidden = !other;
-  if (other) {
-    const difference = other.fill_replay.after.tail_cash_cents - target.fill_replay.after.tail_cash_cents;
+  const picker = el("history-plan");
+  el("history-choice").hidden = !(later && mix !== "risk" && target.cash_mix);
+  for (const option of picker.options) {
+    option.disabled = option.hidden = !!option.value && !target[option.value];
+  }
+  picker.value = mix === "risk" ? "" : mix || "";
+  const fitted = later && (mix === "history_mix" || mix === "delay_mix") && selected;
+  el("history-tradeoff").hidden = !fitted;
+  if (fitted) {
+    const stressed = mix === "delay_mix";
+    const base = target.fill_replay.after;
+    const difference = stressed ? sample.one_late.tail_cash_cents - base.one_late.tail_cash_cents : sample.tail_cash_cents - base.tail_cash_cents;
     const cost = difference ? money(Math.abs(difference)) + (difference < 0 ? " less than" : " more than") : "the same amount as";
-    el("history-tradeoff").textContent = "The mix fitted on " + other.training_weeks + " earlier weeks needed " + cost
-      + " the original in the hardest tenth of " + sample.weeks + " later weeks. It costs " + money(other.plan.upfront_cents)
-      + " upfront and changes the gap at the trip’s modeled prices from " + money(target.after.short_cents) + " to " + money(other.after.short_cents) + ".";
-    const check = other.sensitivity;
-    el("history-sensitivity").textContent = check ? "We repeated the later-week comparison, leaving out one calendar month at a time. The fitted mix cost less in the hardest tenth in "
-      + check.lower + " of " + check.months + " comparisons. These overlapping checks describe sensitivity to the recorded months." : "This replay spans too few months to repeat the check.";
-    el("history-switch").textContent = mix === "history" ? "Return to the original plan" : "Preview the historically fitted mix";
+    el("history-tradeoff").textContent = "Fitted on " + fitted.training_weeks + " earlier weeks. Across the " + sample.weeks
+      + " later weeks, the hardest tenth needed " + cost + " the original hedge "
+      + (stressed ? "with one badly timed payout." : "with every payout on time.") + " Upfront cost is " + money(fitted.plan.upfront_cents) + ".";
+  }
+  const check = fitted && fitted.sensitivity;
+  el("history-months").hidden = !check;
+  if (check) el("history-sensitivity").textContent = "Leaving out one calendar month at a time, the fitted mix used less cash in the hardest tenth in "
+    + check.lower + " of " + check.months + " comparisons.";
+  const standby = later && sample.one_late;
+  el("history-standby").hidden = !standby?.week;
+  if (standby?.week) {
+    el("standby-need").textContent = "Delaying the payout in the week ending " + standby.week
+      + " gives the highest hard-week average. At that stop you would need " + money(standby.short_cents)
+      + " beyond your available fuel money. If the payout arrived on time, you would need " + money(standby.on_time_cents) + ".";
+    el("standby-loan").textContent = "Check a loan for " + money(standby.short_cents);
+    el("standby-loan").onclick = () => openReplayLoan(standby, standby.payout_cents);
   }
   const button = el("history-loan");
   button.hidden = !peak.short_cents;
   button.textContent = "Check borrowing for the " + money(peak.short_cents) + " replayed gap";
-  button.onclick = () => {
-    setFuelGap(peak.short_cents, null, peak.week);
-    el("gap-credit").open = true;
-    el("gap-title").focus();
-  };
+  button.onclick = () => openReplayLoan(peak);
+}
+
+function openReplayLoan(scenario, payout = null) {
+  setFuelGap(scenario.short_cents, null, scenario.week, payout);
+  el("gap-credit").open = true;
+  el("gap-title").focus();
 }
 
 function render() {
@@ -229,7 +254,7 @@ function render() {
   const target = d.pump_target;
   const risk = later && target?.funding_risk;
   const alternative = risk?.alternative;
-  el("funding-risk").hidden = !risk || mix === "history";
+  el("funding-risk").hidden = !risk || (mix && mix !== "risk");
   if (risk) {
     el("risk-weight").textContent = "Oil ranges where extra cash may be needed carry up to " + risk.after_pct
       + "% of the weight implied by Gemini prices with the smaller-gap plan."
@@ -243,7 +268,7 @@ function render() {
     el("risk-switch").textContent = mix === "risk" ? "Return to the smaller peak gap" : "Preview the other mix";
     if (alternative && mix === "risk") d = {...d, pump_target: {...target, ...alternative}};
   }
-  if (later && mix === "history" && target?.history_mix) d = {...d, pump_target: {...target, ...target.history_mix}};
+  if (later && target?.[mix]?.plan) d = {...d, pump_target: {...target, ...target[mix]}};
   showPastFills(target, d.pump_target, later);
   el("reserve-observation").hidden = !d.reserve;
   if (d.reserve) {
@@ -377,8 +402,8 @@ form.oninput = () => {
   el("trip-check").disabled = el("trip-pending").hidden = false;
   el("trip-status").textContent = "Compare these amounts to update your budget.";
 };
-el("history-switch").onclick = () => {
-  mix = mix === "history" ? null : "history";
+el("history-plan").onchange = event => {
+  mix = event.target.value || null;
   render();
 };
 el("usual-gap").onclick = () => {
