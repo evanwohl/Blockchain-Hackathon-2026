@@ -1,5 +1,7 @@
 # FreightOS
 
+FreightOS is our project for the University Blockchain Conference (2026) at UT Austin. 
+
 View the video demo [here](https://drive.google.com/file/d/16KvcYP4_vLwlDHxuuC0WfDixWqsCn9zr/view?usp=sharing)
 
 Open `/load#credit` to follow a finalized Kamino fuel loan from collateral to vendor payment to repayment. Both Explorer receipts and the saved evidence work without connecting a wallet. Run `uv run --locked python -m freightos.load_credit --live` to check the two transactions against public Devnet.
