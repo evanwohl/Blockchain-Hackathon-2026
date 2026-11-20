@@ -28,6 +28,15 @@ def paths(samples, trip, prices, reserve, payouts, stops, cutoff):
     return runs
 
 
+def coverage_bounds(runs):
+    needs = [row[2] for row in runs]
+    columns = list(zip(*needs, strict=True))
+    leaders = [sorted(col, reverse=True)[:2] for col in columns]
+    alternatives = {tuple(second if path[i] == first else first for i, (first, second) in enumerate(leaders))
+                    for path in needs}
+    return sorted(a for a in alternatives if not any(b != a and all(y <= x for x, y in zip(a, b)) for b in alternatives))
+
+
 def estimate(samples, trip, reserve, offers, plan, as_of, days):
     stops = (days + 6) // 7
     _, payouts = fill_replay.pump_gaps([], offers, plan)
@@ -50,7 +59,8 @@ def estimate(samples, trip, reserve, offers, plan, as_of, days):
             continue
         prior = runs[end-backup.WINDOW:end]
         records.append({"first": first.isoformat(), "last": last.isoformat(), "trained_through": ends[end-1].isoformat(),
-                        "gap_cents": max(needs), "target_cents": backup.buffer([max(r[2]) for r in prior]),
+                        "gap_cents": max(needs), "need_cents": needs, "bounds": coverage_bounds(prior),
+                        "target_cents": backup.buffer([max(r[2]) for r in prior]),
                         "single_cents": backup.buffer(first_gaps[one_end-backup.WINDOW:one_end])})
         eligible_from = last + backup.WEEK
     recent = runs[-backup.WINDOW:]
@@ -59,6 +69,7 @@ def estimate(samples, trip, reserve, offers, plan, as_of, days):
             "reserve_cents": reserve, "weekly_cash_cents": trip["budget_cents"] + trip["pump_cash_cents"],
             "gallons": trip["gallons"], "premium_cents": plan.get("upfront_cents", 0),
             "target_cents": backup.buffer([max(r[2]) for r in recent]) if fresh else None,
+            "bounds": coverage_bounds(recent) if fresh else [],
             "recent": [{"first": r[0].isoformat(), "need_cents": r[2]} for r in recent] if fresh else [],
             "records": records, "multi": backup.track(records, "target_cents") if records else None,
             "single": backup.track(records, "single_cents") if records else None}

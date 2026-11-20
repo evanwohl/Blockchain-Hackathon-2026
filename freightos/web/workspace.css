@@ -160,3 +160,5 @@
 :is(#history-costs, #backup-results) caption { text-align: left; font-weight: 600; padding: .35rem 0 .6rem; }
 :is(#history-costs, #backup-results) :is(td, th):not(:first-child) { text-align: right; }
 :is(#history-costs, #backup-results) tbody th { font-weight: normal; text-align: left; }
+
+.spending-result dl.fill-contributions { grid-template-columns: repeat(auto-fit, minmax(5rem, 1fr)); }

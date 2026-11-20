@@ -60,6 +60,12 @@
             <option value="23">23 days · 4 weekly fills</option><option value="30">30 days · 5 weekly fills</option>
           </select></label></div>
           <p id="payday-terms"></p><dl class="facts" id="payday-cash"></dl>
+          <div id="payday-budget-fields" class="trip-fields"><label>Extra fuel cash I can add each fill ($)
+            <input id="payday-weekly" type="number" min="0" max="1000000" step=".01" inputmode="decimal" aria-describedby="payday-budget-help">
+          </label></div>
+          <p id="payday-budget-help">Optional. Enter cash above the weekly fuel money shown here. Set aside the oil premium and loan setup separately.</p>
+          <div id="payday-fit" class="spending-result" hidden><h3 id="payday-fit-title"></h3><p id="payday-fit-note"></p>
+            <dl class="fill-contributions" id="payday-fit-schedule" hidden></dl><p id="payday-fit-history"></p></div>
           <button type="button" id="payday-credit" class="secondary">Check how much a loan could cover</button>
           <details><summary>How was this checked?</summary><p id="payday-method"></p><p id="payday-evidence"></p>
             <button type="button" class="secondary" id="payday-download">Download the cash schedule evidence</button></details>
@@ -125,6 +131,7 @@
             <label>Most SOL I would pledge<input id="gap-cap" type="number" min="0" max="1000" step=".001" value="1" required></label>
             <label>Time until I repay<select id="gap-days"><option value="23">23 days</option><option value="30">30 days</option></select></label>
             <label>SOL price drop to allow for<select id="gap-drop"><option value="20">20%</option><option value="40" selected>40%</option><option value="60">60%</option></select></label>
+            <label id="repay-limit-label" hidden>Most I can repay on payday ($, optional)<input id="repay-limit" type="number" min="0" max="1000000" step=".01" inputmode="decimal"></label>
             <label>Fee on another offer ($, optional)<input id="gap-offer" type="number" min="0" max="1000000" step=".01" aria-describedby="gap-offer-help"></label>
           </div><p id="gap-offer-help">Compare a fee quoted for the same fuel amount and repayment date.</p><button id="gap-check" class="secondary">Check loan on Devnet</button>
           <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>

@@ -716,20 +716,26 @@ class Handler(BaseHTTPRequestHandler):
                 destination = data.get("destination", "vendor")
                 if destination not in ("vendor", "wallet"):
                     raise ValueError("Unknown loan destination")
+                repay_limit = data.get("repay_limit_cents")
+                if repay_limit is not None:
+                    integer(repay_limit, "payday repayment limit", 100_000_000)
+                    if destination != "wallet":
+                        raise ValueError("This limit applies to a fuel wallet loan")
                 if gap == 0:
                     raise ValueError("The trip has no fuel shortfall")
-                if not self.server.trip_credit_lock.acquire(blocking=False):
+                if source == "live" and not self.server.trip_credit_lock.acquire(blocking=False):
                     self.respond(503, {"error": "Another loan check is running. Try again shortly."})
                     return
                 try:
-                    quote = freight_credit.trip_draw(gap, cap, drop, days, recorded=source == "recorded", destination=destination)
+                    quote = freight_credit.trip_draw(gap, cap, drop, days, recorded=source == "recorded", destination=destination, repay_limit=repay_limit)
                     self.respond(200, {**quote, "comparison": freight_credit.compare_fee(quote, offer), "source": source})
                 except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError, RuntimeError):
                     reason = ("No saved check matches these terms." if source == "recorded" else
                               "Devnet could not verify this loan. Your fuel gap is still open.")
                     self.respond(503, {"error": reason})
                 finally:
-                    self.server.trip_credit_lock.release()
+                    if source == "live":
+                        self.server.trip_credit_lock.release()
                 return
             if self.path == "/api/fuel-credit":
                 drop, days, source = data.get("drop"), data.get("days"), data.get("source")

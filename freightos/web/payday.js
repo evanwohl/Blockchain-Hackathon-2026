@@ -7,6 +7,33 @@ export function cashSchedule(run, credit) {
   return {upfront: Math.max(0, run.target_cents - credit), weekly: weekly[rank - 1]};
 }
 
+function bridge(bounds, weekly) {
+  return Math.min(...bounds.map(row => Math.max(0, ...row.map((need, i) => need - (i + 1) * weekly))));
+}
+
+export function budgetPlan(run, weekly) {
+  const request = bridge(run.bounds, weekly);
+  let best = null;
+  for (const bounds of run.bounds) {
+    let cumulative = 0, cost = 0;
+    const schedule = [];
+    for (const [i, need] of bounds.entries()) {
+      const due = (i + 1) * weekly;
+      const next = Math.max(cumulative, due, need);
+      schedule.push(next - cumulative);
+      cost += next - due;
+      cumulative = next;
+    }
+    if (cumulative === run.stops * weekly && (!best || cost < best.cost)) best = {cost, schedule};
+  }
+  const history = run.records.map(row => {
+    const draw = bridge(row.bounds, weekly);
+    const needed = Math.max(0, ...row.need_cents.map((v, i) => v - (i + 1) * weekly));
+    return {draw, short: needed > draw};
+  });
+  return {weekly, request, schedule: best?.schedule, history};
+}
+
 export function showSchedule(panel, run, credit, entry = null) {
   const cash = cashSchedule(run, credit);
   if (entry == null) {

@@ -155,7 +155,7 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor
             "current_ltv_bps": ceiling(10000 * principal / 10**6 * stable_price * factor / pledged),
             "stress_ltv_bps": ceiling(10000 * adjusted_debt / stressed), "liquidation_pct": liquidation,
             "remaining_liquidity_raw": uint(debt, 224, 8),
-            "rate_bps": ceiling(apr * 10000), "repay_cents": ceiling(repayment / scale), "cost_cents": cost,
+            "repayment_factor": str(repayment / advance), "rate_bps": ceiling(apr * 10000), "repay_cents": ceiling(repayment / scale), "cost_cents": cost,
             "advance_cents": advance // scale, **({"fee_headroom_cents": 1000 - cost} if advance == ADVANCE else {}),
             "liquidation_price_cents": ceiling(100 * adjusted_debt * price / (pledged * liquidation / 100)),
             "entry_cash_cents": ceiling((fee + setup) * price * 100 / LAMPORTS),
@@ -190,7 +190,7 @@ def saved(drop, days):
     return json.loads(gzip.decompress((DATA / "credit_examples.json.gz").read_bytes()))[f"{drop}-{days}"]
 
 
-def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recorded=False, destination="vendor"):
+def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recorded=False, destination="vendor", repay_limit=None):
     terms(drop, days)
     if destination not in ("wallet", "vendor"):
         raise ValueError("Unknown loan destination")
@@ -198,7 +198,13 @@ def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recor
         raise ValueError("Enter a positive fuel shortfall")
     if type(pledge_millis) is not int or not 0 <= pledge_millis <= 1_000_000:
         raise ValueError("Enter a SOL pledge limit between 0 and 1,000")
+    if repay_limit is not None and (destination != "wallet" or type(repay_limit) is not int or not 0 <= repay_limit <= 100_000_000):
+        raise ValueError("Enter a valid wallet loan repayment limit")
     result = {"gap_cents": gap_cents, "remaining_cents": gap_cents, "loan": None}
+    if repay_limit is not None:
+        result["repay_limit_cents"] = repay_limit
+        if repay_limit == 0:
+            return {**result, "repayment_limited": True}
     if not pledge_millis:
         return result
     scale = json.loads(devnet.SAMPLE.read_text())["decision"]["raw_units_per_cent"]
@@ -211,6 +217,8 @@ def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recor
         cents = quote["advance_cents"]
         if not (0 < cents <= gap_cents and quote["minimum_lamports"] <= pledged <= cap and pledged % step == 0):
             raise ValueError("Loan falls outside the trip limits")
+        if repay_limit is not None and quote["repay_cents"] > repay_limit:
+            raise ValueError("The simulated repayment exceeds the payday limit")
         quote.pop("fee_headroom_cents", None)
         sale_price = Decimal(quote["sol_price"])
         holding_cost = quote["entry_cash_cents"] + quote["cost_cents"]
@@ -218,7 +226,7 @@ def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recor
                      buyback_break_even_cents=ceiling(100 * sale_price * (cents + holding_cost) / cents))
         remaining = gap_cents - cents
         response = {**result, "remaining_cents": remaining, "loan": quote}
-        if remaining and remaining * scale <= quote["remaining_liquidity_raw"]:
+        if remaining and not result.get("repayment_limited") and remaining * scale <= quote["remaining_liquidity_raw"]:
             unit = cents * step
             estimate = (quote["minimum_lamports"] * gap_cents + unit - 1) // unit
             if pledge_millis < estimate <= 1_000_000:
@@ -233,10 +241,15 @@ def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recor
             if (drop, days) != (40, 23):
                 raise ValueError("No saved check for these terms")
         samples = json.loads(gzip.decompress((DATA / filename).read_bytes()))
+        if destination == "wallet" and repay_limit is not None and f"{key}-{repay_limit}" in samples:
+            key = f"{key}-{repay_limit}"
         if key not in samples:
             raise ValueError("No saved check for these terms")
         sample = samples[key]
-        return funded(evaluate(sample["run"], drop, days, sample["cents"] * scale, step=1, destination=destination))
+        quote = evaluate(sample["run"], drop, days, sample["cents"] * scale, step=1, destination=destination)
+        if repay_limit is not None:
+            result["repayment_limited"] = gap_cents * Decimal(quote["repayment_factor"]) > repay_limit
+        return funded(quote)
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("This preview requires public Solana Devnet")
     cents = 100
@@ -246,6 +259,10 @@ def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recor
         required = quote["minimum_lamports"]
         projected = min(gap_cents, cap * cents // required)
         projected = min(projected, cents + quote["remaining_liquidity_raw"] // scale)
+        if repay_limit is not None:
+            affordable = int(Decimal(repay_limit) / Decimal(quote["repayment_factor"]))
+            result["repayment_limited"] = gap_cents > affordable
+            projected = min(projected, affordable)
         if attempt:
             projected = min(projected, cents)
         if not projected:

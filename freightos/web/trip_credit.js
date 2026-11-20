@@ -9,22 +9,28 @@ let laterPayout;
 let backupCheck;
 let priceAdjusted;
 let paydayRun;
+let weeklyBudget;
+let savedCheck;
 
 function clear() {
   revision++;
+  savedCheck = null;
   el("gap-answer").hidden = el("gap-saved").hidden = true;
   el("gap-status").textContent = "";
   el("gap-coverage").hidden = el("gap-cash-backup").hidden = el("gap-payday").hidden = true;
   el("gap-check").disabled = false;
 }
 
-export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null, adjusted = false, payday = null} = {}) {
+export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null, adjusted = false, payday = null, budget = null} = {}) {
   if (gap !== cents || week !== replayWeek || payout !== laterPayout || backup !== backupCheck || adjusted !== priceAdjusted || payday !== paydayRun) el("gap-offer").value = "";
   replayWeek = week;
   laterPayout = payout;
   backupCheck = backup;
   priceAdjusted = adjusted;
+  if (payday?.days !== paydayRun?.days) el("repay-limit").value = "";
   paydayRun = payday;
+  weeklyBudget = budget;
+  el("repay-limit-label").hidden = el("repay-limit").disabled = !payday;
   el("gap-days").disabled = !!payday;
   if (payday) el("gap-days").value = String(payday.days);
   el("usual-gap").hidden = !(week || backup || payday);
@@ -42,13 +48,29 @@ function show(data) {
   if (paydayRun) {
     if (q && (q.destination !== "wallet" || q.wallet_gain_raw !== q.advance_raw)) throw new Error("Could not verify the loan proceeds in the fuel wallet.");
     const capacity = q?.advance_cents || 0;
-    showSchedule(el("gap-payday-cash"), paydayRun, capacity, q?.entry_cash_cents || 0);
+    const entry = q?.entry_cash_cents || 0;
+    if (weeklyBudget) {
+      const extra = Math.max(0, weeklyBudget.request - capacity);
+      const setup = weeklyBudget.weekly + extra + entry + paydayRun.premium_cents;
+      const rows = [["Extra cash before the first fill, including setup", money(setup)],
+        ["Then before each remaining fill", money(weeklyBudget.weekly)]];
+      if (extra) rows.push(["Included at setup to cover the unfunded part", money(extra)]);
+      facts(el("gap-payday-cash"), rows);
+    } else {
+      showSchedule(el("gap-payday-cash"), paydayRun, capacity, entry);
+    }
     el("gap-payday").hidden = false;
-    el("gap-payday-use").hidden = !capacity || !paydayRun.records.length;
+    el("gap-payday-use").hidden = !capacity || !!weeklyBudget || !paydayRun.records.length;
     if (!el("gap-payday-use").hidden) el("gap-payday-history").textContent = creditUse(paydayRun, capacity);
     el("gap-payday-note").textContent = "This counts " + money(capacity)
       + " in loan proceeds once. The setup totals include " + money(q?.entry_cash_cents || 0) + " for loan setup and network fees plus "
-      + money(paydayRun.premium_cents) + " for the selected oil protection. Repayment is separate.";
+      + money(paydayRun.premium_cents) + " for the selected oil protection. Repayment is separate."
+      + (data.repayment_limited ? " The full requested loan would exceed your payday repayment limit." : "");
+  }
+  if (q && weeklyBudget?.schedule) {
+    el("gap-payday-note").textContent += " If you can use the cash-only schedule above, you keep "
+      + (q.pledge_millis / 1000).toLocaleString("en-US") + " SOL available and avoid "
+      + money(q.cost_cents) + " in estimated borrowing costs and " + money(q.entry_cash_cents) + " in setup outlay.";
   }
   if (backupCheck) {
     const amount = q?.advance_cents || 0;
@@ -73,7 +95,8 @@ function show(data) {
     }
   }
   if (!q) {
-    el("gap-status").textContent = "This pledge limit cannot cover a cent of the fuel gap. You still need " + money(gap) + ".";
+    el("gap-status").textContent = (data.repayment_limited ? "This repayment limit leaves no verified loan." : "This pledge limit leaves no verified loan.")
+      + " You still need " + money(gap) + ".";
     return;
   }
   el("gap-verdict").textContent = data.remaining_cents ? money(q.advance_cents) + " for fuel · " + money(data.remaining_cents) + " still needed" : "The loan could cover all " + money(q.advance_cents);
@@ -98,7 +121,7 @@ function show(data) {
     recheck.textContent = "Recheck the full amount with an estimated " + cap + " SOL limit";
     recheck.onclick = () => {
       el("gap-cap").value = cap;
-      check("live");
+      check();
     };
   }
   const comparison = data.comparison;
@@ -137,24 +160,33 @@ function show(data) {
   el("gap-status").textContent = (data.source === "recorded" ? "Saved Devnet simulation" : "Public Devnet simulation") + " · " + time + " UTC. No funds moved.";
 }
 
-async function check(source) {
+async function check() {
   clear();
   const attempt = revision;
   const body = { gap_cents: gap, pledge_millis: Math.round(el("gap-cap").valueAsNumber * 1000),
-    days: Number(el("gap-days").value), drop: Number(el("gap-drop").value), source };
-  if (paydayRun) body.destination = "wallet";
+    days: Number(el("gap-days").value), drop: Number(el("gap-drop").value), source: "live" };
+  if (paydayRun) {
+    body.destination = "wallet";
+    if (el("repay-limit").value !== "") body.repay_limit_cents = Math.round(el("repay-limit").valueAsNumber * 100);
+  }
   if (el("gap-offer").value !== "") body.offer_cents = Math.round(el("gap-offer").valueAsNumber * 100);
   el("gap-check").disabled = true;
-  el("gap-status").textContent = source === "live" ? (paydayRun ? "Checking the loan into your demo fuel wallet…" : "Checking the loan and fuel payment on Solana…") : "Opening the saved loan check…";
+  el("gap-status").textContent = paydayRun ? "Checking the loan into your demo fuel wallet…" : "Checking the loan and fuel payment on Solana…";
   try {
     const data = await request("/api/trip-credit", body, AbortSignal.timeout(45000));
     if (attempt === revision) show(data);
   } catch (error) {
     if (attempt !== revision) return;
     el("gap-status").textContent = error.name === "TimeoutError" ? "The network took too long. Try again." : error.message;
-    const saved = paydayRun ? ([21508, 26908][body.days === 23 ? 0 : 1] === gap && body.pledge_millis === 1000)
-      : [2430, 292].includes(gap) && [100, 1000].includes(body.pledge_millis) && body.days === 23;
-    el("gap-saved").hidden = !(source === "live" && saved && body.drop === 40);
+    try {
+      const saved = await request("/api/trip-credit", {...body, source: "recorded"});
+      if (attempt === revision) {
+        savedCheck = saved;
+        el("gap-saved").hidden = false;
+      }
+    } catch {
+      if (attempt === revision) el("gap-saved").hidden = true;
+    }
   } finally {
     if (attempt === revision) el("gap-check").disabled = false;
   }
@@ -164,5 +196,8 @@ el("gap-form").oninput = event => {
   if (event.target === el("gap-days")) el("gap-offer").value = "";
   clear();
 };
-el("gap-form").onsubmit = event => { event.preventDefault(); check("live"); };
-el("gap-saved").onclick = () => check("recorded");
+el("gap-form").onsubmit = event => { event.preventDefault(); check(); };
+el("gap-saved").onclick = () => {
+  if (savedCheck) show(savedCheck);
+  el("gap-saved").hidden = true;
+};

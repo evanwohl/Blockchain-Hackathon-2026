@@ -61,3 +61,41 @@ def test_saved_shared_draw_retains_the_stablecoins_and_binds_the_route(days, gap
         credit.evaluate(corrupted, 40, days, advance*100, destination="wallet")
     with pytest.raises(ValueError, match="No saved check"):
         credit.trip_draw(gap, 1000, 40, days, recorded=True)
+
+
+def test_whole_run_frontier_matches_direct_replay_with_ties_and_different_worst_weeks():
+    from random import Random
+
+    rng = Random(91)
+    for stops in (4, 5):
+        paths = [[rng.randrange(6)*10 for _ in range(stops)] for _ in range(26)]
+        bounds = payday.coverage_bounds([(None, None, path) for path in paths])
+        for _ in range(250):
+            contributions = [rng.randrange(20) for _ in range(stops)]
+            cumulative = [sum(contributions[:i+1]) for i in range(stops)]
+            def loan(row):
+                return max(0, *(v-cash for v, cash in zip(row, cumulative)))
+            assert min(map(loan, bounds)) == sorted(map(loan, paths))[-2]
+    # Different bad weeks at different fills must not both be discarded.
+    paths = [[20, 0], [0, 30]] + [[1, 1]]*24
+    assert payday.coverage_bounds([(None, None, path) for path in paths]) == [(1, 30), (20, 1)]
+
+
+def test_sized_wallet_loan_checks_the_projected_repayment_to_the_cent():
+    def read(limit):
+        return credit.trip_draw(598, 1000, 40, 23, destination="wallet", repay_limit=limit, recorded=True)
+    unrestricted = read(None)["loan"]
+    assert unrestricted["wallet_gain_raw"] == 59800 and unrestricted["repay_cents"] == 601
+    assert read(601)["loan"]["pledge_millis"] == 214
+    limited = read(500)
+    assert limited["repayment_limited"] and "estimated_full_pledge_millis" not in limited
+    assert limited["loan"]["advance_cents"] == 497 and limited["loan"]["repay_cents"] == 500
+    assert limited["loan"]["pledge_millis"] == 178 and limited["remaining_cents"] == 101
+    assert read(0)["loan"] is None
+    with pytest.raises(ValueError, match="exceeds"):
+        read(600)
+    for limit in (-1, True, 100_000_001):
+        with pytest.raises(ValueError, match="repayment limit"):
+            read(limit)
+    with pytest.raises(ValueError, match="repayment limit"):
+        credit.trip_draw(598, 1000, 40, 23, destination="vendor", repay_limit=500, recorded=True)
