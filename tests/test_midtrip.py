@@ -141,3 +141,43 @@ def test_concurrent_public_replays_share_the_finished_observation():
         finish.set()
         assert first.result() == second.result() == {"slot": 123}
     assert len(observed) == 1
+
+
+def test_extra_fall_compares_cash_and_freezes_each_rule_before_later_history():
+    row = dict(draw_cents=7298, pledge_lamports=2192000000)
+    terms = mainnet_loan.saved()
+    paths = collateral_path.saved()
+    marks, windows = midtrip.checkpoints(paths, 5500, terms["apr"]*2)
+    folds = midtrip.prior_windows(paths, 5500, terms["apr"]*2)
+    q = midtrip.quote(row, 3000, marks, windows, terms, folds, 3000)
+    assert q["downside"] == dict(drop_bps=3000, floor_cents=3850, history_needed_cents=1068, history_payment_cents=1068)
+    assert (q["payment_cents"], q["unused_cents"], q["payday_cents"]) == (1447,1553,5909)
+    assert (q["cash_floor_cents"], q["no_payment_price_cents"], q["binding_start"]) == (2834,6853,"driver")
+    assert q["paid_peak_bps"] <= q["target_bps"] < q["wait_peak_bps"]
+    short = midtrip.quote(row, 1446, marks, windows, terms, drop_bps=3000)
+    assert short["short_cents"] == 1 and short["paid_peak_bps"] > short["target_bps"]
+    assert all(t["payment_cents"] == 1447 and t["history_cash_cents"] == 0 for t in q["later_trials"])
+    assert sum(t["missed"] for t in q["later_trials"]) == 0
+    assert sum(t["history_missed"] for t in q["later_trials"]) == 3
+    for price in (2833,2834):
+        path = {"traces":{"test":[(30,Fraction(1)),(60,Fraction(price,5500))]}}
+        trial, n = midtrip.checkpoints(path,5500,terms["apr"]*2)
+        assert (midtrip.quote(row,3000,trial,n,terms)["short_cents"] == 0) == (price == 2834)
+    for start in (6852,6853):
+        trial, n = midtrip.checkpoints(paths,start,terms["apr"]*2)
+        assert (midtrip.quote(row,3000,trial,n,terms,drop_bps=3000)["needed_cents"] == 0) == (start == 6853)
+
+
+def test_selected_public_payment_reprices_scenario_and_replays_sponsored_partial():
+    plan = dict(price_cents=5500,budget_cents=3000,drop_bps=3000,payment_cents=1447)
+    amount = partial_payment.selected_payment(plan)
+    p = partial_payment.saved(amount)
+    assert p["payment_raw"] == amount == 144700 and p["remaining_raw"] == 585100
+    assert p["vendor_raw"] == 950000 and p["pledge_lamports"] == 21920000
+    assert partial_payment.selected_payment(dict(plan,budget_cents=500,payment_cents=500)) == 50000
+    for changes in (dict(price_cents=4000), dict(payment_cents=1068), dict(budget_cents=100), dict(drop_bps=True),
+                    dict(drop_bps=10000), dict(drop_bps=0)):
+        with pytest.raises(ValueError):
+            partial_payment.selected_payment({**plan,**changes})
+    with pytest.raises(ValueError,match="no saved simulation"):
+        partial_payment.saved(50000)

@@ -13,13 +13,20 @@ from solders.pubkey import Pubkey
 from solders.signature import Signature
 from solders.transaction import VersionedTransaction
 
-from freightos import atomic_fuel, devnet, freight_credit as credit, fuel_swap, load_credit, public_offer, repeat_credit, split_payment as bill, stop_backup
+from freightos import atomic_fuel, collateral_path, devnet, freight_credit as credit, fuel_swap, load_credit, mainnet_loan, midtrip, public_offer, repeat_credit, split_payment as bill, stop_backup
 
+from hedging.quick_pay import integer
+
+SCALE = 100
 PAYMENT = 106_800
+DOWNSIDE_PAYMENT = 144_700
+DOWNSIDE_SAMPLE = credit.DATA / "downside_payment.json.gz"
 SAMPLE = credit.DATA / "partial_fuel_payment.json.gz"
 
 
-def simulate(rpc=devnet.request):
+def simulate(rpc=devnet.request, *, payment=PAYMENT):
+    if type(payment) is not int or not 0 < payment < bill.LOAN:
+        raise ValueError("Enter a partial payment below the sample principal")
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("The partial repayment requires Solana Devnet")
     owner, obligation, _, _, cash = repeat_credit.accounts()
@@ -33,13 +40,13 @@ def simulate(rpc=devnet.request):
     combined = close[-2].accounts
     accounts = [*combined[:9], combined[25], combined[26], combined[12], combined[27]]
     tag = hashlib.sha256(b"global:repay_obligation_liquidity_v2").digest()[:8]
-    repay = Instruction(credit.KLEND, tag + struct.pack("<Q", PAYMENT), accounts)
+    repay = Instruction(credit.KLEND, tag + struct.pack("<Q", payment), accounts)
     vendor_owner = Pubkey.from_string(json.loads(devnet.SAMPLE.read_bytes())["vendor_owner"])
 
     def run(entry_cap, sponsor_cap):
         ops = bill.opening_instructions(owner, cash, route, entry_cap, rent)
-        ops.extend(fuel_swap.swap_instructions(sponsor, sponsor_cash, route, PAYMENT, sponsor_cap, rent))
-        ops.extend([public_offer.transfer(sponsor_cash, sponsor, cash, PAYMENT), *close[1:-2], repay])
+        ops.extend(fuel_swap.swap_instructions(sponsor, sponsor_cash, route, payment, sponsor_cap, rent))
+        ops.extend([public_offer.transfer(sponsor_cash, sponsor, cash, payment), *close[1:-2], repay])
         config = TransactionConfig(compute_unit_limit=1_000_000, loaded_accounts_data_size_limit=16*1024*1024, heap_size=32768)
         msg = MessageV1.try_compile(sponsor, ops, Hash.from_string(block["value"]["blockhash"]), config)
         wire = bytes(VersionedTransaction.populate(msg, [Signature.default()] * msg.header.num_required_signatures))
@@ -62,7 +69,7 @@ def simulate(rpc=devnet.request):
                     and ix.get("parsed", {}).get("type") == kind]
         spends = []
         for i, (payer, dest, output, cap) in zip((i for i, ix in enumerate(ops) if ix.program_id == fuel_swap.ORCA),
-                ((owner, cash, bill.SALE, entry_cap), (sponsor, sponsor_cash, PAYMENT, sponsor_cap)), strict=True):
+                ((owner, cash, bill.SALE, entry_cap), (sponsor, sponsor_cash, payment, sponsor_cap)), strict=True):
             a, b = transfers(i, "transfer")
             spent = int(a["amount"])
             if (a["source"] != str(Pubkey.create_with_seed(payer, fuel_swap.SEED, devnet.TOKEN))
@@ -73,9 +80,9 @@ def simulate(rpc=devnet.request):
         minted, = [mint for index in moves for mint in transfers(index, "mintTo")]
         leg, = transfers(len(ops)-1, "transferChecked")
         data = credit.read_program_account(v["accounts"][0], "a8ce8d6a584caca7", 3344)
-        remaining = bill.LOAN - PAYMENT
+        remaining = bill.LOAN - payment
         if (leg["source"] != str(cash) or leg["destination"] != str(combined[5].pubkey)
-                or leg["mint"] != str(devnet.MINT) or int(leg["tokenAmount"]["amount"]) != PAYMENT
+                or leg["mint"] != str(devnet.MINT) or int(leg["tokenAmount"]["amount"]) != payment
                 or token(combined[5].pubkey, authority) != -remaining or token(load_credit.vendor(), vendor_owner) != bill.LOAN + bill.SALE
                 or token(cash, owner) or token(sponsor_cash, sponsor)
                 or load_credit.token_change(record, keys, combined[17].pubkey, credit.SOL, authority, 9) != bill.PLEDGE
@@ -85,7 +92,7 @@ def simulate(rpc=devnet.request):
                 or minted["mintAuthority"] != str(authority) or not 0 < int(minted["amount"]) == credit.uint(data, 128, 8)
                 or data[1208:1240] != bytes(combined[3].pubkey) or credit.uint(data, 1296) != remaining * (1 << 60)):
             raise ValueError("The partial repayment, remaining debt or collateral did not reconcile")
-        return dict(slot=result["context"]["slot"], loan_raw=bill.LOAN, payment_raw=PAYMENT, remaining_raw=remaining,
+        return dict(slot=result["context"]["slot"], loan_raw=bill.LOAN, payment_raw=payment, remaining_raw=remaining,
                     vendor_raw=bill.LOAN+bill.SALE, pledge_lamports=bill.PLEDGE, entry_lamports=spends[0], sponsor_lamports=spends[1])
 
     probe = run(40_000_000, 40_000_000)
@@ -94,8 +101,40 @@ def simulate(rpc=devnet.request):
 
 
 @cache
-def saved():
-    raw = SAMPLE.read_bytes()
-    if hashlib.sha256(raw).hexdigest() != "f62d755aded86262eb85a9c90de00b4dce9e8f6a709968fd6bc82de539935656":
+def saved(payment=PAYMENT):
+    samples = {
+        PAYMENT: (SAMPLE, "f62d755aded86262eb85a9c90de00b4dce9e8f6a709968fd6bc82de539935656"),
+        DOWNSIDE_PAYMENT: (DOWNSIDE_SAMPLE, "5a7babb5576323b9723ccfe3e96d9973807921a72c4a6b24f2f4b17c173ba93d"),
+    }
+    if payment not in samples:
+        raise ValueError("There is no saved simulation for this amount")
+    path, digest = samples[payment]
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError("The recorded partial repayment changed")
-    return atomic_fuel.replay_calls(json.loads(gzip.decompress(raw)), simulate)
+    return atomic_fuel.replay_calls(json.loads(gzip.decompress(raw)), lambda rpc: simulate(rpc, payment=payment))
+
+
+def matching_payment(row, decision):
+    cents = decision.get("payment_cents", 0)
+    if (row["pledge_lamports"] == bill.PLEDGE * SCALE and row["draw_cents"] * SCALE == bill.LOAN
+            and row["sale_cents"] * SCALE == bill.SALE and 0 < cents * SCALE < bill.LOAN):
+        return cents * SCALE
+    return None
+
+
+def selected_payment(data):
+    price = integer(data.get("price_cents"), "day-15 SOL price", 10_000_000)
+    budget = integer(data.get("budget_cents"), "day-15 cash", 100_000_000)
+    drop = integer(data.get("drop_bps"), "additional price fall", 9999)
+    expected = integer(data.get("payment_cents"), "quoted early payment", bill.LOAN // SCALE)
+    if not price or not drop:
+        raise ValueError("Choose a price and further fall before verifying this decision")
+    terms = mainnet_loan.saved()
+    marks, count = midtrip.checkpoints(collateral_path.saved(), price, 2 * terms["apr"])
+    row = dict(draw_cents=bill.LOAN // SCALE, sale_cents=bill.SALE // SCALE, pledge_lamports=bill.PLEDGE * SCALE)
+    decision = midtrip.quote(row, budget, marks, count, terms, drop_bps=drop)
+    payment = matching_payment(row, decision)
+    if payment is None or payment != expected * SCALE:
+        raise ValueError("The selected amount does not match this loan’s current modeled partial payment")
+    return payment

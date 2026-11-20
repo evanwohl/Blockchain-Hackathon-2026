@@ -3,7 +3,7 @@ from decimal import ROUND_HALF_UP
 from fractions import Fraction
 
 from hedging.quick_pay import integer
-from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, midtrip, payday_policy, payoff_budget, route_booking, route_sizing
+from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, midtrip, partial_payment, payday_policy, payoff_budget, route_booking, route_sizing
 
 MAX_BILL = 250_000
 VENDOR_FEE_LAMPORTS = 5_000
@@ -45,13 +45,16 @@ def quote(data):
         midprice = integer(data["midtrip_price"], "day-15 SOL price", 10_000_000)
         if budget is None or not midprice:
             raise ValueError("Enter a cash budget and a positive day-15 SOL price")
+    drop = integer(data.get("midtrip_drop_bps", 0), "additional price fall", 9999)
+    if drop and midprice is None:
+        raise ValueError("Enter a day-15 SOL price to check a further fall")
     try:
-        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance, budget, midprice)
+        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance, budget, midprice, drop)
     except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError) as exc:
         raise RuntimeError("Recorded funding terms could not be verified") from exc
 
 
-def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, budget, midprice):
+def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, budget, midprice, drop):
     lending = mainnet_loan.saved()
     reference = int((lending["sol_price"] * 100).to_integral_value(rounding=ROUND_HALF_UP))
     cases, _ = payday_policy.price_cases(reference, stress)
@@ -110,7 +113,15 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
             if budget is not None:
                 row["cash_payoff"] = payoff_budget.quote(row, budget, pools, lending, prices)
             if midprice is not None:
-                row["cash_payoff"]["midtrip"] = midtrip.quote(row, budget, marks, windows, lending, folds)
+                decision = midtrip.quote(row, budget, marks, windows, lending, folds, drop)
+                row["cash_payoff"]["midtrip"] = decision
+                if drop:
+                    amount = partial_payment.matching_payment(row, decision)
+                    if amount:
+                        decision["downside"]["preview_raw"] = amount
+                        if amount in (partial_payment.PAYMENT, partial_payment.DOWNSIDE_PAYMENT):
+                            decision["downside"]["evidence"] = "/evidence/" + (
+                                "midtrip-payment" if amount == partial_payment.PAYMENT else "downside-payment")
     return result
 
 

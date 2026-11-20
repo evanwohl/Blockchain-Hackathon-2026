@@ -47,7 +47,7 @@ def prior_windows(path, price, annual_rate):
     return folds
 
 
-def quote(row, budget, marks, windows, terms, folds=()):
+def quote(row, budget, marks, windows, terms, folds=(), drop_bps=0):
     pledge = row["pledge_lamports"]
     principal = row["draw_cents"] * CENT
     opening = principal + ceil(Fraction(principal * terms["origination"], 2**60))
@@ -63,6 +63,16 @@ def quote(row, budget, marks, windows, terms, folds=()):
     current_price = marks[0][1]
     current_ltv = debt * conversion / current_price
 
+    maturity_growth = marks[-1][3]
+    history = marks
+    extra = []
+    if drop_bps:
+        move = Fraction(10_000 - drop_bps, 10_000)
+        exact_price = current_price * move
+        # For any path above this floor, the largest admissible debt occurs at maturity.
+        extra = [(60, floor(exact_price) or exact_price, "driver", maturity_growth, move)]
+        marks = [*history, *extra]
+
     def minimum_price(cash):
         remaining = max(0, debt - cash * CENT)
         opening_limit = floor(debt * conversion / threshold) + 1
@@ -76,6 +86,8 @@ def quote(row, budget, marks, windows, terms, folds=()):
     base = dict(price_cents=current_price, current_ltv_bps=ceil(current_ltv), limit_bps=threshold,
                 target_bps=target, windows=windows, eligible=current_ltv < threshold,
                 no_payment_price_cents=minimum_price(0), budget_price_cents=minimum_price(spendable))
+    if extra:
+        base["downside"] = dict(drop_bps=drop_bps, floor_cents=floor(extra[0][1]))
     if not base["eligible"]:
         return base
 
@@ -95,13 +107,25 @@ def quote(row, budget, marks, windows, terms, folds=()):
     step, price, start, _, _ = marks[binding]
     trials = []
     for test_start, last_start, count, training, later in folds:
-        earlier_need, _ = payment_for(training)
+        earlier_need, _ = payment_for([*training, *extra])
         early_payment = min(earlier_need, spendable)
         observed_peak = peak(max(0, debt - early_payment * CENT), later)
-        trials.append(dict(start=test_start, last_training_start=last_start, prior_windows=count,
+        trial = dict(start=test_start, last_training_start=last_start, prior_windows=count,
                            payment_cents=early_payment, peak_bps=ceil(observed_peak),
-                           missed=observed_peak > target, reached_liquidation=observed_peak >= threshold))
+                           missed=observed_peak > target, reached_liquidation=observed_peak >= threshold)
+        if extra:
+            history_need, _ = payment_for(training)
+            history_cash = min(history_need, spendable)
+            history_peak = peak(max(0, debt - history_cash * CENT), later)
+            trial.update(history_cash_cents=history_cash, history_missed=history_peak > target,
+                         history_liquidation=history_peak >= threshold)
+        trials.append(trial)
 
+    if extra:
+        history_need, _ = payment_for(history)
+        base["downside"].update(history_needed_cents=history_need, history_payment_cents=min(history_need, spendable))
+    remaining = max(0, debt - spendable * CENT)
+    base["cash_floor_cents"] = ceil(ceil(remaining * maturity_growth) * conversion / target)
     return {**base, "needed_cents": needed, "payment_cents": paid, "unused_cents": budget-paid,
             "short_cents": max(0, needed-budget), "payday_cents": ceil(Fraction(ceil(left * marks[-1][3]), CENT)),
             "wait_peak_bps": ceil(peak(debt, marks)), "paid_peak_bps": ceil(peak(left, marks)), "later_trials": trials, "binding_hours": step*12,

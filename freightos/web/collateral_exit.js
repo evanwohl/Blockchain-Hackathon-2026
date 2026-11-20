@@ -3,11 +3,13 @@ import {el, facts, money, request} from "./common.js";
 const minSol = raw => (Math.floor(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const maxSol = raw => (Math.ceil(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const initialView = new URLSearchParams(location.search).get("view");
-let jumpToPayoff = ["payoff", "cash-budget", "midtrip"].includes(initialView);
-if (initialView === "midtrip") el("midtrip").open = true;
-if (["midtrip", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
+let jumpToPayoff = ["payoff", "cash-budget", "midtrip", "downside"].includes(initialView);
+const openMidtrip = ["midtrip", "downside"].includes(initialView);
+if (initialView === "downside") el("midtrip-drop").value = "3000";
+if (openMidtrip) el("midtrip").open = true;
+if (["midtrip", "downside", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
 
-let focusMidtrip = initialView === "midtrip";
+let focusMidtrip = openMidtrip;
 let budgetResult, pending, budgetRevision = 0;
 const custom = () => el("exit-keep").value === "cash";
 const cashInput = el("cash-exit-budget");
@@ -36,6 +38,7 @@ function showEarlyPayment(q) {
   el("midtrip-trigger").textContent = q ? "At these terms, you can keep all your cash if the day-15 SOL price is "
     + money(q.no_payment_price_cents) + " or higher. Below " + money(q.budget_price_cents)
     + ", the plan cannot maintain that cushion with this budget." : "";
+  el("midtrip-limits").hidden = !q;
   el("midtrip-history").hidden = !q?.eligible;
   if (q?.eligible) {
     const trials = q.later_trials;
@@ -44,6 +47,27 @@ function showEarlyPayment(q) {
       + trials.filter(t => t.reached_liquidation).length + ". These cases use the same assumed price, cash budget and loan terms. The later histories can overlap."
       : "This history has no later window with a completed earlier comparison.";
   }
+  if (q?.eligible && q.downside && q.later_trials.length) {
+    const missed = q.later_trials.filter(t => t.history_missed).length;
+    const extraCash = q.later_trials.map(t => t.payment_cents - t.history_cash_cents);
+    const min = Math.min(...extraCash), max = Math.max(...extraCash);
+    el("midtrip-audit").textContent += " Without your extra fall assumption, the earlier rule missed " + missed
+      + " of those same cases. Including it used " + money(min) + (min === max ? "" : " to " + money(max))
+      + " more day-15 cash per case. This comparison is retrospective.";
+  }
+  el("downside-cost").hidden = !q?.eligible || !q.downside;
+  if (q?.eligible && q.downside) {
+    const d = q.downside;
+    const more = q.needed_cents - d.history_needed_cents;
+    el("downside-cost").textContent = "A further " + (d.drop_bps / 100) + "% fall puts SOL at "
+      + (d.floor_cents ? money(d.floor_cents) : "less than $0.01") + ". "
+      + (more ? "Covering that price needs " + money(more) + " more early cash than the " + money(d.history_needed_cents) + " required by history alone."
+        : "The payment required by the recorded paths already covers that price.");
+    el("midtrip-trigger").textContent += q.cash_floor_cents
+      ? " With all eligible cash paid early, " + money(q.cash_floor_cents) + " is the lowest whole-cent SOL price the pledge can sustain through payday at the modeled rate."
+      : " The available cash can repay the entire modeled loan early.";
+  }
+  setDownsideProof(q);
   amounts.hidden = !q?.eligible;
   risk.textContent = "";
   if (!q) {
@@ -60,7 +84,7 @@ function showEarlyPayment(q) {
     : "You can keep your cash. The loan stays within the tested cushion without an early payment.";
   facts(amounts, [["Cash left from your budget", money(q.unused_cents)], ["Still due on day 30", money(q.payday_cents)]]);
   risk.textContent = "Without an early payment, debt reaches " + percent(q.wait_peak_bps) + " of the pledge’s value across the "
-    + q.windows + " tested paths. With " + money(q.payment_cents) + " paid, the peak is " + percent(q.paid_peak_bps)
+    + q.windows + " historical paths" + (q.downside ? " and your extra fall" : "") + ". With " + money(q.payment_cents) + " paid, the peak is " + percent(q.paid_peak_bps)
     + ". At " + percent(q.limit_bps) + ", Kamino can sell pledged SOL.";
 }
 
@@ -139,7 +163,10 @@ export function showExit(rows, low, inputs) {
     if (el("midtrip").open && !checkpoint.reportValidity()) return;
     const cents = budgetCents();
     const params = {...inputs, payoff_cash: cents};
-    if (checkpoint.validity.valid) params.midtrip_price = Math.round(checkpoint.valueAsNumber * 100);
+    if (checkpoint.validity.valid) {
+      params.midtrip_price = Math.round(checkpoint.valueAsNumber * 100);
+      params.midtrip_drop_bps = Number(el("midtrip-drop").value);
+    }
     clearExit();
     const id = budgetRevision, controller = new AbortController();
     pending = controller;
@@ -155,7 +182,7 @@ export function showExit(rows, low, inputs) {
       if (stages.some(([, r]) => !priced.has(loanKey(r)))) throw new Error("Missing payoff quote");
       budgetResult = {cents, rows: priced};
       status.textContent = "";
-      if (initialView === "midtrip" && focusMidtrip) {
+      if (focusMidtrip) {
         focusMidtrip = false;
         el("midtrip").querySelector("summary").focus();
       }
@@ -184,6 +211,7 @@ export function showExit(rows, low, inputs) {
     update();
   };
   checkpoint.onkeydown = cashInput.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); checkBudget(); } };
+  el("midtrip-drop").onchange = checkBudget;
   el("midtrip-check").onclick = el("cash-exit-check").onclick = checkBudget;
   stage.onchange = update;
   el("exit-keep").onchange = () => {
@@ -266,11 +294,20 @@ function earlyPaymentLine(q) {
   const begin = "Alternative if cash arrives on day 15 at " + money(q.price_cents) + "/SOL. ";
   const thresholds = " Minimum day-15 SOL price for the tested cushion: " + money(q.no_payment_price_cents)
     + " with zero payment or " + money(q.budget_price_cents) + " with this budget, assuming an intact pledge.";
-  if (!q.eligible) return begin + "Loan may already be eligible for liquidation." + thresholds;
+  const downside = q.downside ? " Additional " + percent(q.downside.drop_bps) + " fall to " + money(q.downside.floor_cents) + "/SOL." : "";
+  if (!q.eligible) return begin + downside + "Loan may already be eligible for liquidation." + thresholds;
   return begin + "Pay " + money(q.payment_cents) + " early, keep " + money(q.unused_cents) + " cash, still owe "
     + money(q.payday_cents) + " on day 30. Additional cash needed for the tested cushion: " + money(q.short_cents)
-    + ". Worst modeled debt as a share of collateral: " + percent(q.paid_peak_bps) + " across " + q.windows + " Gemini paths." + thresholds
+    + ". Worst modeled debt as a share of collateral: " + percent(q.paid_peak_bps) + " across " + q.windows + " Gemini paths" + (q.downside ? " plus driver stress." : ".") + downside + thresholds
+    + (q.downside ? " History alone requires " + money(q.downside.history_needed_cents) + " early. Minimum price through payday with available cash: " + money(q.cash_floor_cents) + "/SOL." : "")
     + " Earlier-only sizing missed the cushion in " + q.later_trials.filter(t => t.missed).length + " of " + q.later_trials.length + " eligible later cases.";
+}
+
+function partialSummary(q, live) {
+  const units = n => (n / 1e6).toFixed(4);
+  return (live ? "Public" : "Saved") + " Devnet simulation at slot " + q.slot + ". The vendor received "
+      + units(q.vendor_raw) + " test USDC. Paying " + units(q.payment_raw) + " left " + units(q.remaining_raw)
+      + " of debt and all " + (q.pledge_lamports / 1e9) + " test SOL pledged. No transaction was submitted.";
 }
 
 let partialReceipt = "";
@@ -280,10 +317,7 @@ async function showPartialReceipt(live) {
   receipt.textContent = live ? "Checking the open loan on Devnet…" : "Reading the saved simulation…";
   try {
     const q = await request("/api/midtrip-payment" + (live ? "/simulate" : ""));
-    const units = n => (n / 1e6).toFixed(4);
-    partialReceipt = (live ? "Public" : "Saved") + " Devnet simulation at slot " + q.slot + ". The vendor received "
-      + units(q.vendor_raw) + " test USDC. Paying " + units(q.payment_raw) + " left " + units(q.remaining_raw)
-      + " of debt and all " + (q.pledge_lamports / 1e9) + " test SOL pledged. No transaction was submitted.";
+    partialReceipt = partialSummary(q, live);
     receipt.textContent = partialReceipt;
   } catch {
     receipt.textContent = "Check unavailable. " + (partialReceipt || "You can download the saved evidence.");
@@ -293,3 +327,52 @@ el("midtrip-proof").ontoggle = () => {
   if (el("midtrip-proof").open && !partialReceipt && !el("midtrip-live").disabled) showPartialReceipt(false);
 };
 el("midtrip-live").onclick = () => showPartialReceipt(true);
+
+let downsideProof, proofKey = "", lastDownside = "";
+
+function setDownsideProof(q) {
+  const d = q?.downside;
+  const panel = el("downside-proof");
+  const requestData = d?.preview_raw ? {price_cents: q.price_cents, budget_cents: budgetCents(), drop_bps: d.drop_bps, payment_cents: q.payment_cents} : null;
+  const key = JSON.stringify(requestData);
+  el("midtrip-proof").hidden = !!requestData;
+  panel.hidden = !requestData;
+  if (key === proofKey) return;
+  proofKey = key;
+  downsideProof = requestData;
+  lastDownside = "";
+  el("downside-live").disabled = false;
+  el("downside-receipt").textContent = "";
+  if (!requestData) return;
+  el("downside-proof-title").textContent = "Verify the " + money(q.payment_cents) + " early payment";
+  const link = el("downside-evidence");
+  link.hidden = !d.evidence;
+  if (link.hidden) {
+    link.removeAttribute("href");
+    el("downside-receipt").textContent = "Check the selected amount against the open loan on public Devnet.";
+  } else {
+    link.href = d.evidence;
+    if (panel.open) checkDownside(false);
+  }
+}
+
+async function checkDownside(live) {
+  if (!downsideProof) return;
+  const current = downsideProof, status = el("downside-receipt"), button = el("downside-live");
+  button.disabled = true;
+  status.textContent = "Verifying the selected partial payment…";
+  try {
+    const p = await request("/api/midtrip-payment/preview", {...current, source: live ? "live" : "recorded"});
+    if (current !== downsideProof) return;
+    if (p.payment_raw !== current.payment_cents * 100) throw new Error("Payment differs from quote");
+    lastDownside = partialSummary(p, live);
+    status.textContent = lastDownside;
+  } catch {
+    if (current === downsideProof) status.textContent = "Check unavailable. " + (lastDownside || "The modeled plan is still available.");
+  } finally { if (current === downsideProof) button.disabled = false; }
+}
+
+el("downside-proof").ontoggle = () => {
+  if (el("downside-proof").open && !el("downside-evidence").hidden && !lastDownside && !el("downside-live").disabled) checkDownside(false);
+};
+el("downside-live").onclick = () => checkDownside(true);
