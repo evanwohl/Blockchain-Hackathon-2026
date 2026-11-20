@@ -42,6 +42,7 @@ function reserveBudget(d, later) {
   else if (split) why = "Keep " + money(reserve.road_cents) + " for the road. You would need "
     + money(split.upfront_cents) + " in Gemini and another " + money(split.outside_fuel_cents)
     + " available for fuel. This assumes the payout is ready at the stop.";
+  else if (d.trip.spend_limit_cents === 0) why = "Keep " + money(reserve.road_cents) + " for the road. Your zero spending limit uses cash for fuel.";
   else if (later) why = "The available oil contracts cannot cover the modeled bill within this reserve limit. This is the cash-only backup.";
   else why = "Until payouts are spendable, budget the full " + fullBuffer + " for extra fuel. Keep " + money(reserve.road_cents) + " for the road.";
   el("trip-why").textContent = why;
@@ -55,7 +56,8 @@ function reserveBudget(d, later) {
   else rows.push(["Extra fuel in the cash-only plan", fullBuffer]);
   if (d.regional) rows.push(regionalCost(d.regional));
   facts(el("trip-options"), rows);
-  const fuel = split ? split.reserve_cents : plan ? plan.residual_cents : d.cash_only_cents;
+  const cashOnlyDraw = d.trip.spend_limit_cents === undefined ? d.cash_only_cents : Math.min(d.cash_only_cents, reserve.fuel_cash_cents);
+  const fuel = split ? split.reserve_cents : plan ? plan.residual_cents : cashOnlyDraw;
   const link = el("trip-reserve");
   link.hidden = !fuel;
   link.href = "/next-stop#fuel-buffer=" + fuel + "&road=" + reserve.road_cents;
@@ -69,11 +71,33 @@ function regionalCost(region) {
   return [region.name + " pump allowance included in estimate", money(region.allowance_cents)];
 }
 
+function showSpendingLimit(d, later) {
+  const limit = d.trip.spend_limit_cents;
+  el("spending-result").hidden = limit === undefined;
+  if (limit === undefined) return;
+  el("limit-title").textContent = "Oil protection limit · " + money(limit);
+  const change = later && d.limit_comparison;
+  el("limit-benchmark").hidden = el("limit-difference").hidden = !change;
+  if (change) {
+    el("limit-benchmark").textContent = "Compared with spending " + money(change.unrestricted_upfront_cents) + " on protection.";
+    const difference = change.outside_change_cents;
+    facts(el("limit-difference"), [["Less spent upfront", money(change.kept_upfront_cents)],
+      [difference < 0 ? "Less needed overall" : "Extra needed overall", money(Math.abs(difference))]]);
+  }
+  const minimum = d.reserve?.minimum_spend_cents;
+  el("limit-threshold").hidden = !later || minimum == null || limit >= minimum;
+  if (!el("limit-threshold").hidden) {
+    el("limit-threshold").textContent = "Covering the rest entirely from the reserve after payouts would require at least "
+      + money(minimum) + " for protection.";
+  }
+}
+
 function render() {
   const d = current;
   const later = document.querySelector('input[name="timing"]:checked').value === "after";
   el("reserve-observation").hidden = !d.reserve;
   const plan = d.reserve ? reserveBudget(d, later) : generalBudget(d, later);
+  showSpendingLimit(d, later);
   const region = d.regional;
   el("regional-evidence").hidden = !region;
   if (region) {
@@ -103,7 +127,7 @@ function render() {
   result.hidden = false;
 }
 
-async function compare(source) {
+async function compare(source, submitted = false) {
   const attempt = ++revision;
   const status = el("trip-status");
   el("trip-check").disabled = el("trip-recorded").disabled = true;
@@ -114,6 +138,7 @@ async function compare(source) {
     const body = source ? { source, gallons: el("trip-gallons").valueAsNumber, pump_mills: Math.round(el("trip-pump").valueAsNumber * 1000),
       budget_cents: Math.round(el("trip-budget").valueAsNumber * 100) } : undefined;
     if (body && el("trip-region").value) body.region = el("trip-region").value;
+    if (body && el("trip-limit").value !== "") body.spend_limit_cents = Math.round(el("trip-limit").valueAsNumber * 100);
     if (body && includeReserve) body.road_cents = Math.round(el("trip-road").valueAsNumber * 100);
     const data = await request("/api/trip-cover", body, AbortSignal.timeout(45000));
     if (attempt !== revision) return;
@@ -122,6 +147,9 @@ async function compare(source) {
     const stamp = new Date(data.checked_at).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" });
     status.textContent = (data.source === "live" ? "Checked with Gemini" : "Recorded Gemini prices") + " · " + stamp + " UTC";
     el("trip-recorded").hidden = true;
+    if (submitted && matchMedia("(max-width: 720px)").matches && (form.contains(document.activeElement) || document.activeElement === document.body)) {
+      el("trip-heading").focus();
+    }
   } catch {
     if (attempt !== revision) return;
     status.textContent = current ? "Refresh unavailable. The previous comparison is still shown." : "Comparison unavailable. Try again or use the recorded prices.";
@@ -139,8 +167,8 @@ form.oninput = () => {
   el("trip-check").disabled = el("trip-pending").hidden = false;
   el("trip-status").textContent = "Compare these amounts to update your budget.";
 };
-form.onsubmit = event => { event.preventDefault(); compare("live"); };
-el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded"); };
+form.onsubmit = event => { event.preventDefault(); compare("live", true); };
+el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded", true); };
 document.querySelector(".trip-timing").onchange = () => { if (current) render(); };
 function openExample() {
   form.reset();
@@ -148,6 +176,10 @@ function openExample() {
   const region = example.get("region");
   const includeReserve = example.has("road-cash");
   if ([...el("trip-region").options].some(option => option.value === region)) el("trip-region").value = region;
+  const limit = example.get("limit");
+  const hasLimit = limit !== null && /^\d{1,7}(\.\d{1,2})?$/.test(limit) && Number(limit) <= 1000000;
+  el("protection-limit").open = hasLimit;
+  if (hasLimit) el("trip-limit").value = Number(limit).toFixed(2);
   el("use-trip-reserve").checked = includeReserve;
   el("trip-road").disabled = el("trip-road-fields").hidden = !includeReserve;
   document.querySelector('input[name="timing"][value="before"]').checked = true;
@@ -155,7 +187,7 @@ function openExample() {
   result.hidden = el("trip-recorded").hidden = true;
   el("trip-pending").hidden = true;
   el("trip-status").textContent = "Opening the sample trip…";
-  compare(el("trip-region").value || includeReserve ? "recorded" : undefined);
+  compare(el("trip-region").value || includeReserve || hasLimit ? "recorded" : undefined);
 }
 window.addEventListener("hashchange", openExample);
 openExample();

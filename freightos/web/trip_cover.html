@@ -31,6 +31,11 @@
           <label>Keep for tolls and repairs ($)<input id="trip-road" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="25.00" required disabled></label>
           <p>Only the remainder can cover extra fuel. Enter a fuel budget that excludes this reserve.</p>
         </div>
+        <details class="public-fuel" id="protection-limit"><summary>Set a limit for oil protection</summary>
+          <label for="trip-limit">Most I can spend on Gemini, including fees ($)</label>
+          <input id="trip-limit" type="number" inputmode="decimal" min="0" max="1000000" step=".01" aria-describedby="limit-help">
+          <p id="limit-help">Enter zero for a cash-only trip. An empty limit compares all available offers.</p>
+        </details>
         <button id="trip-check" class="primary">Compare my trip</button>
         <button id="trip-recorded" class="secondary" type="button" hidden>Use recorded market prices</button>
       </form>
@@ -38,7 +43,7 @@
     </section>
     <section class="public-slip" aria-labelledby="trip-heading">
       <p class="panel-label">Extra cash above your budget</p>
-      <h2 id="trip-heading">What to set aside</h2>
+      <h2 id="trip-heading" tabindex="-1">What to set aside</h2>
       <p id="trip-pending" hidden>Compare the updated trip to see its fuel buffer.</p>
       <div id="trip-result" hidden>
         <div class="trip-outcome" aria-live="polite"><small id="trip-bound"></small><strong id="trip-cash"></strong><p id="trip-why"></p></div>
@@ -46,6 +51,10 @@
           <label><input type="radio" name="timing" value="before" checked> Before I can spend a payout</label>
           <label><input type="radio" name="timing" value="after"> After I can spend a payout</label>
         </fieldset>
+        <section class="spending-result" id="spending-result" aria-labelledby="limit-title" hidden>
+          <h3 id="limit-title"></h3><p id="limit-benchmark" hidden></p><dl id="limit-difference" hidden></dl>
+          <p id="limit-threshold" hidden></p>
+        </section>
         <dl id="trip-options" class="facts"></dl><p id="reserve-observation" hidden></p>
         <a id="trip-reserve" class="ledger-back">Check the cash buffer on Solana →</a>
         <details id="regional-evidence" hidden><summary>How much can diesel move on its own?</summary>

@@ -95,6 +95,12 @@
 .next-stop .stop-result { margin-top: 1.1rem; padding: 1.2rem; border-width: 2px; }
 .stop-result h3 { font-size: clamp(2.2rem,3.2vw,3.5rem); }
 .trip-cover #reserve-observation, #stop-status { margin-block: .65rem; }
+.spending-result { margin: 1rem 0; padding: .85rem 1rem; background: #eeecf2; border-left: 3px solid #9a8da9; }
+.spending-result h3 { margin: 0; font: 600 1.28rem/1.25 var(--display); }
+.spending-result p { margin-top: .35rem; font-size: .875rem; }
+.spending-result dl { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; border-top: 1px solid #c4beca; padding-top: .55rem; margin-top: .65rem; }
+.spending-result dt { font-size: .83rem; }
+.spending-result dd { text-align: start; font: 600 1.85rem/1.2 var(--display); }
 .trip-cover #trip-reserve { margin: 1.1rem 0; }
 
 @media (min-width: 761px) {

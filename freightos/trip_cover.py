@@ -23,6 +23,8 @@ def validate(trip):
     if not integer(trip.get("gallons"), "gallons", 10000) or not integer(trip.get("pump_mills"), "diesel price", 99999):
         raise ValueError("Enter a positive gallon count and posted diesel price")
     integer(trip.get("budget_cents"), "fuel budget", 100_000_000)
+    if "spend_limit_cents" in trip:
+        integer(trip["spend_limit_cents"], "oil protection limit", 100_000_000)
     if "region" in trip and (not isinstance(trip["region"], str) or trip["region"] not in regional_diesel.REGIONS):
         raise ValueError("Choose a supported diesel region")
 
@@ -88,7 +90,7 @@ def cost(lots, offer):
     return (lots * p + 99) // 100, (lots * 7 * p * (100 - p) + 999999) // 1000000
 
 
-def portfolio(offers, gaps, *, fuel_cash=None):
+def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None):
     gap = gaps[-1]
     empty = {"cash_cents": gap, "upfront_cents": 0, "residual_cents": gap, "legs": []}
     n = len(offers)
@@ -101,8 +103,8 @@ def portfolio(offers, gaps, *, fuel_cash=None):
                 return None
             if i < n:
                 paid += offers[i]["depth"]
-    if not n or not gap:
-        return empty
+    if not n or not gap or spend_limit == 0:
+        return empty if fuel_cash is None or gap <= fuel_cash else None
     # Variables are hundredths of a contract, premium cents, fee cents, and unhedged cash cents.
     rows, bounds = [], []
     for i, offer in enumerate(offers):
@@ -117,6 +119,11 @@ def portfolio(offers, gaps, *, fuel_cash=None):
         row[:i], row[-1] = -1, -1
         rows.append(row)
         bounds.append(-need)
+    if spend_limit is not None:
+        row = np.zeros(3*n + 1)
+        row[n:3*n] = 1
+        rows.append(row)
+        bounds.append(spend_limit)
     caps = [min(o["depth"], gap) for o in offers] + [gap] * (2*n + 1)
     objective = [0]*n + [1]*(2*n + 1)
     if fuel_cash is not None:
@@ -125,6 +132,8 @@ def portfolio(offers, gaps, *, fuel_cash=None):
     constraints = LinearConstraint(rows, -np.inf, bounds)
     sol = milp(objective, integrality=np.ones(3*n + 1), bounds=Bounds(0, caps), constraints=constraints,
                options={"mip_rel_gap": 0, "time_limit": 3})
+    if sol.status == 2 and fuel_cash is not None and spend_limit is not None:
+        return None
     if not sol.success:
         raise ValueError("Could not establish the minimum cash requirement")
     lots = [int(round(q)) for q in sol.x[:n]]
@@ -140,6 +149,8 @@ def portfolio(offers, gaps, *, fuel_cash=None):
         prefix += qty
         residual = max(residual, gaps[i+1] - prefix)
     upfront = sum(leg["premium_cents"] + leg["fee_cents"] for leg in legs)
+    if spend_limit is not None and upfront > spend_limit:
+        raise ValueError("Repriced contracts exceed the spending limit")
     total = residual + upfront
     measured = total if fuel_cash is None else upfront
     if abs(measured - sol.fun) > .001 or (fuel_cash is not None and residual > fuel_cash):
@@ -165,25 +176,42 @@ def analyze(snapshot, trip, *, reserve=None):
 
     offers = top_offers(snapshot, fuel, rows)
     gaps = [gap(Fraction(o["strike"])) for o in offers] + [gap(ceiling)]
-    combined = portfolio(offers, gaps)
-    single = min((portfolio([o], [g, gaps[-1]])["cash_cents"] for o, g in zip(offers, gaps)), default=gaps[-1])
+    limit = trip.get("spend_limit_cents")
+    unrestricted = portfolio(offers, gaps)
+    combined = (portfolio(offers, gaps, spend_limit=limit)
+                if limit is not None and unrestricted["upfront_cents"] > limit else unrestricted)
+    single = min((portfolio([o], [g, gaps[-1]], spend_limit=limit)["cash_cents"] for o, g in zip(offers, gaps)), default=gaps[-1])
     result = {"trip": trip, "checked_at": snapshot["checked_at"], "expiry": fuel["expiry"], "anchor": str(fuel["close"]),
             "ceiling": str(ceiling), "pump_bill_cents": ceil(base), "cash_only_cents": gaps[-1], "best_single_cents": single,
             "offers": len(offers), "contracts_checked": len(rows), "combined": combined}
     if regional:
         result["regional"] = {**regional, "allowance_cents": allowance}
+    benchmark, selected = unrestricted, combined
+    fuel_cash = 0
     if reserve is not None:
         available, road = reserve["available_cents"], reserve["road_cents"]
         fuel_cash = max(0, available - road)
         affordable = portfolio(offers, gaps, fuel_cash=fuel_cash) if available >= road else None
+        minimum_spend = affordable["upfront_cents"] if affordable else None
+        if affordable:
+            benchmark = affordable
+        if limit is not None and minimum_spend is not None and minimum_spend > limit:
+            affordable = None
+        selected = affordable or combined
         result["reserve"] = {**reserve, "fuel_cash_cents": fuel_cash, "before_shortfall_cents": max(0, road + gaps[-1] - available),
-                             "plan": affordable}
+                             "plan": affordable, "minimum_spend_cents": minimum_spend}
         if affordable is None and available >= road and combined["legs"]:
             fuel_due = combined["residual_cents"] - fuel_cash
             result["reserve"]["split"] = {
                 "reserve_cents": fuel_cash, "outside_fuel_cents": fuel_due,
                 "upfront_cents": combined["upfront_cents"], "outside_total_cents": combined["upfront_cents"] + fuel_due,
             }
+    if limit is not None and benchmark["upfront_cents"] > limit and (reserve is None or available >= road):
+        before = benchmark["upfront_cents"] + max(0, benchmark["residual_cents"] - fuel_cash)
+        after = selected["upfront_cents"] + max(0, selected["residual_cents"] - fuel_cash)
+        result["limit_comparison"] = {"unrestricted_upfront_cents": benchmark["upfront_cents"],
+                                      "kept_upfront_cents": benchmark["upfront_cents"] - selected["upfront_cents"],
+                                      "outside_change_cents": after - before}
     return result
 
 
