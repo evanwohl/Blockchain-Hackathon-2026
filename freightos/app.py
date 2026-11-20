@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, bill, credit_exit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
+from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -639,6 +639,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/credit-exits":
             self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
             return
+        if self.path == "/evidence/customer-credit":
+            self.reply(200, "application/json", gzip.decompress(customer_credit.SAMPLE.read_bytes()), static=True)
+            return
         if self.path in ("/evidence/atomic-fuel", "/evidence/atomic-late"):
             artifact = atomic_fuel.LATE_SAMPLE if self.path.endswith("-late") else atomic_fuel.SAMPLE
             self.reply(200, "application/json", gzip.decompress(artifact.read_bytes()), static=True)
@@ -721,6 +724,7 @@ class Handler(BaseHTTPRequestHandler):
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
             "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
+            "/customer_credit.js": ("customer_credit.js", "text/javascript"),
             "/fuel_credit.js": ("fuel_credit.js", "text/javascript"),
             "/forward-fill": ("forward.html", "text/html; charset=utf-8"),
             "/pump_value.js": ("pump_value.js", "text/javascript"),
@@ -934,6 +938,18 @@ class Handler(BaseHTTPRequestHandler):
                         data, calendar, self.server.settlement.load_reserve(data.get("reserve_mode")))
                 self.respond(200, calendar)
                 return
+            if self.path == "/api/customer-credit":
+                args = (data.get("menu"), data.get("fee_cents"), data.get("wallet_lamports"), data.get("extra_cents"))
+                customer_credit.inputs(*args)
+                source = data.get("source")
+                if source not in ("recorded", "live"):
+                    raise ValueError("Choose recorded or live loan terms")
+                try:
+                    quotes = self.server.customer_credit.read() if source == "live" else customer_credit.saved()
+                    self.respond(200, {**customer_credit.compare(quotes, *args), "source": source})
+                except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):
+                    self.respond(503, {"error": "Could not verify all three loans and the protected reserve."})
+                return
             if self.path == "/api/advance-reserve":
                 source = data.get("source")
                 if source not in ("recorded", "live"):
@@ -1009,6 +1025,7 @@ def main():
                            for drop, days in server.credit_checks for protect in (False, True)}
     server.reserve_credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: reserve_credit.live(d, t))
                                   for drop, days in server.credit_checks}
+    server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
     server.settled_credit = PublicCheck(lambda: load_credit.settled(devnet.request))
     server.forward_check = PublicCheck(forward.ResultCheck().read)
     server.trip_books = PublicCheck(trip_cover.capture)

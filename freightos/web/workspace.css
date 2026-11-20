@@ -182,3 +182,18 @@
 
 .fuel-credit #partial-request { background:#425239; color:#fff; border-color:#425239; margin:.7rem 0; }
 .fuel-credit #partial-actions button { margin:.45rem .3rem .15rem 0; }
+#customer-settings .trip-fields { margin-block: .5rem 1rem; }
+#customer-settings > button { margin-block: .75rem; }
+#customer-result .facts dd { overflow-wrap: anywhere; }
+#customer-funding { margin: 1.25rem 0 .45rem; }
+#customer-funding figcaption { font-weight: 650; }
+.contribution-strip { display: flex; height: .65rem; margin: .5rem 0; background: var(--paper); border: 1px solid #414537; }
+.contribution-strip i:nth-child(1) { background: repeating-linear-gradient(120deg,#d5cde2 0 3px,#776987 3px 4px); }
+.contribution-strip i:nth-child(2) { background: #c5d65f; }
+.contribution-strip i:nth-child(3) { background: #354637; }
+#customer-funding dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; }
+#customer-funding dt { font-size: .8rem; }
+#customer-funding dd { text-align: start; margin: .1rem 0 0; font-variant-numeric: tabular-nums; font-weight: 650; }
+@media (max-width: 450px) {
+  #customer-settings .trip-fields { grid-template-columns: 1fr; }
+}

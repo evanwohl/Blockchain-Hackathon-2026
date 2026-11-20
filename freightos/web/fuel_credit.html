@@ -16,7 +16,17 @@
       <h1>Cover the <em>$190 bill.</em></h1>
       <p id="credit-intro">The sample customer offers to pay a $200 invoice early for $10. If you own SOL, you can pledge it for a fuel loan and collect the full invoice later.</p>
       <form id="credit-form"><div class="trip-fields">
-        <label>How will you cover the bill?<select id="credit-route"><option value="combined">Pay once from reserve and loan</option><option value="loan">Borrow the full $190</option><option value="reserve">Compare separate payments</option></select></label>
+        <label>How will you cover the bill?<select id="credit-route"><option value="customer">Use a customer contribution</option><option value="combined">Pay once from reserve and loan</option><option value="loan">Borrow the full $190</option><option value="reserve">Compare separate payments</option></select></label>
+      </div><div id="customer-settings" hidden>
+        <div class="trip-fields">
+          <label>Customer can send before fuel is due<select id="customer-menu"><option value="both">$49.50 or $99</option><option value="half">Only $49.50</option><option value="full">Only $99.00</option><option value="none">Nothing early</option></select></label>
+          <label>Test SOL available for this payment<input id="customer-wallet" type="number" min="0" max="1000" step="0.000000001" value="0.060" required></label>
+        </div>
+        <details><summary>Adjust fees and see timing</summary><div class="trip-fields">
+          <label>Fee for $99 of early cash ($)<input id="customer-fee" type="number" min="0" max="100" step=".01" value="1.00" required></label>
+          <label>Other loan expenses due by payday ($)<input id="customer-extra" type="number" min="0" max="1000000" step=".01" value="0.00" required></label>
+        </div><p>The $49.50 offer costs half the fee, rounded up to a cent. The unpaid invoice is due in 23 days. Each loan allows for seven extra days, twice its quoted borrowing rate and a 40% SOL price drop.</p></details>
+        <button class="secondary" type="submit">Refresh loan checks on public Solana</button>
       </div><div id="combined-settings" hidden>
         <label class="payday-switch"><input type="checkbox" id="protect-payday"><span>Allow for a late freight check<small>Seven extra days at twice the borrowing rate</small></span></label>
         <details><summary>Compare my early-pay offer</summary><div class="trip-fields">
@@ -35,6 +45,20 @@
     </section>
     <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label">Fuel funding · Kamino</p>
       <h2 id="credit-heading" tabindex="-1">What borrowing would cost</h2>
+      <div id="customer-result" hidden>
+        <div class="trip-outcome"><small id="customer-label"></small><strong id="customer-amount"></strong><p id="customer-action"></p></div>
+        <figure id="customer-funding" hidden>
+          <figcaption>Where the $190 comes from</figcaption>
+          <div class="contribution-strip" aria-hidden="true"><i></i><i></i><i></i></div>
+          <dl><div><dt>Customer</dt><dd></dd></div><div><dt>Reserve</dt><dd></dd></div><div><dt>Loan</dt><dd></dd></div></dl>
+        </figure>
+        <dl class="facts" id="customer-breakdown"></dl>
+        <button type="button" class="secondary" id="customer-request" hidden>Download customer request</button>
+        <section class="spending-result"><h3>When freight pays</h3><p id="customer-payday"></p></section>
+        <details id="customer-backup"><summary>If the customer misses the fuel stop</summary><p id="customer-delay"></p></details>
+        <details id="customer-alternatives"><summary>Compare the available offers</summary><dl class="facts" id="customer-comparison"></dl><p id="customer-rate"></p></details>
+        <details><summary>Check the loan and next fuel stop</summary><p id="customer-check"></p><p>One test cent represents one dollar of fuel. The customer contribution is arranged separately. Each public simulation checks the remaining vendor payment, rollback on insufficient funds and what the next stop can still draw. SOL collateral can be liquidated.</p><a href="/evidence/customer-credit" download="FreightOS-customer-credit.json">Download the recorded comparison</a></details>
+      </div>
       <div id="combined-result" hidden>
         <div class="trip-outcome"><small id="combined-label">Fuel vendor would receive</small><strong id="combined-total"></strong><p id="combined-sources"></p><div class="fuel-source-strip" aria-hidden="true"><i id="combined-bar"></i></div></div>
         <dl class="facts" id="combined-facts"></dl>

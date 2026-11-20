@@ -157,7 +157,8 @@ def terms(reserve, drop, days, rpc, *, prepare=False, protect=False):
               "cost_cents": delayed_cost, "rate_bps": late["rate_bps"], "original_rate_bps": q["rate_bps"],
               "ordinary_pledge_lamports": q["minimum_lamports"], "required_lamports": late["minimum_lamports"],
               "stress_ltv_bps": late["stress_ltv_bps"], "target_ltv_bps": (late["liquidation_pct"] - 10) * 100}
-    return {**prepared, "payday_stress": stress, "reserve_growth": str(late_growth if protect else ordinary_growth), "bill_cents": reserve["fuel_cents"], "scale": reserve["raw_units_per_cent"], "vendor_raw": total,
+    return {**prepared, "annual_rate": q["annual_rate"], "initial_debt_raw": q["initial_debt_raw"], "sol_price": q["sol_price"],
+            "payday_stress": stress, "reserve_growth": str(late_growth if protect else ordinary_growth), "bill_cents": reserve["fuel_cents"], "scale": reserve["raw_units_per_cent"], "vendor_raw": total,
             "reserve_raw": reserve["vendor_raw"], "borrow_raw": reserve["shortfall_raw"], "retained_raw": retained,
             "holdback": reserve["holdback"], "repay_cents": q["repay_cents"], "pledge_lamports": pledge,
             "setup_lamports": q["setup_lamports"], "obligation_rent_lamports": q["obligation_rent"],
