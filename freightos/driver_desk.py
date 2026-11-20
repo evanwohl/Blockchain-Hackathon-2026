@@ -25,13 +25,19 @@ def quote(data):
     first_loan = data.get("first_loan", False)
     if type(first_loan) is not bool:
         raise ValueError("Choose whether to include first-loan setup")
+    state = data.get("borrower_state", "new" if first_loan else "ready")
+    if state not in ("ready", "new", "returning") or ("first_loan" in data and first_loan != (state == "new")):
+        raise ValueError("Choose one borrowing setup")
+    stops = integer(data.get("stops", 1), "number of repeat stops", 12)
+    if stops == 0 or (stops > 1 and state != "new"):
+        raise ValueError("Compare 2–12 identical stops starting with a first loan")
     try:
-        return _price(bill, invoice, values, stress, (menu, fee, amount), first_loan)
+        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops)
     except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError) as exc:
         raise RuntimeError("Recorded funding terms could not be verified") from exc
 
 
-def _price(bill, invoice, values, stress, offer, first_loan):
+def _price(bill, invoice, values, stress, offer, state, stops):
     lending = mainnet_loan.saved()
     reference = int((lending["sol_price"] * 100).to_integral_value(rounding=ROUND_HALF_UP))
     cases, _ = payday_policy.price_cases(reference, stress)
@@ -47,5 +53,41 @@ def _price(bill, invoice, values, stress, offer, first_loan):
     loan = mainnet_loan.compare(plan, costs, values["stable"], values["cash"], cap, cap, VENDOR_FEE_LAMPORTS, observation["rent"],
                                 lending, [c["price_cents"] for c in cases if "start" in c],
                                 offer_terms=offer, path=collateral_path.saved(),
-                                setup=mainnet_loan.first_loan_setup() if first_loan else None)
-    return {**plan, "mainnet": {"slot": observation["accounts"]["context"]["slot"], "secured_loan": loan}}
+                                setup=mainnet_loan.borrower_setup(returning=state == "returning") if state != "ready" else None, repeat=stops > 1)
+    result = {**plan, "mainnet": {"slot": observation["accounts"]["context"]["slot"], "secured_loan": loan}}
+    if stops > 1:
+        result["series"] = recurring_plan(loan["combined"]["best_loan"], loan["repeat_plan"],
+                                          loan["combined"]["most_cash_without_loan"], stops, plan)
+    return result
+
+
+def recurring_plan(first, later, outside, count, plan):
+    floor = plan["floor_cents"]
+    can_open = all(row is not None and row["payday_cents"] >= floor for row in (first, later))
+    can_wait = outside is not None and outside["payday_cents"] >= floor
+    base = count * outside["payday_cents"] if can_wait else None
+    opened = first["payday_cents"] + (count - 1) * later["payday_cents"] if can_open else None
+    choose_loan = can_open and (not can_wait or opened > base)
+    threshold = None
+    prices = []
+    renewal_pct = None
+    if can_open and can_wait:
+        # Identical replenished stops make each subsequent gain constant. A tie keeps the debt-free plan.
+        lead = first["payday_cents"] - outside["payday_cents"]
+        gain = later["payday_cents"] - outside["payday_cents"]
+        if lead > 0:
+            threshold = 1
+        elif gain > 0:
+            threshold = 2 + (-lead) // gain
+            if opened > base:
+                # Each extra stop happens only if all previous renewals occurred.
+                scale = 100 ** (count - 1)
+                renewal_pct = next(p for p in range(101) if lead * scale + gain * sum(
+                    p ** i * 100 ** (count - 1 - i) for i in range(1, count)) > 0)
+        high = plan["high_price_cents"]
+        for price in dict.fromkeys((plan["low_price_cents"], plan["reference_cents"], high)):
+            total = mainnet_loan.payday_at(first, high, price) + (count - 1) * mainnet_loan.payday_at(later, high, price)
+            prices.append(dict(price_cents=price, open_cents=total, debt_free_cents=count * mainnet_loan.payday_at(outside, high, price)))
+    return dict(stops=count, choice="open" if choose_loan else "debt_free" if can_wait else "unfunded",
+                open_cents=opened, debt_free_cents=base, break_even_stops=threshold, renewal_pct=renewal_pct, prices=prices,
+                first=first, later=later, debt_free=outside, floor_cents=floor)

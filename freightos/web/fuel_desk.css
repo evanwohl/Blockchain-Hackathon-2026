@@ -80,9 +80,23 @@
 
 .driver-desk #desk-liquidity { margin-block-start: .3rem; padding: .4rem 0; border: 0; text-align: start; color: #3b5c3d; text-decoration: underline; text-underline-offset: .22em; }
 
-#desk-form .desk-check { display: flex; align-items: center; gap: .55rem; min-height: 2.5rem; margin-bottom: .3rem; }
-#desk-form .desk-check input { width: 1.1rem; height: 1.1rem; margin: 0; padding: 0; accent-color: #496143; }
 
 #setup-costs { margin: .7rem 0; font-size: .88rem; }
 #setup-costs > div { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; border-top: 1px solid var(--line); padding-block: .45rem; }
 #setup-costs dd { margin: 0; white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums; }
+#series-totals { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); margin: .45rem 0 .75rem; gap: .75rem; }
+#series-totals > div { border-block-start: 2px solid #61735a; padding-top: .55rem; }
+#series-totals dt, #series-panel caption { font-size: .82rem; }
+#series-totals dd { text-align: start; margin: .3rem 0 0; font: 600 clamp(1.7rem,4vw,3rem)/1 var(--display); overflow-wrap: anywhere; }
+#series-panel { font-size: .91rem; line-height: 1.5; }
+#series-panel h3 { font: 600 1.5rem/1.2 var(--display); margin: 1.25rem 0 .5rem; }
+#series-panel details { border-block-start: 1px solid var(--line); padding-block: .65rem; }
+#series-panel table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#series-panel caption { text-align: start; padding-block: .6rem; }
+#series-panel th, #series-panel td { text-align: end; border-block-end: 1px solid var(--line); padding: .4rem .15rem; }
+#series-panel tr > :first-child { text-align: start; }
+#series-panel .series-caption { margin: 1.3rem 0 .2rem; font-size: .8rem; font-weight: 600; }
+#series-funding { margin-bottom: .8rem; }
+#series-funding thead th { font-size: .78rem; }
+#series-funding tbody th { font-weight: 400; }
+#series-funding tbody tr:last-child > * { font-weight: 700; border-top: 2px solid #768875; }

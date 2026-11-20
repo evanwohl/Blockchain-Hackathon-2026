@@ -14,6 +14,7 @@ def test_driver_desk_and_existing_pages_serve_the_same_plan_and_receipt_controls
         return body.decode()
 
     desk = read("/fuel-desk")
+    assert read("/fuel-desk?example=repeat-run") == desk
     for path in ("/fuel-desk", "/fuel-stop", "/load"):
         html = desk if path == "/fuel-desk" else read(path)
         assert "{{" not in html
@@ -25,5 +26,5 @@ def test_driver_desk_and_existing_pages_serve_the_same_plan_and_receipt_controls
             assert {"cycle-steps", "cycle-verify", "cycle-open", "cycle-close"} <= set(ids)
     assert 'href="/fuel-desk"' in read("/")
     assert 'id="desk-save"' in desk and 'id="credit-send"' not in desk
-    for asset in ("/fuel-desk.js", "/fuel-desk.css", "/funding_mix.js"):
+    for asset in ("/fuel-desk.js", "/fuel-desk.css", "/funding_mix.js", "/repeat-run.js"):
         assert read(asset)

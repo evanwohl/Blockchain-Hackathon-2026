@@ -9,6 +9,8 @@
 
 **Show a loan FreightOS would turn down.** Restore the $190 sample. Change the bill to $186. With accounts ready, borrowing 57¢ leaves $10.95 on payday at $150/SOL. Check **Include first-time loan setup**. Selling enough SOL for 57¢ now leaves $10.38. Open **What does my first loan need?** to see why the best new loan leaves $9.26. With this wallet and these customer terms, selling also wins at every nonnegative payday SOL price. The comparison assumes the same recorded terms and freight payment in full.
 
+**Show why the number of booked stops matters.** Open `/fuel-desk?example=repeat-run`. Four identical $186 fuel stops leave $42.08 with borrowing and $41.52 staying debt-free in the $150/SOL case. Change four stops to three. The totals tie and the plan switches to debt-free. Restore four and open the lower-price comparison to show that selling wins at $72.47. Open **See a repeat loan simulated on Solana** for the separate Devnet proof that the previous borrower’s profile can fund another vendor payment and the loan-account deposit can come back. The simulation pays off immediately. No new funds were sent.
+
 Allow two minutes. Use one narrator and one person at the keyboard. The other two teammates can cover the funding model and settlement questions after the demo.
 
 | Time | Show | Say |

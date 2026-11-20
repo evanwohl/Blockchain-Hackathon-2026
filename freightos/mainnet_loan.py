@@ -67,7 +67,7 @@ SETUP_EVIDENCE = EVIDENCE.with_name("borrower_setup.json")
 
 
 @cache
-def first_loan_setup():
+def borrower_setup(*, returning=False):
     raw = SETUP_EVIDENCE.read_bytes()
     if hashlib.sha256(raw).hexdigest() != "8283e41a0eb0a4e94007a21908637695da07549b062c6acd9fa0d5e3e5b64b41":
         raise ValueError("The recorded account deposits changed")
@@ -78,14 +78,14 @@ def first_loan_setup():
         raise ValueError("The account setup differs from the recorded lending route")
     accounts = evidence["accounts"]
     obligation = accounts["obligation"]["lamports"]
-    retained = accounts["profile"]["lamports"] + accounts["collateral_farm_user"]["lamports"]
+    retained = 0 if returning else accounts["profile"]["lamports"] + accounts["collateral_farm_user"]["lamports"]
     mark = lending["sol_price"] * 100 / LAMPORTS
 
     def value_cents(raw):
         return int((raw * mark).to_integral_value(rounding=ROUND_HALF_UP))
 
     opening = obligation + retained + LOAN_FEE_ALLOWANCE
-    return dict(refunded_lamports=obligation, retained_lamports=retained, setup_fee_lamports=LOAN_FEE_ALLOWANCE,
+    return dict(returning=returning, refunded_lamports=obligation, retained_lamports=retained, setup_fee_lamports=LOAN_FEE_ALLOWANCE,
                 deposit_lamports=obligation + retained, opening_value_cents=credit.ceiling(opening * mark),
                 refund_value_cents=value_cents(obligation), retained_value_cents=value_cents(retained),
                 setup_fee_value_cents=value_cents(LOAN_FEE_ALLOWANCE),
@@ -124,7 +124,12 @@ def loan_schedule(limit, low, lending, marks=()):
         yield pledge, ceil_div(payoff, RAW_PER_CENT)
 
 
-def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None, path=None, setup=None):
+def payday_at(row, high, price):
+    restore = row["restore_lamports"]
+    return row["payday_cents"] + ceil_div(restore * high, LAMPORTS) - ceil_div(restore * price, LAMPORTS)
+
+
+def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None, path=None, setup=None, repeat=False):
     bill, reference = plan["bill_cents"], plan["reference_cents"]
     low, high = plan["low_price_cents"], plan["high_price_cents"]
     own = min(bill, cash)
@@ -170,9 +175,15 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
                        - ceil_div(chosen["restore_lamports"] * price, LAMPORTS) - chosen["repay_cents"]
                        for price in history]
         history_result = dict(windows=len(history), ahead=sum(d > 0 for d in differences), ties=differences.count(0))
-    combined = None
+    combined = repeat_plan = None
     if offer_terms is not None:
         combined = customer_mix(plan, costs, schedule, stable, cash, wallet_cap, fee, rent, *offer_terms, loan_spend=loan_spend, close_refund=close_refund, show_loan=bool(setup))
+        if repeat:
+            next_setup = borrower_setup(returning=True)
+            next_mix = customer_mix(plan, costs, schedule, stable, cash, wallet_cap, fee, rent, *offer_terms,
+                                    loan_spend=2 * LOAN_FEE_ALLOWANCE + next_setup["setup_fee_lamports"],
+                                    close_refund=next_setup["refunded_lamports"])
+            repeat_plan = next_mix["most_cash"]
         for row in combined.values():
             if row:
                 remaining = wallet_cap - row["opening_lamports"]
@@ -181,10 +192,8 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
         payday_plan, debt_free = combined["most_cash"], combined["most_cash_without_loan"]
         if payday_plan and debt_free:
             def balances(price):
-                def balance(row):
-                    restore = row["restore_lamports"]
-                    return row["payday_cents"] + ceil_div(restore * high, LAMPORTS) - ceil_div(restore * price, LAMPORTS)
-                return dict(price_cents=price, allowed_cents=balance(payday_plan), debt_free_cents=balance(debt_free))
+                return dict(price_cents=price, allowed_cents=payday_at(payday_plan, high, price),
+                            debt_free_cents=payday_at(debt_free, high, price))
             saved_sol = debt_free["restore_lamports"] - payday_plan["restore_lamports"]
             if payday_plan["draw_cents"] and saved_sol > 0:
                 opening = balances(0)
@@ -207,7 +216,7 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
             debt = raw + ceil_div(raw * lending["origination"], 2**60)
             row["path_check"] = collateral_path.replay(path, marks, debt, row["pledge_lamports"], lending)
     coverage = {key: path[key] for key in ("windows", "observations", "omitted", "max_gap_hours")} if path else None
-    return dict(setup=setup, path_coverage=coverage, combined=combined, history=history_result, selected=chosen, best_funded=best, minimum=minimum, sell_only=baseline, cash_cents=own,
+    return dict(setup=setup, repeat_plan=repeat_plan, path_coverage=coverage, combined=combined, history=history_result, selected=chosen, best_funded=best, minimum=minimum, sell_only=baseline, cash_cents=own,
                 stable_cents=min(stable, vendor), slot=lending["slot"], apr_bps=credit.ceiling(rate * 10000),
                 stressed_apr_bps=credit.ceiling(2 * rate * 10000), liquidation_pct=lending["liquidation"],
                 low_cents=low, high_cents=high)
