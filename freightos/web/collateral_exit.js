@@ -3,9 +3,11 @@ import {el, facts, money, request} from "./common.js";
 const minSol = raw => (Math.floor(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const maxSol = raw => (Math.ceil(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const initialView = new URLSearchParams(location.search).get("view");
-let jumpToPayoff = ["payoff", "cash-budget"].includes(initialView);
-if (initialView === "cash-budget") el("exit-keep").value = "cash";
+let jumpToPayoff = ["payoff", "cash-budget", "midtrip"].includes(initialView);
+if (initialView === "midtrip") el("midtrip").open = true;
+if (["midtrip", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
 
+let focusMidtrip = initialView === "midtrip";
 let budgetResult, pending, budgetRevision = 0;
 const custom = () => el("exit-keep").value === "cash";
 const cashInput = el("cash-exit-budget");
@@ -23,8 +25,40 @@ function budgetQuote(row) {
   return budgetResult?.cents === budgetCents() ? budgetResult.rows.get(loanKey(row)) : null;
 }
 
+const checkpoint = el("midtrip-price");
+const percent = bps => (bps / 100).toFixed(2) + "%";
+
+function showEarlyPayment(q) {
+  const amounts = el("midtrip-amounts"), verdict = el("midtrip-verdict"), risk = el("midtrip-risk");
+  el("midtrip-intro").textContent = cashInput.validity.valid
+    ? "If your " + money(budgetCents()) + " is available halfway through the trip, see how much to put toward the fuel loan."
+    : "Enter the cash available for this trip in the payoff budget above.";
+  el("midtrip-trigger").textContent = q ? "At these terms, you can keep all your cash if the day-15 SOL price is "
+    + money(q.no_payment_price_cents) + " or higher. Below " + money(q.budget_price_cents)
+    + ", the plan cannot maintain that cushion with this budget." : "";
+  amounts.hidden = !q?.eligible;
+  risk.textContent = "";
+  if (!q) {
+    verdict.textContent = pending ? "Checking the remaining trip…" : "Check the price and cash budget for this trip.";
+    return;
+  }
+  if (!q.eligible) {
+    verdict.textContent = "The loan may already be eligible for liquidation at this price. Check the open loan before relying on a repayment plan.";
+    risk.textContent = "Debt would be " + percent(q.current_ltv_bps) + " of the pledge’s value. The recorded limit is " + percent(q.limit_bps) + ".";
+    return;
+  }
+  verdict.textContent = q.short_cents ? "The early cash falls " + money(q.short_cents) + " short of the tested cushion."
+    : q.payment_cents ? "Pay " + money(q.payment_cents) + " on day 15 to keep the full pledge within the tested cushion."
+    : "You can keep your cash. The loan stays within the tested cushion without an early payment.";
+  facts(amounts, [["Cash left from your budget", money(q.unused_cents)], ["Still due on day 30", money(q.payday_cents)]]);
+  risk.textContent = "Without an early payment, debt reaches " + percent(q.wait_peak_bps) + " of the pledge’s value across the "
+    + q.windows + " tested paths. With " + money(q.payment_cents) + " paid, the peak is " + percent(q.paid_peak_bps)
+    + ". At " + percent(q.limit_bps) + ", Kamino can sell pledged SOL.";
+}
+
 function showBudget(row, low) {
   const o = budgetQuote(row);
+  showEarlyPayment(o?.midtrip);
   el("exit-amounts").hidden = el("exit-how").hidden = el("exit-price").hidden = !o;
   el("cash-exit-quarter").hidden = !o || o.three_quarter_cash_cents <= o.budget_cents;
   el("exit-retained").hidden = !o;
@@ -72,9 +106,9 @@ export function showExit(rows, low, inputs) {
   el("exit-stage-field").hidden = stages.length < 2;
   function update() {
     const [name, row] = stages[Number(stage.value)];
-    el("cash-exit-form").hidden = !custom();
+    el("cash-exit-form").hidden = el("midtrip").hidden = !custom();
     el("cash-exit-status").hidden = !custom();
-    el("cash-exit-check").disabled = !!pending;
+    el("cash-exit-check").disabled = el("midtrip-check").disabled = !!pending;
     selectProof(custom());
     if (custom()) {
       showBudget(row, low);
@@ -94,7 +128,10 @@ export function showExit(rows, low, inputs) {
   }
   async function checkBudget() {
     if (!cashInput.reportValidity()) return;
+    if (el("midtrip").open && !checkpoint.reportValidity()) return;
     const cents = budgetCents();
+    const params = {...inputs, payoff_cash: cents};
+    if (checkpoint.validity.valid) params.midtrip_price = Math.round(checkpoint.valueAsNumber * 100);
     clearExit();
     const id = budgetRevision, controller = new AbortController();
     pending = controller;
@@ -103,19 +140,27 @@ export function showExit(rows, low, inputs) {
     status.textContent = "Pricing the cash and collateral split…";
     update();
     try {
-      const q = await request("/api/fuel-desk", {...inputs, payoff_cash: cents}, controller.signal);
+      const q = await request("/api/fuel-desk", params, controller.signal);
       if (id !== budgetRevision) return;
       const candidates = Object.values(q.series || q.mainnet.secured_loan.combined).filter(r => r?.cash_payoff);
       const priced = new Map(candidates.map(r => [loanKey(r), r.cash_payoff]));
       if (stages.some(([, r]) => !priced.has(loanKey(r)))) throw new Error("Missing payoff quote");
       budgetResult = {cents, rows: priced};
       status.textContent = "";
+      if (initialView === "midtrip" && focusMidtrip) {
+        focusMidtrip = false;
+        el("midtrip").querySelector("summary").focus();
+      }
     } catch {
       if (id !== budgetRevision) return;
       status.textContent = "The budget could not be priced. Check again to retry.";
     } finally {
       clearTimeout(timer);
-      if (id === budgetRevision) { pending = null; update(); }
+      if (id === budgetRevision) {
+        pending = null;
+        update();
+        if (!budgetResult) el("midtrip-verdict").textContent = "The price check is unavailable. Check early payment to retry.";
+      }
     }
   }
   el("cash-exit-quarter").onclick = () => {
@@ -125,13 +170,13 @@ export function showExit(rows, low, inputs) {
     checkBudget();
     cashInput.focus();
   };
-  cashInput.oninput = () => {
+  checkpoint.oninput = cashInput.oninput = () => {
     clearExit();
     el("cash-exit-status").textContent = "Check your budget to see the updated payoff.";
     update();
   };
-  cashInput.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); checkBudget(); } };
-  el("cash-exit-check").onclick = checkBudget;
+  checkpoint.onkeydown = cashInput.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); checkBudget(); } };
+  el("midtrip-check").onclick = el("cash-exit-check").onclick = checkBudget;
   stage.onchange = update;
   el("exit-keep").onchange = () => {
     clearExit();
@@ -156,6 +201,7 @@ export function exitLines(row) {
       + ". Additional cash needed: " + money(o.short_cents) + ". Unused budget: " + money(o.unused_cents),
       "Temporary USDC: " + money(o.credit_cents) + ". Fee allowance: " + o.fee_cap_raw + " micro-USDC. Maximum SOL sold: " + o.max_lamports
       + " lamports. Minimum collateral left: " + o.min_left_lamports + " lamports.",
+      ...(el("midtrip").open && o.midtrip ? [earlyPaymentLine(o.midtrip)] : []),
       ...o.legs.map(l => "Orca " + l.pool + " · exact output " + l.output_raw + " micro-USDC."),
       "Recorded prices. Network costs are separate. Reprice before the next stop."];
   }
@@ -207,3 +253,34 @@ el("exit-proof").ontoggle = () => {
   if (el("exit-proof").open && !lastProof && !el("exit-simulate").disabled) showProof(false);
 };
 el("exit-simulate").onclick = () => showProof(true);
+
+function earlyPaymentLine(q) {
+  const begin = "Alternative if cash arrives on day 15 at " + money(q.price_cents) + "/SOL. ";
+  const thresholds = " Minimum day-15 SOL price for the tested cushion: " + money(q.no_payment_price_cents)
+    + " with zero payment or " + money(q.budget_price_cents) + " with this budget, assuming an intact pledge.";
+  if (!q.eligible) return begin + "Loan may already be eligible for liquidation." + thresholds;
+  return begin + "Pay " + money(q.payment_cents) + " early, keep " + money(q.unused_cents) + " cash, still owe "
+    + money(q.payday_cents) + " on day 30. Additional cash needed for the tested cushion: " + money(q.short_cents)
+    + ". Worst modeled debt as a share of collateral: " + percent(q.paid_peak_bps) + " across " + q.windows + " Gemini paths." + thresholds;
+}
+
+let partialReceipt = "";
+async function showPartialReceipt(live) {
+  const receipt = el("midtrip-receipt"), button = el("midtrip-live");
+  button.disabled = true;
+  receipt.textContent = live ? "Checking the open loan on Devnet…" : "Reading the saved simulation…";
+  try {
+    const q = await request("/api/midtrip-payment" + (live ? "/simulate" : ""));
+    const units = n => (n / 1e6).toFixed(4);
+    partialReceipt = (live ? "Public" : "Saved") + " Devnet simulation at slot " + q.slot + ". The vendor received "
+      + units(q.vendor_raw) + " test USDC. Paying " + units(q.payment_raw) + " left " + units(q.remaining_raw)
+      + " of debt and all " + (q.pledge_lamports / 1e9) + " test SOL pledged. No transaction was submitted.";
+    receipt.textContent = partialReceipt;
+  } catch {
+    receipt.textContent = "Check unavailable. " + (partialReceipt || "You can download the saved evidence.");
+  } finally { button.disabled = false; }
+}
+el("midtrip-proof").ontoggle = () => {
+  if (el("midtrip-proof").open && !partialReceipt && !el("midtrip-live").disabled) showPartialReceipt(false);
+};
+el("midtrip-live").onclick = () => showPartialReceipt(true);

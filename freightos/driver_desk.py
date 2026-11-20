@@ -3,7 +3,7 @@ from decimal import ROUND_HALF_UP
 from fractions import Fraction
 
 from hedging.quick_pay import integer
-from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, payday_policy, payoff_budget, route_booking, route_sizing
+from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, midtrip, payday_policy, payoff_budget, route_booking, route_sizing
 
 MAX_BILL = 250_000
 VENDOR_FEE_LAMPORTS = 5_000
@@ -40,13 +40,18 @@ def quote(data):
     if type(balance) is not bool or (balance and booked is None):
         raise ValueError("Choose confirmed stops before sizing a recurring loan")
     budget = integer(data["payoff_cash"], "cash for repayment", 100_000_000) if "payoff_cash" in data else None
+    midprice = None
+    if "midtrip_price" in data:
+        midprice = integer(data["midtrip_price"], "day-15 SOL price", 10_000_000)
+        if budget is None or not midprice:
+            raise ValueError("Enter a cash budget and a positive day-15 SOL price")
     try:
-        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance, budget)
+        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance, budget, midprice)
     except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError) as exc:
         raise RuntimeError("Recorded funding terms could not be verified") from exc
 
 
-def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, budget):
+def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, budget, midprice):
     lending = mainnet_loan.saved()
     reference = int((lending["sol_price"] * 100).to_integral_value(rounding=ROUND_HALF_UP))
     cases, _ = payday_policy.price_cases(reference, stress)
@@ -97,10 +102,14 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
         fee_sf = lending["flash_fee_sf"]
         limit = 0 if fee_sf == collateral_exit.FLASH_DISABLED else collateral_exit.sale_cents(max_debt, fee_sf)
         exit_costs = costs if len(costs) > limit else mainnet_stop.split_costs(pools, limit)[0]
+        if midprice is not None:
+            marks, windows = midtrip.checkpoints(path, midprice, lending["apr"] * 2)
         for row in debt_rows:
             row["payoff_options"] = collateral_exit.options(row, exit_costs, lending, min(prices))
             if budget is not None:
                 row["cash_payoff"] = payoff_budget.quote(row, budget, pools, lending, prices)
+            if midprice is not None:
+                row["cash_payoff"]["midtrip"] = midtrip.quote(row, budget, marks, windows, lending)
     return result
 
 

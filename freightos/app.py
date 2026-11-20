@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, flash_exit, bill, collateral_path, credit_exit, customer_credit, devnet, driver_desk, diesel_model, load_credit, mainnet_loan, mainnet_stop, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, repeat_credit, split_payment, replay_prices, reserve_credit, reserve_return, road_cash, stop_backup, trip_cover
+from freightos import atomic_fuel, flash_exit, bill, collateral_path, credit_exit, customer_credit, devnet, driver_desk, diesel_model, load_credit, mainnet_loan, mainnet_stop, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, partial_payment, payday_policy, public_offer, regional_diesel, repeat_credit, split_payment, replay_prices, reserve_credit, reserve_return, road_cash, stop_backup, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -626,6 +626,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/trip-cover":
             self.respond(200, {**trip_cover.saved(), "source": "recorded"})
             return
+        if self.path == "/evidence/midtrip-payment":
+            self.reply(200, "application/json", gzip.decompress(partial_payment.SAMPLE.read_bytes()), static=True)
+            return
+        if self.path in ("/api/midtrip-payment", "/api/midtrip-payment/simulate"):
+            try:
+                result = self.server.midtrip_payment.read() if self.path.endswith("/simulate") else partial_payment.saved()
+                self.respond(200, result)
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+                self.respond(503, {"error": "The partial repayment could not be verified."})
+            return
         if self.path in ("/evidence/collateral-exit", "/evidence/cash-exit"):
             sample = flash_exit.MIXED_SAMPLE if self.path.endswith("cash-exit") else flash_exit.SAMPLE
             self.reply(200, "application/json", gzip.decompress(sample.read_bytes()), static=True)
@@ -1220,6 +1230,7 @@ def main():
     server.policy_checks = {menu: PublicCheck(lambda m=menu: payday_policy.quotes(m, True)) for menu in customer_credit.MENUS}
     server.swap_checks = {net: PublicCheck(lambda n=net: fuel_swap.capture(n)[0]) for net in customer_credit.ADVANCES}
     server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
+    server.midtrip_payment = PublicCheck(partial_payment.simulate)
     server.cash_exit = PublicCheck(lambda: flash_exit.simulate(cash_raw=flash_exit.SAMPLE_CASH))
     server.flash_exit = PublicCheck(flash_exit.simulate)
     server.split_payment = PublicCheck(split_payment.simulate)

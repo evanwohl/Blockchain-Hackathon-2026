@@ -117,17 +117,17 @@
 
 #payoff-check > label:not([hidden]) { display: grid; gap: .35rem; margin: .8rem 0; }
 #payoff-check select { background: var(--paper); color: var(--ink); border: 1px solid #849284; border-radius: 0; padding: .55rem; min-height: 44px; max-width: 100%; }
-#exit-amounts, #exit-receipt:not([hidden]) { display: grid; gap: .65rem; margin: .8rem 0; padding: .8rem 1rem; background: #e8eedb; color: #243d2b; }
-#exit-amounts > div, #exit-receipt > div { display: flex; justify-content: space-between; gap: .6rem; align-items: baseline; }
-#exit-amounts dt, #exit-receipt dt { font-size: .82rem; }
-#exit-amounts dd, #exit-receipt dd { flex: 0 0 auto; white-space: nowrap; margin: 0; text-align: end; font-weight: 650; font-variant-numeric: tabular-nums; }
+#exit-amounts, #midtrip-amounts:not([hidden]), #exit-receipt:not([hidden]) { display: grid; gap: .65rem; margin: .8rem 0; padding: .8rem 1rem; background: #e8eedb; color: #243d2b; }
+#exit-amounts > div, #midtrip-amounts > div, #exit-receipt > div { display: flex; justify-content: space-between; gap: .6rem; align-items: baseline; }
+#exit-amounts dt, #midtrip-amounts dt, #exit-receipt dt { font-size: .82rem; }
+#exit-amounts dd, #midtrip-amounts dd, #exit-receipt dd { flex: 0 0 auto; white-space: nowrap; margin: 0; text-align: end; font-weight: 650; font-variant-numeric: tabular-nums; }
 #payoff-check { border-block: 1px solid var(--line); margin: .75rem 0; padding: .65rem 0; font-size: .91rem; line-height: 1.5; }
 #payoff-check summary { cursor: pointer; font-weight: 600; }
 #payoff-check details { border-top: 1px solid var(--line); padding: .65rem 0; }
 
-#cash-exit-form:not([hidden]) { display: flex; align-items: end; flex-wrap: wrap; gap: .6rem; margin: .75rem 0; }
-#cash-exit-form label { display: grid; gap: .35rem; flex: 1 1 13rem; }
-#cash-exit-budget { min-height: 44px; padding: .55rem; box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #849284; border-radius: 0; background: var(--paper); color: var(--ink); }
+#cash-exit-form:not([hidden]), .midtrip-input { display: flex; align-items: end; flex-wrap: wrap; gap: .6rem; margin: .75rem 0; }
+#cash-exit-form label, .midtrip-input label { display: grid; gap: .35rem; flex: 1 1 13rem; }
+#cash-exit-budget, #midtrip-price { min-height: 44px; padding: .55rem; box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #849284; border-radius: 0; background: var(--paper); color: var(--ink); }
 #cash-exit-status:empty { display: none; }
 #exit-amounts[hidden] { display: none; }
 
