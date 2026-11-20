@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#25382d"><title>Fuel stop · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/fuel-stop.css">
+  <script type="module" src="/fuel-stop.js"></script>
+</head>
+<body class="fuel-stop">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
+<main class="stop-desk">
+  <header class="stop-title"><div><h1>Fuel <em>stop.</em></h1><a class="stop-edit" href="#cash">Edit my numbers ↓</a></div><div class="stop-bill"><span>Fuel due at the stop</span><strong>$190.00</strong><small>Sample load FOS-2048</small></div></header>
+  <div class="stop-spread">
+    <form id="stop-inputs" aria-labelledby="inputs-heading">
+      <h2 id="inputs-heading">Money available</h2><p class="stop-intro">Fuel is due before freight pays. Set what you can use today and what you need to have left on payday.</p>
+      <label for="cash">Cash I can bring to the stop</label><div class="stop-money"><span>$</span><input type="number" step=".01" min="0" max="1000000" inputmode="decimal" id="cash" value="75.00" required></div>
+      <label for="budget">Wallet limit for this stop</label><div class="stop-money"><span>$</span><input type="number" step=".01" min="0" max="1000000" inputmode="decimal" id="budget" value="80.00" aria-describedby="budget-help" required></div>
+      <small id="budget-help">Dollar value of SOL you can use for fuel.</small>
+      <label for="target">Cash I need left on payday</label><div class="stop-money"><span>$</span><input type="number" step=".01" min="0" max="1000000" inputmode="decimal" id="target" value="3.00" required></div>
+      <details class="stop-details"><summary>Freight and price assumptions</summary>
+        <label for="received">Freight paid by day 30</label><div class="stop-money"><span>$</span><input id="received" type="number" min="0" max="200" value="200.00" step=".01" inputmode="decimal" required></div>
+        <label for="stress">Extra SOL buyback price to test</label><div class="stop-money"><span>$</span><input id="stress" type="number" min="0" max="100000" value="150.00" step=".01" inputmode="decimal" placeholder="Optional"></div>
+        <p>Gemini’s recorded 30-day SOL price moves supply the other test prices. The demo assumes the vendor accepts cash plus a wallet payment.</p>
+      </details>
+      <details class="stop-details" id="offer-inputs"><summary>Customer early-pay terms</summary>
+        <label for="offer-menu">Amounts the customer can send before fuel is due</label>
+        <select id="offer-menu"><option value="partial">Any amount up to $99</option><option value="both">$49.50 or $99 only</option><option value="counter">Specific amount and flat fee</option><option value="none">No early payment</option></select>
+        <fieldset id="counter-fields" hidden disabled>
+          <label for="offer_amount">Cash the customer will send early</label>
+          <div class="stop-money"><span>$</span><input type="number" id="offer_amount" min=".01" max="200" value="90.00" step=".01" inputmode="decimal" required></div>
+          <label for="flat_fee">Total discount the customer keeps</label>
+          <div class="stop-money"><span>$</span><input type="number" id="flat_fee" min="0" max="200" value="3.00" step=".01" inputmode="decimal" required></div>
+        </fieldset>
+        <div id="scaled-terms"><label for="offer_fee">Customer fee per $99 received early</label>
+        <div class="stop-money"><span>$</span><input type="number" id="offer_fee" min="0" max="100" value="1.00" required step=".01" inputmode="decimal"></div>
+        <p>These sample terms apply to the mainnet comparison. Smaller amounts carry a proportional fee rounded up to a cent.</p></div>
+        <button type="button" class="paper-action" id="review-offer">Review customer split</button>
+      </details>
+    </form>
+    <section id="stop-outcome" class="stop-outcome" aria-label="Fuel payment plan">
+      <article class="stop-ticket">
+        <div class="ticket-line"><span>At the pump</span><span id="source">Saved Devnet prices</span></div>
+        <h2 id="decision" tabindex="-1" aria-live="polite" aria-atomic="true">Pricing the bill…</h2><p id="decision-note"></p>
+        <div id="funding" hidden><div class="stop-strip" aria-hidden="true"><i></i><i></i><i></i></div><div id="fuel-legs"></div>
+        <dl class="stop-totals"><div><dt>Cash kept at the stop</dt><dd id="kept"></dd></div><div><dt>Left on payday, weakest case</dt><dd id="payday"></dd></div></dl></div>
+      </article>
+      <div id="changes" hidden><h3 id="change-heading">Ways to cover fuel and protect payday</h3><div id="fixes"></div></div>
+      <details id="mainnet-check" class="stop-details" hidden>
+        <summary><span>Same bill at mainnet prices</span> <strong id="mainnet-status"></strong></summary>
+        <details id="mix" class="funding-slip" hidden>
+          <summary>Plan the full fuel payment <strong id="mix-preview"></strong></summary>
+          {{funding_fields}}
+          <button type="button" id="mix-request" hidden>Download customer request</button>
+          <button type="button" id="mix-edit">Edit customer offer</button>
+        </details>
+        <p id="mainnet-result"></p><div id="mainnet-quoted"><dl id="mainnet-ledger"></dl>
+        <p id="mainnet-plan"></p>
+        <button type="button" id="mainnet-try" hidden></button>
+        <details id="loan-result" class="stop-offer">
+          <summary>Borrow against SOL to cover fuel <strong id="loan-preview"></strong></summary>
+          <p id="loan-verdict" role="status"></p>
+          <button type="button" id="loan-budget" hidden></button>
+          <div id="loan-figures" hidden><dl id="loan-ledger"></dl>
+            <table id="loan-outcomes"><caption>Money left after freight pays and balances are restored</caption>
+              <thead><tr><th scope="col">SOL on payday</th><th scope="col">With loan</th><th scope="col">Sell only</th></tr></thead>
+              <tbody id="loan-prices"></tbody></table>
+          </div>
+          <details><summary>Loan terms and liquidation risk</summary>
+            <p id="loan-terms"></p>
+            <p>The model starts with an empty, ready-to-use lending account and token accounts. It allows 0.0001 SOL each for borrowing and repayment, plus the vendor payment fee. A sale also needs temporary account rent. New account setup, future collateral earnings and priority fees above those allowances are excluded.</p>
+            <p>Kamino can sell the pledged SOL before payday if its value drops too far. The tested prices are scenarios. The loan remains due if freight pays late.</p>
+            <a href="/evidence/mainnet-fuel-lending" download="FreightOS-lending.json">Download recorded lending accounts</a>
+            <a href="/load#credit">See a completed fuel loan on Devnet →</a>
+          </details>
+        </details>
+        <details id="offer-result" class="stop-offer"><summary>Use early freight pay <strong id="offer-preview"></strong></summary>
+          <p id="offer-explain"></p><p id="offer-fuel-only"></p><dl id="offer-ledger"></dl><p id="offer-tradeoff"></p>
+          <button type="button" id="offer-mix" hidden></button>
+          <button type="button" id="offer-switch" hidden></button>
+          <button type="button" id="offer-draft" hidden>Download customer request</button>
+          <details id="compare-wait" hidden>
+            <summary>What if I use the same cash and wait for freight pay?</summary>
+            <p id="wait-result"></p><button id="wait-budget" type="button" hidden></button>
+            <section id="wait-prices" aria-label="Early pay compared with waiting" hidden>
+              <h3 id="cross-title"></h3><p id="cross-range"></p>
+              <label for="wait-scenario">Compare payday cash at</label>
+              <select id="wait-scenario"><option value="starting_price">Starting SOL price</option><option value="historical_low">Lowest Gemini scenario</option><option value="historical_high">Highest Gemini scenario</option><option value="high_price">Highest tested price</option></select>
+              <div id="wait-values" aria-live="polite"><p id="case-price"></p><dl>
+                <div><dt>Take early pay</dt><dd id="case-early"></dd></div>
+                <div><dt>Wait for freight pay</dt><dd id="case-wait"></dd></div>
+              </dl><p id="case-fee"></p></div>
+              <button id="price-fee" type="button" hidden></button>
+            </section>
+            <p id="wait-history"></p>
+          </details>
+          <details id="range-offer" hidden>
+            <summary>What fee works across a range of prices?</summary>
+            <label for="fee-range">SOL buyback range to cover</label>
+            <select id="fee-range"><option value="full">Full tested range</option><option value="rising">Starting price and above, through the tested high</option></select>
+            <section aria-live="polite"><h3 id="range-title"></h3><p id="range-decision"></p>
+              <dl id="range-ledger"></dl><p id="range-limit"></p></section>
+            <button id="range-draft" type="button" hidden>Download these customer terms</button>
+          </details>
+          <div id="counter-actions" hidden><button type="button" id="try-counter-fee" hidden></button>
+            <button type="button" id="try-counter-net" hidden></button><button type="button" id="undo-counter" hidden>Return to customer’s offer</button></div>
+          <button type="button" id="open-counter" hidden>Check customer’s reply</button>
+          <p id="offer-bound"></p><button type="button" id="edit-offer">Change customer terms</button>
+        </details>
+        <p id="mainnet-terms"></p>
+        <a href="/evidence/mainnet-fuel-pools" download="FreightOS-mainnet-fuel-pools.json">Download the two pool observations</a></div>
+      </details>
+      <details id="price-room" class="stop-details" hidden>
+        <summary>What if SOL costs more on payday?</summary>
+        <p id="price-limit"></p><p id="price-comparison"></p>
+        <button id="price-choice" type="button" hidden></button>
+        <p id="price-history"></p>
+      </details>
+      <div class="stop-check"><button type="button" id="verify" disabled>Check demo payment on Solana Devnet</button><p id="check-status" role="status"></p></div>
+      <details class="stop-details" id="sources" hidden><summary>Where the wallet money comes from</summary><dl id="wallet-parts"></dl><p id="math"></p><p id="proof"></p><div class="stop-links"><a href="/evidence/fuel-floor" download="FreightOS-fuel-pool-checks.json">Saved pool checks</a><a href="/evidence/sol-payday" download="FreightOS-Gemini-prices.json">Gemini prices</a><a href="/public-offer">See a signed demo bill →</a></div></details>
+    </section>
+  </div>
+</main>
+</body></html>

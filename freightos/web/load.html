@@ -39,7 +39,7 @@
       <p>Each test cent represents one modeled dollar. This saved transfer covers $555 of the $745 example.</p>
       <a class="secondary" href="/public-payment">View the completed Devnet receipt →</a>
       <details class="load-custom"><summary>Check my own wallet</summary>
-        <p>Connect Phantom to read your Devnet balances.</p>
+        <p>Connect Phantom to check whether your wallet can receive demo payments in test USDC on Solana Devnet. Sign a message to confirm you accept this payment method.</p>
         <button type="button" class="secondary" id="wallet-connect">Connect Phantom</button>
         <button type="button" class="secondary" id="wallet-refresh" hidden>Refresh balances</button>
         <button type="button" class="secondary" id="wallet-disconnect" hidden>Disconnect</button>
@@ -47,6 +47,8 @@
         <p id="wallet-review" role="status" style="overflow-wrap:anywhere"></p>
         <p id="wallet-address" style="overflow-wrap:anywhere"></p>
         <p role="status" id="wallet-check"></p>
+        <button type="button" class="secondary" id="wallet-accept" hidden>Confirm I accept test USDC</button>
+        <p role="status" id="wallet-acceptance"></p>
       </details>
     </div>
   </section>

@@ -1,0 +1,277 @@
+import { el, facts, money, request, tokenUnits } from "./common.js";
+
+const verify = el("verify-offer");
+const status = el("offer-status");
+
+function renderComparison(comparison, decision) {
+  const labels = [["customer_fee_cents", "Customer fee"], ["invoice_fees_cents", "Freight invoice discounts"], ["reserve_cost_cents", "Fuel reserve cost"]];
+  el("cost-proof-rows").replaceChildren(...labels.map(([key, name]) => {
+    const row = document.createElement("tr");
+    const header = document.createElement("th");
+    header.scope = "row";
+    header.textContent = name;
+    row.append(header);
+    row.insertCell().textContent = money(comparison.early[key]);
+    row.insertCell().textContent = money(comparison.wait[key]);
+    return row;
+  }));
+  el("cost-proof-draw").textContent = "Taking the offer uses " + money(comparison.early_draw_cents) + " from the reserve. Waiting uses "
+    + money(comparison.wait_draw_cents) + " and requires early pay on the return load. Both estimates use the same reserve pricing. Network fees are excluded.";
+  el("cost-proof-limits").textContent = "The driver planned up to " + money(comparison.planned_cents) + " of reserve withdrawals for the six fuel estimates. With that limit, the highest fee worth paying is "
+    + money(comparison.planned_fee_ceiling_cents) + ". Allowing up to " + money(comparison.available_cents) + " raises the fee ceiling to " + money(comparison.available_fee_ceiling_cents) + ".";
+  el("try-reserve-limit").href = "/bill#" + new URLSearchParams({ plan: "quick pay", fuel: decision.scenario, view: "surcharge-offer",
+    offer_fee_cents: "800", reserve_limit_cents: String(comparison.planned_cents) });
+  el("cost-proof").hidden = false;
+}
+
+function render(proof) {
+  const d = proof.decision;
+  const units = raw => (raw / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 }) + " test USDC";
+  el("full-payment").textContent = tokenUnits(proof.received_raw);
+  facts(el("offer-costs"), [["Estimated with early pay", money(d.fees_cents)], ["Estimated if the driver waits", money(d.wait_cost_cents)]]);
+  el("offer-costs").hidden = false;
+  el("offer-savings").textContent = "That saves " + money(d.wait_cost_cents - d.fees_cents) + " in modeled fees on this bill. The engine compared both plans across " + d.budgets + " Gemini fuel estimates.";
+  renderComparison(proof.cost_comparison, d);
+  facts(el("settled-sources"), [["From the customer, through the driver", units(proof.customer_paid_raw)], ["From the driver’s Kamino reserve", units(proof.reserve_paid_raw)]]);
+  el("settled-bar").style.setProperty("--customer-share", 100 * proof.customer_paid_raw / proof.received_raw + "%");
+  el("settled-split").hidden = false;
+  const steps = [
+    ["prepare", "Set aside funds and approve the vendor", "The demo driver funded the reserve and the customer wallet. The approval fixed the fuel company, amount and offer terms."],
+    ["settle", "Both wallets signed the fuel payment", "The customer kept " + units(proof.customer_kept_raw) + " and sent the rest to the driver. The driver forwarded it and paid the balance from Kamino. All transfers settled together."]
+  ];
+  el("offer-stops").replaceChildren(...steps.map(([step, title, text]) => {
+    const row = document.createElement("li");
+    const link = document.createElement("a");
+    link.href = "https://explorer.solana.com/tx/" + proof.steps[step].signature + "?cluster=devnet";
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = title;
+    const description = document.createElement("p");
+    description.textContent = text;
+    row.append(link, description);
+    return row;
+  }));
+}
+
+async function check(live) {
+  verify.disabled = true;
+  if (live) status.textContent = "Checking both signatures, the reserve withdrawal and the vendor’s balance…";
+  try {
+    const proof = await request("/api/public-offer" + (live ? "/verify" : ""));
+    render(proof);
+    status.textContent = live ? "Verified on Devnet. The vendor received " + tokenUnits(proof.received_raw)
+      + " test USDC in slot " + proof.steps.settle.slot.toLocaleString("en-US") + "." : "Saved receipt. Verify it against the public network.";
+  } catch {
+    status.textContent = live && !el("settled-split").hidden
+      ? "Live verification is unavailable. The previously loaded receipt is still shown. You can retry the check."
+      : "The receipt check is unavailable. Try again or open the signed transaction below.";
+  } finally {
+    verify.disabled = false;
+  }
+}
+verify.onclick = () => check(true);
+check(false);
+
+const refreshFuel = el("refresh-fuel");
+const utcDate = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" });
+const utc = date => utcDate.format(new Date(date)) + " UTC";
+
+function renderFuel(fuel) {
+  el("margin-label").textContent = fuel.headroom_cents >= 0 ? "Room in the paid budget" : "Estimated amount over budget";
+  el("margin-value").textContent = money(Math.abs(fuel.headroom_cents));
+  el("fuel-margin").hidden = false;
+  facts(el("fuel-update-facts"), [
+    ["Bill already paid", money(fuel.paid_cents)],
+    ["Updated fuel estimate", money(fuel.marked_cents)],
+    ["Customer contribution", money(fuel.customer_cents)],
+    ["Reserve needed at this estimate", money(fuel.reserve_needed_cents)]
+  ]);
+  el("fuel-at").textContent = (fuel.source === "saved" ? "Saved check" : "Checked with Gemini") + " · " + utc(fuel.checked_at);
+  const closeDate = fuel.close_at ? " on " + utc(fuel.close_at) : " at approval";
+  el("fuel-method").textContent = "For this " + fuel.gallons + "-gallon trip, the model adjusts the original " + money(fuel.base_cents)
+    + " estimate by " + money(fuel.cents_per_oil_dollar) + " for each $1 change in a barrel of oil. Gemini reported $" + Number(fuel.close).toFixed(5) + closeDate
+    + ". At $" + fuel.first_uncovered_oil + " a barrel, the modeled bill first exceeds the paid amount. Actual diesel prices can differ.";
+  const condition = fuel.target_outcome ? "Settled " + fuel.target_outcome.toUpperCase() : fuel.yes_ask != null
+    ? "YES was offered at $" + Number(fuel.yes_ask).toFixed(2) + " per contract" : "No current YES offer was verified";
+  el("fuel-quote").textContent = condition + " at the check for the $" + fuel.threshold + " oil threshold expiring " + utc(fuel.expiry)
+    + ". FreightOS used this market as a reference. The demo bought no contracts.";
+  const link = el("fuel-event");
+  link.href = "https://api.gemini.com/v1/prediction-markets/events/" + encodeURIComponent(fuel.close_ticker);
+  link.hidden = false;
+}
+
+async function checkFuel(live) {
+  refreshFuel.disabled = true;
+  if (live) el("fuel-status").textContent = "Checking the oil markets from this trip…";
+  try {
+    renderFuel(await request("/api/public-offer/fuel" + (live ? "/refresh" : "")));
+    el("fuel-status").textContent = "The fuel company’s payment is final. This check updates the trip estimate.";
+  } catch {
+    el("fuel-status").textContent = el("fuel-margin").hidden ? "Fuel estimate unavailable. Try refreshing."
+      : "Gemini could not be checked. Showing the last successful estimate.";
+  } finally {
+    refreshFuel.disabled = false;
+  }
+}
+refreshFuel.onclick = () => checkFuel(true);
+checkFuel(false);
+
+const timing = el("cover-timing");
+let cover;
+
+function renderCover() {
+  const position = cover.position;
+  const fuelFirst = timing.querySelector("input:checked").value === "fuel";
+  const buffer = money(cover.cash_only_cents);
+  el("cover-range").textContent = "Suppose the next trip has the same " + money(cover.fuel_budget_cents)
+    + " budget. See how much extra cash it would need if oil closes as high as $" + cover.ceiling + " a barrel.";
+  const relyingOnPayout = Boolean(position && !fuelFirst);
+  const backup = relyingOnPayout ? position.late_payout_gap_cents : cover.cash_only_cents;
+  const rows = [["Cash buffer alone", buffer]];
+  if (position) rows.push(["With the oil contract", money(fuelFirst ? position.fuel_first_cents : position.usable_first_cents)]);
+  facts(el("cover-facts"), rows);
+  el("cover-answer").textContent = fuelFirst || !position ? "Keep the fuel money available." : "A payout could reduce the cash buffer.";
+  el("cover-why").textContent = !position ? (cover.ask ? "The displayed offers provide no cheaper buffer in this range."
+    : "A matching fresh offer with available quantity could not be verified. Budget from the cash-only figure.")
+    : fuelFirst ? "Set aside " + buffer + ". Buying the contract would also use " + money(position.upfront_cents)
+      + " before the stop. A later payout cannot pay a bill due now."
+    : "Of the " + money(position.usable_first_cents) + ", " + money(position.upfront_cents) + " buys the contract including fees and "
+      + money(position.residual_cents) + " stays available for diesel. If the winning payout is late at $" + cover.ceiling
+      + " oil, you need another " + money(backup) + " at the pump.";
+  el("cover-model").textContent = "The contract pays $1 per unit if Gemini’s oil index closes at $" + cover.threshold
+    + " or higher on " + utc(cover.expiry) + ". The comparison tests fuel costs through $" + cover.ceiling
+    + ", the highest strike in the trip’s original market. Higher oil or a different local diesel price can leave a larger bill.";
+  el("cover-cost").textContent = position ? "The displayed book priced " + position.quantity + " YES contracts at "
+    + money(position.premium_cents) + " plus " + money(position.fee_cents) + " in estimated taker fees. At the upper oil price, a winning payout of "
+    + money(position.payout_cents) + " leaves " + money(Math.max(0, cover.cash_only_cents - position.payout_cents))
+    + " of the higher fuel cost to pay. The model assumes the shown fills and zero transfer cost. The demo holds no contracts."
+    : "The demo holds no contracts. The comparison credits no unverified sale or payout.";
+  const reserve = el("cover-reserve");
+  reserve.hidden = !backup;
+  const recording = cover.source === "saved" ? "&recorded=" + (relyingOnPayout ? "late" : "cash") : "";
+  reserve.href = "/next-stop#fuel-buffer=" + backup + "&keep-shares" + recording;
+  reserve.textContent = relyingOnPayout ? "Check whether my reserve covers the " + money(backup) + " gap"
+    : "Check the " + buffer + " cash buffer on Solana";
+}
+
+async function checkCover(live) {
+  const refresh = el("refresh-cover");
+  refresh.disabled = true;
+  const status = el("cover-status");
+  if (live) status.textContent = "Checking prices and available quantity on Gemini…";
+  try {
+    cover = await request("/api/fuel-cover" + (live ? "/refresh" : ""));
+    timing.disabled = false;
+    renderCover();
+    status.textContent = (live ? "Checked with Gemini" : "Recorded Gemini book") + " · " + utc(cover.checked_at);
+  } catch {
+    status.textContent = cover ? "Refresh unavailable. Showing the comparison from " + utc(cover.checked_at) + "." : "Comparison unavailable. Try refreshing.";
+  } finally {
+    refresh.disabled = false;
+  }
+}
+timing.onchange = renderCover;
+el("refresh-cover").onclick = () => checkCover(true);
+checkCover(false);
+
+const pocket = el("funding-pocket");
+const cash = el("funding-cash");
+const access = el("funding-access");
+const fundingResult = el("funding-result");
+const fundingStatus = el("funding-status");
+const coverCash = el("funding-cover");
+let comparisonRequest;
+let cashToReplaceDraw;
+
+function fundingInputs() {
+  comparisonRequest?.abort();
+  const split = pocket.value === "split";
+  el("funding-custom").hidden = cash.disabled = !split;
+  fundingResult.hidden = true;
+  fundingStatus.textContent = "Compare costs to price this choice.";
+  el("funding-run").disabled = false;
+}
+
+function renderFunding(quote) {
+  const early = quote.choice === "early";
+  const plan = quote[quote.choice];
+  const other = quote[early ? "wait" : "early"];
+  el("funding-choice").textContent = early ? "Take the customer’s early payment." : "Wait for the full customer payment.";
+  facts(el("funding-costs"), [["Fee if you take it", money(quote.early.cost_cents)], ["Fee if you wait", money(quote.wait.cost_cents)]]);
+  const difference = other.cost_cents - plan.cost_cents;
+  el("funding-verdict").textContent = difference > 0 ? "This costs " + money(difference) + " less on the " + money(quote.bill_cents) + " bill."
+    : difference === 0 ? "Both choices cost the same on this bill." : "Waiting costs " + money(-difference) + " more on this bill. Early pay does not cut fees in every tested budget.";
+  const sources = [["Customer’s fuel payment", plan.customer_cents], ["Early freight invoice", plan.freight_cents],
+    ["Your available cash", plan.cash_cents], ["Your Kamino reserve", plan.reserve_cents]];
+  const ledger = el("funding-sources");
+  const active = sources.map(([label, value], index) => ({label, value, index})).filter(row => row.value > 0);
+  facts(ledger, active.map(row => [row.label, money(row.value)]));
+  const bar = el("funding-bar");
+  bar.replaceChildren(...active.map((row, index) => {
+    ledger.children[index].dataset.source = row.index;
+    const segment = document.createElement("span");
+    segment.dataset.source = row.index;
+    segment.style.flexGrow = row.value;
+    return segment;
+  }));
+  el("funding-foot").textContent = plan.early_freight_cents > plan.freight_cents
+    ? "Collect " + money(plan.early_freight_cents) + " in early freight pay. Only " + money(plan.freight_cents) + " goes to this bill."
+    : "The engine checked the same invoice terms across " + quote.budgets + " fuel budgets using recorded Gemini oil data.";
+  const remaining = quote.reserve_limit_cents - plan.reserve_cents;
+  el("funding-stress").textContent = remaining > 0 ? "This leaves " + money(remaining) + " of the available reserve untouched. "
+    + (plan.peak_draw_cents > plan.reserve_cents ? "At the " + money(plan.peak_bill_cents) + " fuel estimate, the draw rises to " + money(plan.peak_draw_cents) + "."
+      : "The same amount can stay there in every tested budget.") : "";
+  cashToReplaceDraw = plan.cash_cents + plan.reserve_cents;
+  coverCash.hidden = !plan.reserve_cents;
+  coverCash.textContent = "Try covering the withdrawal with " + money(cashToReplaceDraw) + " in cash";
+  fundingResult.hidden = false;
+}
+
+async function compareFunding(event, focusResult = false) {
+  event?.preventDefault();
+  comparisonRequest?.abort();
+  const controller = new AbortController();
+  comparisonRequest = controller;
+  const timer = setTimeout(() => controller.abort("timeout"), 60000);
+  const split = pocket.value === "split";
+  const cents = pocket.value === "cash" ? Math.round(Number(cash.max) * 100) : split ? Math.round(cash.valueAsNumber * 100) : 0;
+  el("funding-run").disabled = true;
+  fundingResult.hidden = true;
+  fundingStatus.textContent = "Checking fuel costs and payment dates…";
+  try {
+    const quote = await request("/api/public-offer/funding", {cash_cents: cents, reserve_available: pocket.value !== "none" && (!split || access.checked)},
+      controller.signal);
+    if (comparisonRequest !== controller || controller.signal.aborted) return;
+    renderFunding(quote);
+    fundingStatus.textContent = "Compared " + money(quote.cash_limit_cents) + " in cash and " + money(quote.reserve_limit_cents) + " in the reserve.";
+    if (event || focusResult) el("funding-choice").focus();
+  } catch {
+    if (!controller.signal.aborted || controller.signal.reason === "timeout") fundingStatus.textContent = "Funding estimate unavailable. Use Compare costs to retry. The signed receipt is available separately.";
+  } finally {
+    clearTimeout(timer);
+    if (comparisonRequest === controller) el("funding-run").disabled = false;
+  }
+}
+
+el("funding-form").onsubmit = compareFunding;
+pocket.onchange = () => {
+  fundingInputs();
+  if (el("funding-form").checkValidity()) compareFunding();
+};
+cash.oninput = fundingInputs;
+access.onchange = fundingInputs;
+coverCash.onclick = () => {
+  pocket.value = "split";
+  cash.value = (cashToReplaceDraw / 100).toFixed(2);
+  access.checked = true;
+  fundingInputs();
+  compareFunding(null, true);
+};
+const fundingSection = el("funding-check");
+const observer = new IntersectionObserver(entries => {
+  if (entries.some(entry => entry.isIntersecting)) {
+    observer.disconnect();
+    if (!comparisonRequest && pocket.value === "reserve") compareFunding();
+  }
+});
+observer.observe(fundingSection);

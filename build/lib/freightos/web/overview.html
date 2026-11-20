@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#1a1d19"><title>FreightOS · Fuel and freight payments</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/media/barlow-condensed-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="modulepreload" href="/common.js"><link rel="preload" href="/api/state" as="fetch" crossorigin>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/overview.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/" aria-current="page">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
+<main class="overview">
+  <section class="bill-jacket trip-preview" aria-labelledby="intro-title">
+    <header class="bill-heading"><div class="document-id"><h1 id="intro-title">Load overview</h1><span class="load-ref" id="quote-load">FOS-2048</span></div><a class="preview-edit" href="/load">Edit a load <span aria-hidden="true">↗</span></a></header>
+    <div id="quote-result" class="bill-summary" hidden>
+      <div class="action-panel">
+        <p class="balance-caption">Estimated fuel bill</p><p class="balance-amount" id="quote-bill"></p>
+        <div class="due-dates"><span>Fuel due <b id="window-due"></b></span><span>Freight pays <b id="window-paid"></b></span><span id="window-gap"></span></div>
+        <h2 id="preview-title"></h2><p id="driver-story"></p>
+        <div class="preview-actions"><a id="quote-open" class="preview-primary" href="/bill">Walk through this bill</a><a class="task-link" href="/fuel-desk">Price my fuel stop</a></div>
+        <p id="quote-scope"></p>
+      </div>
+      <div class="split-figure" aria-label="Proposed fuel payment">
+        {{payment_slips}}
+        <div class="split-key">Payment split <span id="allocation"></span></div>
+        <dl class="preview-sources"><div><dt>From your fuel reserve</dt><dd id="quote-reserve"></dd></div><div><dt id="outside-source"></dt><dd id="quote-outside"></dd></div></dl>
+      </div>
+    </div>
+    <p id="quote-status" role="status">Loading plan prices…</p><button class="secondary" id="quote-retry" hidden>Try again</button>
+  </section>
+  <section class="statement" id="mechanism" aria-labelledby="mechanism-title">
+    <header class="statement-head"><h2 id="mechanism-title">Your load plan</h2><span id="flow-load" class="folio">Sample load FOS-2048</span></header>
+    <div class="statement-tabs" role="tablist" aria-label="Load plan details">
+      <button id="flow-funds-tab" role="tab" aria-selected="true" aria-controls="flow-funds">Funding &amp; fees</button>
+      <button id="flow-fuel-tab" role="tab" aria-selected="false" aria-controls="flow-fuel" tabindex="-1">Fuel budget</button>
+      <button id="flow-pay-tab" role="tab" aria-selected="false" aria-controls="flow-pay" tabindex="-1">Payment</button>
+    </div>
+    <section id="flow-funds" class="statement-page" role="tabpanel" aria-labelledby="flow-funds-tab" tabindex="0">
+      <header class="amount-line" aria-live="polite" aria-atomic="true"><h3>Estimated cost to cover fuel</h3><strong id="quote-fees">—</strong></header>
+      <p id="mechanism-choice"></p>
+      <dl class="statement-lines fee-items" id="quote-breakdown" aria-label="Fees included in the estimate"></dl>
+      <dl class="statement-lines"><div id="compare-cell"><dt id="compare-name">Alternative</dt><dd id="compare-price">—</dd></div>
+        <div id="quote-difference"><dt>Estimated savings</dt><dd id="quote-saved">—</dd></div></dl>
+      <details class="quote-settings"><summary>Change the funding or fuel estimate</summary>
+      <fieldset disabled id="quote-inputs"><legend class="visually-hidden">Compare funding options</legend>
+        <label>What can you use?<select id="quote-profile"><option value="quick pay">Early pay on an invoice</option><option value="credit line">Bank credit and early pay</option><option value="cash on hand">Cash for the bill</option></select></label>
+        <label>Fuel budget<select id="quote-scenario"><option value="oil stress">Higher fuel estimate</option><option value="fuel budget">Original estimate</option></select></label>
+      </fieldset>
+      <fieldset class="cash-choice" hidden>
+        <legend>What matters more on this trip?</legend>
+        <div class="cash-labels" aria-hidden="true"><span></span><span>Cost</span><span>Cash left</span></div>
+        <label><input type="radio" name="cash-priority" value="credit line" checked><span>Lowest cost</span><b></b><strong></strong></label>
+        <label><input type="radio" name="cash-priority" value="road cash"><span>Keep road cash</span><b></b><strong></strong></label>
+        <p class="cash-note"></p>
+      </fieldset>
+      </details>
+      <details id="flow-alternatives"><summary>Try other payment terms</summary><div class="flow-links"><a href="/fuel-credit#choose-funding">Find out how much to collect early for a $190 fuel stop</a><a href="/fuel-stop">Keep road cash if the customer misses the fuel stop</a><a href="/fuel-credit#one-payment">Use my reserve and borrow the rest in one payment</a><a id="offer-example" href="/bill" hidden>Try a $5 early-payment offer</a><a id="delay-link" href="/bill" hidden>Check a late customer payment</a><a id="road-example" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer&amp;surcharge_cents=50000&amp;offer_fee_cents=1500&amp;partial=1&amp;road_cash_cents=10000" hidden>Keep $100 for tolls and repairs</a><a href="/trip-cover#region=midwest&amp;road-cash&amp;pump=5.00&amp;limit=3.00&amp;timing=after&amp;diesel=recent&amp;payday&amp;weekly=55.00">Plan weekly fuel cash through payday</a></div></details>
+    </section>
+    <section id="flow-fuel" class="statement-page" role="tabpanel" aria-labelledby="flow-fuel-tab" tabindex="0" hidden>
+      <header class="amount-line"><h3>Tested fuel budget</h3><strong id="flow-fuel-value">—</strong></header>
+      <p id="mechanism-fuel">The fuel estimate uses recorded Gemini oil prices.</p>
+      <dl class="statement-lines"><div><dt>Original estimate</dt><dd id="flow-original">—</dd></div><div><dt>Fuel to buy</dt><dd id="flow-gallons">—</dd></div></dl>
+      <details><summary>Explore the fuel estimate</summary><div class="flow-links">
+        <a href="/public-offer#fuel-update">See the Gemini price check</a>
+        <a href="/trip-cover#region=midwest&amp;road-cash&amp;pump=5.00&amp;limit=3.00&amp;timing=after&amp;diesel=recent&amp;replay">Test fuel protection against past prices</a>
+        <a href="/forward-fill">Track a hedge priced before expiry</a></div></details>
+    </section>
+    <section id="flow-pay" class="statement-page" role="tabpanel" aria-labelledby="flow-pay-tab" tabindex="0" hidden>
+      <header class="amount-line"><h3 id="flow-pay-label">Planned reserve payment</h3><strong id="flow-payment">—</strong></header>
+      <p id="mechanism-pay">Review the payee and amount before approving the reserve payment.</p>
+      <dl class="statement-lines"><div><dt>Fuel due</dt><dd id="flow-due">—</dd></div><div><dt>Freight pays</dt><dd id="flow-paid">—</dd></div></dl>
+      <a class="paper-action" id="flow-plan" href="/bill">Review this bill</a>
+      <a class="statement-link" href="/next-stop#two-stops">Plan the next fuel stop</a>
+    </section>
+  </section>
+  <section class="example-register" aria-labelledby="examples-title"><div class="statement">
+    <header class="statement-head"><h2 id="examples-title">Receipts &amp; sample loads</h2></header>
+    <div class="example-row"><div><p class="folio">Signed payment · Public Solana Devnet</p><h3><a href="/public-offer">See a full bill paid on Solana <span aria-hidden="true">↗</span></a></h3>
+      <p>Check the customer payment and the driver’s reserve withdrawal against what the fuel company received.</p></div>
+      <a class="statement-link" href="/public-offer#funding-check">Compare cash with the fuel reserve</a></div>
+    <details><summary>More payment examples and trial results</summary>
+      <div class="example-row"><div><p class="folio">Signed loan · Public Solana Devnet</p><h3>Borrowing for a fuel stop</h3></div><a class="statement-link" href="/load#credit">See a repaid fuel loan</a></div>
+      <div class="example-row"><div><p class="folio">Practice payment · SYN-004</p><h3>Verify a fuel payment</h3><p>Replay this load’s signed transfer on the local fork.</p></div>
+        <div><button class="paper-action" id="replay-sample">Verify sample payment</button> <a class="statement-link" href="/trial#same-access/SYN-004">Inspect this load</a></div></div>
+      <p id="sample-result" role="status"></p>
+      <div class="example-row"><div><p class="folio">Modeled fees · Synthetic loads</p><h3 id="trial-proof-title">Compare funding costs</h3><p id="trial-proof-copy">Both strategies have access to the same reserve.</p></div>
+        <a class="statement-link" href="/trial#same-access">Inspect the load results</a></div>
+    </details>
+  </div></section>
+</main>
+<footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Test payments</span><span>All amounts in US dollars. Demo funds only.</span></div></footer>
+</body></html>

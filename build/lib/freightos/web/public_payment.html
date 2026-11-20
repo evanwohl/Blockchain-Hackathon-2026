@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1a1d19"><title>Public fuel payment · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/public_payment.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
+<main class="public-ledger">
+  <a class="ledger-back" href="/">← Back to the load</a>
+  <div class="public-spread">
+    <section class="public-cover">
+      <p class="panel-label">Vendor receipt · FOS-2048</p>
+      <h1>Fuel money, <br><em>delivered.</em></h1>
+      <p>The driver set money aside in Kamino. When fuel came due, FreightOS released the approved amount to the demo fuel company.</p>
+      <p>The $745 sample bill uses $555 from the reserve and $190 from early invoice pay. Only the reserve payment runs on Solana.</p>
+      <div class="receipt-cost"><p class="panel-label">Estimated costs on this load</p>
+        <dl><div><dt>FreightOS plan</dt><dd>$13.45</dd></div><div><dt>Early pay on main invoice</dt><dd>$150.00</dd></div></dl>
+        <p>Taking early pay on the smaller return trip lets the driver collect the full $3,000 on the main invoice.</p>
+      </div>
+      <a class="ledger-back" href="/fuel-credit">Compare borrowing the $190 against SOL →</a>
+      <details class="public-fuel" id="public-fuel"><summary>Why did the reserve pay $555?</summary>
+        <p id="public-fuel-status" role="status">Checking the fuel evidence…</p>
+        <div id="public-fuel-result" hidden>
+          <p id="fuel-basis"></p>
+          <table class="reference-prices" id="fuel-reference"><caption id="fuel-terms"></caption>
+            <thead><tr><th scope="col">Starting oil price</th><th scope="col">Fuel budget</th><th scope="col">Reserve</th></tr></thead>
+            <tbody id="reference-rows"></tbody>
+          </table>
+          <a id="try-settlement" class="ledger-back" href="/bill">Try the reported-price estimate →</a>
+          <a class="ledger-back" href="/evidence/gemini-settlements" target="_blank" rel="noopener">See the recorded Gemini settlement ↗</a>
+        </div>
+        <button class="secondary" id="fuel-retry" hidden>Check the evidence again</button>
+      </details>
+      <a class="ledger-back" href="/public-offer">See both parts of a bill paid on Solana →</a>
+      <a class="ledger-back" href="/bill">Try the bill in the practice workspace →</a>
+    </section>
+    <section class="public-slip" aria-labelledby="paid-title">
+      <p class="panel-label">Public Solana Devnet</p>
+      <h2 id="paid-title">Received by the fuel company</h2>
+      <strong class="public-amount">5.55 <small>test USDC</small></strong>
+      <p>Each test cent represents one dollar of the $555 reserve payment. Test tokens have no cash value.</p>
+      <ol class="payment-stops" id="stops" aria-label="Signed transactions"></ol>
+      <button class="secondary" id="check-payment" disabled>Verify on public Solana</button>
+      <p class="public-status" id="result" role="status">Loading the saved receipt…</p>
+      <a class="receipt-fallback" target="_blank" rel="noopener" href="https://explorer.solana.com/tx/5A5yKCDw8qZAr4MwvAHBm3op1FdS79wPM7kCD8k6czkRqAG2dx8EgxCtRvbyooy9vozHCurhviXxEeMPLhuvoKv3?cluster=devnet">Open the payment on Explorer ↗</a>
+    </section>
+  </div>
+  <section class="reserve-proof" id="remaining" aria-labelledby="remaining-title">
+    <div class="reserve-balance">
+      <p class="panel-label">After the fuel payment</p>
+      <h2 id="remaining-title">What stayed with the driver?</h2>
+      <p>Vault shares give the driver a claim on the fuel money they set aside.</p>
+      <dl class="share-ledger" id="share-ledger" hidden>
+        <div><dt>Shares issued at deposit</dt><dd id="shares-issued"></dd></div>
+        <div><dt>Shares used to pay for fuel</dt><dd id="shares-spent"></dd></div>
+        <div><dt>Shares left after payment</dt><dd id="shares-left"></dd></div>
+      </dl>
+      <a id="shares-link" class="ledger-back" target="_blank" rel="noopener" hidden>View the public share account ↗</a>
+    </div>
+    <div class="reserve-quote">
+      <h3>Try a return to the driver’s wallet</h3>
+      <p>Solana simulates the withdrawal against the public Kamino vault. The shares stay invested.</p>
+      <div class="preview-choices" aria-label="Choose a return to preview">
+        <button class="secondary" id="preview-road" disabled>Preview $10 for the road</button>
+        <button class="secondary" id="preview-all" disabled>Preview the full return</button>
+      </div>
+      <div class="preview-outcome" id="preview-outcome" hidden>
+        <span>Wallet would receive</span><strong id="preview-amount"></strong><p id="preview-value"></p>
+        <dl><div><dt>Shares used</dt><dd id="preview-used"></dd></div><div><dt>Shares kept from this deposit</dt><dd id="preview-kept"></dd></div></dl>
+      </div>
+      <p class="public-status" id="preview-status" role="status" aria-atomic="true"></p>
+    </div>
+  </section>
+</main>
+</body></html>

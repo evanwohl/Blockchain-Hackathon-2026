@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#1a1d19"><title>Sample loads · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/media/barlow-condensed-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="modulepreload" href="/common.js"><link rel="preload" href="/api/trial" as="fetch" crossorigin>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/trial.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial" aria-current="page">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
+<main class="sample-desk">
+  <div class="bill-jacket">
+    <header class="bill-heading"><div class="document-id"><h1>Sample loads</h1><span class="load-ref">Simulation</span></div></header>
+    <section class="trial-summary" aria-labelledby="savings-title">
+      <div><h2 id="savings-title">Estimated fees saved</h2><strong class="display" id="total">—</strong></div>
+      <div class="sample-comparison"><label class="baseline-label" for="baseline">Compare FreightOS with</label>
+        <select id="baseline" disabled><option value="conventional">A carrier without a reserve</option><option value="composition">A carrier with the same reserve</option></select><p id="baseline-description"></p>
+        <div class="sample-key"><span><i></i>Used reserve</span><strong id="reserve-count">—</strong></div>
+        <div class="sample-key"><span><i></i>Paid without reserve</span><strong id="outside-count">—</strong></div>
+      </div>
+    </section>
+  </div>
+    <div class="trial-workspace">
+    <section class="matrix-panel" aria-labelledby="map-title">
+      <h2 id="map-title">Load index</h2><p id="context"></p>
+      <div class="case-filter"><label for="case-search">Find a load<input type="search" id="case-search" placeholder="Load ID, e.g. 004"></label>
+        <label for="case-filter">Show<select id="case-filter"><option value="all">All loads</option><option value="reserve">Used reserve</option><option value="outside">Without reserve</option><option value="savings">Largest savings first</option></select></label>
+      </div><p id="match-count" role="status"></p><button class="secondary" id="clear-filters" hidden>Clear filters</button>
+      <div id="load-map" role="group" aria-label="Choose a load"></div>
+      <div class="legend"><span><i class="used"></i>Used reserve</span><span><i></i>No reserve payment</span></div>
+    </section>
+    <section class="card case" aria-labelledby="load-title">
+      <h2 id="load-title" tabindex="-1">Load detail</h2>
+      <div class="inside" id="case-detail"><label for="case">Sample load</label><select id="case" disabled></select>
+        <dl id="case-facts" class="facts"></dl><p id="outcome" role="status"></p>
+        <button id="verify-sample" class="secondary" hidden>Verify vendor payment</button>
+        <button id="receipt" class="secondary" hidden>Download signed receipt</button>
+        <p id="sample-result" role="status"></p>
+        <details id="choices" hidden><summary>What pays this bill?</summary><dl id="sources" class="facts"></dl><p id="deadline"></p></details>
+        <details id="raw" hidden><summary>Full case details</summary><pre id="terms"></pre></details>
+      </div>
+    </section>
+    <section class="stats" aria-labelledby="trial-stats"><div class="inside">
+      <h2 id="trial-stats">Across all loads</h2><dl id="stats" class="facts"></dl>
+      <details><summary>How the plans compare</summary><p>Without a fuel reserve, a driver can use cash, borrow from a bank, or get some or all of an invoice paid early. The simpler reserve strategy chooses between that plan and using the reserve with invoice quick pay. FreightOS can also combine the reserve with credit.</p><p id="composition"></p></details>
+      <details id="stress-test"><summary>What if funding costs rise or payments arrive late?</summary><p id="freight-delay-result"></p><p id="flexible-result"></p><p id="delay-only"></p><p id="adverse"></p><p id="stress-mix"></p><button class="secondary" id="stress-retry" hidden>Retry the stress test</button></details>
+      <details><summary>Assumptions and evidence</summary><p id="assumptions"></p><a href="/evidence/carrier-trial">Open the full trial data</a></details>
+    </div></section>
+  </div>
+  <p role="status" id="status"></p><button class="plain" id="retry" hidden>Try again</button>
+</main>
+<footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Test payments</span><span>All amounts in US dollars. Demo funds only.</span></div></footer>
+</body></html>

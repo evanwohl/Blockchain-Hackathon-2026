@@ -5,13 +5,24 @@ const status = document.querySelector("#wallet-check");
 const account = document.querySelector("#wallet-address");
 const preview = document.querySelector("#wallet-preview");
 const review = document.querySelector("#wallet-review");
+const accept = document.querySelector("#wallet-accept");
+const acceptance = document.querySelector("#wallet-acceptance");
 let previewVersion = 0;
 let wallet;
 let address;
 let revision = 0;
+let receiving;
+
+function clearAcceptance() {
+  receiving = undefined;
+  accept.hidden = true;
+  accept.disabled = false;
+  acceptance.textContent = "";
+}
 
 async function balances() {
   const current = ++revision;
+  clearAcceptance();
   status.textContent = "Checking Solana Devnet…";
   try {
     const response = await fetch("/api/devnet-wallet", {
@@ -23,6 +34,13 @@ async function balances() {
     const usdc = BigInt(data.usdc_raw);
     const units = usdc / 1000000n + "." + String(usdc % 1000000n).padStart(6, "0");
     status.textContent = units + " test USDC · " + data.lamports / 1e9 + " test SOL · Devnet slot " + data.slot;
+    if (data.usdc_eligible) {
+      receiving = data;
+      accept.hidden = false;
+      acceptance.textContent = "Eligible to receive test USDC. Acceptance is pending.";
+    } else {
+      acceptance.textContent = "To receive test USDC, this wallet needs an initialized, unfrozen Devnet USDC account.";
+    }
   } catch {
     if (current === revision) status.textContent = "Could not check Devnet. Refresh balances to retry.";
   }
@@ -30,6 +48,7 @@ async function balances() {
 
 function selectAccount(key) {
   revision++;
+  clearAcceptance();
   address = key?.toString();
   previewVersion++;
   preview.hidden = !address;
@@ -65,6 +84,36 @@ connect.addEventListener("click", async () => {
   }
 });
 refresh.addEventListener("click", balances);
+accept.addEventListener("click", async () => {
+  if (!receiving || accept.disabled) return;
+  const current = revision;
+  const checked = receiving;
+  accept.disabled = true;
+  acceptance.textContent = "Review and sign the payment preference in Phantom.";
+  try {
+    const signed = await wallet.signMessage(new TextEncoder().encode(checked.acceptance_message), "utf8");
+    if (revision !== current) return;
+    const signature = btoa(String.fromCharCode(...signed.signature));
+    const response = await fetch("/api/devnet-wallet/accept-usdc", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({address: checked.address, signature}),
+    });
+    const verified = await response.json();
+    if (revision !== current) return;
+    if (!response.ok) throw new Error(verified.error || "Could not verify acceptance.");
+    if (verified.address !== checked.address || verified.usdc_account !== checked.usdc_account ||
+        verified.message !== checked.acceptance_message || verified.signature !== signature) {
+      throw new Error("Refresh balances and verify acceptance again.");
+    }
+    accept.hidden = true;
+    acceptance.textContent = "Test USDC acceptance verified at Devnet slot " + verified.slot +
+      ". The signature confirms your payment preference.";
+  } catch (error) {
+    if (revision === current) acceptance.textContent = error.message || "Acceptance could not be verified. Try again.";
+  } finally {
+    if (revision === current) accept.disabled = false;
+  }
+});
 disconnect.addEventListener("click", async () => {
   try {
     await wallet.disconnect();

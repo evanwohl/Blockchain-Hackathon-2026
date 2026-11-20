@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#22271f"><title>Trip cover · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/trip_cover.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
+<main class="public-ledger trip-cover">
+  <div class="receipt-links"><a class="ledger-back" href="/public-offer#fuel-cover">← Sample fuel bill</a><a href="/forward-fill">Track the November paper fill</a></div>
+  <div class="public-spread">
+    <section class="public-cover">
+      <p class="panel-label">Trip planning · Fuel</p>
+      <h1>Your fuel<br> <em>buffer.</em></h1>
+      <p>Enter what you expect to buy. See how much extra cash to keep if oil rises before you fill up.</p>
+      <form id="trip-cover-form">
+        <div class="trip-fields">
+          <label>Gallons to buy<input id="trip-gallons" type="number" inputmode="numeric" min="1" max="10000" step="1" value="100" required></label>
+          <label>Diesel price ($/gal)<input id="trip-pump" type="number" inputmode="decimal" min=".001" max="99.999" step=".001" value="3.999" required></label>
+          <label>Fuel budget ($)<input id="trip-budget" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="400.00" required></label>
+          <label>Where will you fill up?<select id="trip-region" aria-describedby="region-help">
+            <option value="">Oil estimate only</option><option value="east">East Coast</option><option value="midwest">Midwest</option>
+            <option value="gulf">Gulf Coast</option><option value="rockies">Rocky Mountain</option><option value="west">West Coast</option>
+          </select></label>
+        </div>
+        <p id="region-help">Choose a region to allow for weekly diesel price changes that oil alone can miss.</p>
+        <label id="recent-pattern" class="trip-reserve-choice" hidden><input id="use-recent-pattern" type="checkbox"> Use the region’s recent price pattern</label>
+        <label class="trip-reserve-choice"><input id="use-trip-reserve" type="checkbox"> Include my demo fuel reserve</label>
+        <div id="trip-road-fields" hidden>
+          <label>Keep for tolls and repairs ($)<input id="trip-road" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="25.00" required disabled></label>
+          <p>Only the remainder can cover extra fuel. Enter a fuel budget that excludes this reserve.</p>
+        </div>
+        <details class="public-fuel" id="protection-limit"><summary>Set my cash limits</summary>
+          <label for="pump-cash">Extra cash I can bring to the pump ($)</label>
+          <input id="pump-cash" type="number" inputmode="decimal" min="0" max="1000000" step=".01" aria-describedby="pump-cash-help">
+          <p id="pump-cash-help">Above your fuel budget, separate from your reserve. Enter an amount to find the least protection you need.</p>
+          <label for="trip-limit">Most I can spend on Gemini, including fees ($)</label>
+          <input id="trip-limit" type="number" inputmode="decimal" min="0" max="1000000" step=".01" aria-describedby="limit-help">
+          <p id="limit-help">Enter zero for a cash-only trip. An empty limit compares all available offers.</p>
+        </details>
+        <button id="trip-check" class="primary">Compare my trip</button>
+        <button id="trip-recorded" class="secondary" type="button" hidden>Use recorded market prices</button>
+      </form>
+      <p id="trip-status" role="status" tabindex="-1">Opening the sample trip…</p>
+    </section>
+    <section class="public-slip" aria-labelledby="trip-heading">
+      <p class="panel-label">Extra cash above your budget</p>
+      <h2 id="trip-heading" tabindex="-1">What to set aside</h2>
+      <p id="trip-pending" hidden>Compare the updated trip to see its fuel buffer.</p>
+      <div id="trip-result" hidden>
+        <div class="trip-outcome" aria-live="polite"><small id="trip-bound"></small><strong id="trip-cash"></strong><p id="trip-why"></p></div>
+        <fieldset class="trip-timing"><legend>When do you need to buy fuel?</legend>
+          <label><input type="radio" name="timing" value="before" checked> Before I can spend a payout</label>
+          <label><input type="radio" name="timing" value="after"> After I can spend a payout</label>
+        </fieldset>
+        <details id="payday-run" hidden><summary>Will my fuel money last until payday?</summary>
+          <div class="trip-fields"><label>First invoice pays after<select id="payday-days">
+            <option value="23">23 days · 4 weekly fills</option><option value="30">30 days · 5 weekly fills</option>
+          </select></label></div>
+          <p id="payday-terms"></p>
+          <details id="payday-cover" hidden><summary>Is oil protection worth buying for these fills?</summary>
+            <div id="payday-price-rule">
+              <div class="trip-fields"><label>What matters most?<select id="payday-priority">
+                <option value="average">Keep average cash needs low</option><option value="hard">Cover the hardest fuel stretches</option>
+              </select></label></div>
+              <div class="spending-result"><h3 id="payday-price-title"></h3><p id="payday-price-note"></p><p id="payday-price-backup" hidden></p>
+                <button type="button" class="secondary" id="payday-price-apply"></button></div>
+              <table class="reference-prices"><caption>Price check for the whole position, including fees</caption>
+                <thead><tr><th scope="col">Protection</th><th scope="col" id="payday-price-source">Quoted</th><th scope="col">Historical limit</th></tr></thead>
+                <tbody id="payday-price-rows"></tbody></table>
+              <p id="payday-price-basis"></p>
+              <details><summary>Which contract quotes would clear the limit?</summary><p id="payday-price-ticks"></p>
+                <button type="button" class="secondary" id="payday-price-refresh">Recheck Gemini quotes</button></details>
+            </div><p id="payday-price-missing" hidden>Recent complete fuel stretches are too sparse for a price limit. You can still compare the historical figures.</p>
+            <div class="trip-fields"><label>Plan to preview<select id="payday-cover-choice">
+              <option value="">Original hedge</option><option value="horizon">Hedge for these fills</option>
+              <option value="cash_mix">No oil hedge</option><option value="other" hidden disabled>Other selected hedge</option>
+            </select></label></div>
+            <p id="payday-cover-dates"></p><details><summary>What happened on later trips?</summary>
+              <p id="payday-price-replay"></p>
+              <p id="payday-cover-summary"></p>
+            <table class="reference-prices"><caption>Extra cash needed through payday if the payout arrives at fill two</caption>
+              <thead><tr><th scope="col">Plan</th><th scope="col">Average</th><th scope="col">Hardest 10%</th></tr></thead>
+              <tbody id="payday-cover-rows"></tbody></table>
+
+              <p id="payday-cover-method"></p><p id="payday-cover-shifts"></p>
+              <button type="button" class="secondary" id="payday-cover-download">Download the comparison</button></details>
+          </details><dl class="facts" id="payday-cash"></dl>
+          <div id="payday-budget-fields" class="trip-fields"><label>Extra fuel cash I can add each fill ($)
+            <input id="payday-weekly" type="number" min="0" max="1000000" step=".01" inputmode="decimal" aria-describedby="payday-budget-help">
+          </label></div>
+          <p id="payday-budget-help">Optional. Enter cash above the weekly fuel money shown here. Set aside the oil premium and loan setup separately.</p>
+          <div id="payday-fit" class="spending-result" hidden><h3 id="payday-fit-title" tabindex="-1"></h3><p id="payday-fit-note"></p>
+            <details id="payday-flex-options"><summary>Move some fuel money earlier</summary>
+              <div class="trip-fields"><label>Most I can move forward at any fill ($)
+                <input id="payday-flex" type="number" min="0" max="5000000" step=".01" inputmode="decimal" aria-describedby="payday-flex-help">
+              </label></div><p id="payday-flex-help">Use money already in your fuel budget. Later contributions go down by the same total.</p>
+              <button type="button" id="payday-flex-best" class="secondary" hidden></button></details>
+            <dl class="fill-contributions" id="payday-fit-schedule" hidden></dl><p id="payday-fit-history"></p></div>
+          <button type="button" id="payday-credit" class="secondary">Check how much a loan could cover</button>
+          <details><summary>How was this checked?</summary><p id="payday-method"></p><p id="payday-evidence"></p>
+            <button type="button" class="secondary" id="payday-download">Download the cash schedule evidence</button></details>
+        </details>
+        <details id="fill-history" hidden><summary>Would my fuel money have lasted in past weeks?</summary>
+          <div id="history-choice" class="trip-fields" hidden><label>Plan to preview<select id="history-plan">
+            <option value="">Original trip hedge</option><option value="history_mix">Fit for on-time payouts</option>
+            <option value="delay_mix">Fit for one late payout</option><option value="cash_mix">No oil hedge</option><option value="payday_23">Fit for four fills</option><option value="payday_30">Fit for five fills</option>
+          </select></label></div>
+          <table id="history-costs" class="reference-prices" hidden><caption>Average extra cash in the hardest 10% of weeks</caption>
+            <thead><tr><th scope="col">Timing</th><th scope="col">Cash only</th><th scope="col">Selected plan</th></tr></thead>
+            <tbody><tr><th scope="row">On time</th><td id="history-cash-ready"></td><td id="history-plan-ready"></td></tr>
+            <tr><th scope="row">One payout late</th><td id="history-cash-late"></td><td id="history-plan-late"></td></tr></tbody></table>
+          <section id="pump-value" aria-label="Value at the pump" hidden></section>
+          <details id="backup-budget" hidden><summary id="backup-heading">How much backup cash should I keep?</summary>
+            <p id="backup-explanation"></p>
+            <table class="reference-prices" id="backup-results"><caption id="backup-period"></caption>
+              <thead><tr><th scope="col">Buffer</th><th scope="col">Fills short</th><th scope="col">Average set aside</th></tr></thead>
+              <tbody><tr><th scope="row">Updated weekly</th><td id="backup-recent-misses"></td><td id="backup-recent-mean"></td></tr>
+              <tr id="backup-scaled-row" hidden><th scope="row">Price-adjusted</th><td id="backup-scaled-misses"></td><td id="backup-scaled-mean"></td></tr>
+              <tr><th scope="row">Kept fixed</th><td id="backup-fixed-misses"></td><td id="backup-fixed-mean"></td></tr></tbody></table>
+            <p id="backup-limit"></p><button type="button" id="backup-loan" class="secondary"></button>
+            <details id="swing-backup" hidden><summary>Check the price-adjusted backup</summary>
+              <p id="swing-target"></p>
+              <p id="swing-tail"></p><button type="button" class="secondary" id="swing-loan"></button>
+            </details>
+            <details><summary>How was each week checked?</summary><p id="backup-method"></p>
+              <button type="button" class="secondary" id="backup-download">Download weekly figures</button></details>
+          </details>
+          <p id="history-tradeoff" hidden></p>
+          <p id="fill-history-answer"></p><p id="history-peak-moves"></p><dl class="facts" id="fill-history-facts"></dl>
+          <p id="history-delays" hidden></p>
+          <details><summary>Which prices did you use?</summary><p id="fill-history-method"></p>
+            <a href="/evidence/fill-prices" download="FreightOS-fill-prices.json">Download dated fuel and oil prices</a></details>
+          <details id="history-months" hidden><summary>Does the on-time result depend on one month?</summary><p id="history-sensitivity"></p></details>
+          <details id="history-standby" hidden><summary>How would I pay if the payout came late?</summary>
+            <p id="standby-need"></p><button type="button" class="secondary" id="standby-loan"></button>
+          </details>
+          <button type="button" id="history-loan" class="secondary" hidden></button>
+        </details>
+        <section class="spending-result" id="spending-result" aria-labelledby="limit-title" hidden>
+          <h3 id="limit-title"></h3><p id="limit-benchmark" hidden></p><dl id="limit-difference" hidden></dl>
+          <p id="limit-threshold" hidden></p>
+        </section>
+        <dl id="trip-options" class="facts"></dl><p id="reserve-observation" hidden></p>
+        <a id="trip-reserve" class="ledger-back">Check the cash buffer on Solana →</a>
+        <details id="funding-risk" hidden><summary>What if I can handle a larger fuel gap?</summary>
+          <p id="risk-tradeoff"></p><p id="risk-weight"></p><button id="risk-switch" type="button" class="secondary" hidden></button>
+        </details>
+        <section id="protection-choice" class="protection-choice" aria-labelledby="protection-title" hidden>
+          <h3 id="protection-title">Cover the gap without borrowing</h3>
+          <dl><div><dt>Extra to spend now</dt><dd id="protection-extra"></dd></div>
+          <div><dt>Fuel gap closed</dt><dd id="protection-covered"></dd></div></dl>
+          <p id="protection-terms"></p>
+          <details><summary>What does the extra protection pay?</summary><dl id="protection-outcomes" class="facts"></dl><p id="protection-value"></p><p id="protection-draw"></p></details>
+          <button type="button" class="secondary" id="protection-try"></button>
+        </section>
+        <div id="fuel-floor" class="fuel-floor" hidden><p id="fuel-floor-note"></p><button id="floor-try" type="button" class="secondary"></button></div>
+        <details id="gap-credit" hidden><summary id="gap-title">Check a fuel loan</summary>
+          <p>If you already own SOL, see how much of this fuel gap it could cover. Kamino would hold your pledge until you repay the loan.</p>
+          <button type="button" id="usual-gap" class="secondary" hidden>Return to the trip estimate</button>
+          <form id="gap-form"><div class="trip-fields">
+            <label>Most SOL I would pledge<input id="gap-cap" type="number" min="0" max="1000" step=".001" value="1" required></label>
+            <label>Time until I repay<select id="gap-days"><option value="23">23 days</option><option value="30">30 days</option></select></label>
+            <label>SOL price drop to allow for<select id="gap-drop"><option value="20">20%</option><option value="40" selected>40%</option><option value="60">60%</option></select></label>
+            <label id="repay-limit-label" hidden>Most I can repay on payday ($, optional)<input id="repay-limit" type="number" min="0" max="1000000" step=".01" inputmode="decimal"></label>
+            <label>Fee on another offer ($, optional)<input id="gap-offer" type="number" min="0" max="1000000" step=".01" aria-describedby="gap-offer-help"></label>
+          </div><p id="gap-offer-help">Compare a fee quoted for the same fuel amount and repayment date.</p><button id="gap-check" class="secondary">Check loan on Devnet</button>
+          <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>
+          <p id="gap-status" role="status"></p><p id="gap-coverage" hidden></p><p id="gap-cash-backup" hidden></p><section id="gap-payday" class="spending-result" hidden><h3>Your cash until payday</h3><dl id="gap-payday-cash"></dl><p id="gap-payday-note"></p><button type="button" id="gap-reschedule" class="secondary" hidden></button>
+            <details id="gap-payday-use" hidden><summary>How often would I have needed the loan?</summary><p id="gap-payday-history"></p></details>
+          </section><div id="gap-answer" hidden>
+            <h3 id="gap-verdict"></h3><button type="button" id="gap-full-cap" class="secondary" hidden></button><dl class="facts" id="gap-facts"></dl>
+            <p id="gap-payout" hidden></p><p id="gap-comparison"></p><p id="gap-protection" hidden></p><p id="gap-risk"></p>
+            <section id="gap-exit" hidden><button type="button" class="secondary" id="gap-exit-check">Check what comes back at repayment</button>
+              <p id="gap-exit-status" role="status"></p><div id="gap-exit-result" hidden>
+                <h4 id="gap-exit-title"></h4><dl class="facts" id="gap-exit-facts"></dl><p id="gap-exit-verdict"></p>
+                <details><summary>How was repayment checked?</summary><p id="gap-exit-proof"></p>
+                  <button type="button" class="secondary" id="gap-exit-data">Download this payoff check</button></details>
+              </div></section>
+            <details><summary>What if I sold some SOL instead?</summary><p id="gap-sale"></p></details>
+            <details><summary>How was the loan checked?</summary><p id="gap-proof"></p></details>
+          </div>
+        </details>
+        <details id="regional-evidence" hidden><summary>How much can diesel move on its own?</summary>
+          <p id="pattern-price"></p><dl id="pattern-bills" class="facts"></dl>
+          <p id="pattern-score"></p><details id="pattern-validation" hidden><summary>How did the estimates perform?</summary>
+            <p id="pattern-performance"></p><a href="/evidence/diesel-model" download="FreightOS-weekly-diesel-replay.json">Download all weekly estimates</a>
+          </details><button id="pattern-try" type="button" class="secondary" hidden></button>
+          <p id="regional-test"></p><p id="regional-limit"></p><p id="regional-tail"></p>
+          <a href="/evidence/regional-diesel" download="FreightOS-regional-diesel.json">Download weekly prices and EIA sources</a>
+        </details>
+        <details><summary>Which oil contracts were compared?</summary>
+          <p id="trip-method"></p><dl id="trip-legs" class="facts"></dl><p id="trip-fees"></p>
+          <a href="/evidence/trip-cover" download="FreightOS-recorded-trip-books.json">Download the recorded oil markets</a>
+        </details>
+      </div>
+    </section>
+  </div>
+</main></body></html>

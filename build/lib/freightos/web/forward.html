@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#22271f"><title>Forward fuel check · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/forward.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Paper trial</span></div></header>
+<main class="public-ledger">
+  <a class="ledger-back" href="/trip-cover">← Trip planning</a>
+  <div class="public-spread">
+    <section class="public-cover">
+      <p class="panel-label">Midwest · 100 gallons</p>
+      <h1>One fill,<br><em>priced ahead.</em></h1>
+      <p>Would buying oil protection leave a driver needing less cash at the pump? We fixed four paper plans before Gemini settled and before the next regional diesel price was published.</p>
+      <dl class="facts" id="fixed-inputs"></dl>
+      <div class="receipt-cost"><h2>When would the hedge help?</h2><p id="forward-edge"></p></div>
+      <section id="pump-value" class="receipt-cost" aria-label="Value at the pump" hidden></section>
+      <details><summary>What was recorded?</summary><p id="fixed-proof"></p>
+        <a href="/evidence/forward-fill" download="FreightOS-November-paper-fill.json">Download quotes, positions and funding check</a>
+      </details>
+    </section>
+    <section class="public-slip" aria-labelledby="forward-heading">
+      <p class="panel-label">Forward check · November 2026</p>
+      <h2 id="forward-heading">Fuel money still needed</h2>
+      <div class="trip-outcome"><small>Delay-aware plan</small><strong id="forward-amount">Pending</strong><p id="forward-why">Opening the frozen comparison…</p></div>
+      <dl class="facts" id="forward-observations"></dl>
+      <button type="button" class="secondary" id="forward-check">Check published outcomes</button>
+      <p id="forward-status" role="status"></p>
+      <table class="reference-prices"><caption>Paper costs in dollars</caption><thead><tr><th scope="col">Plan</th><th scope="col">Premium</th><th scope="col">Payout</th><th scope="col">Extra cash¹</th></tr></thead><tbody id="forward-plans"></tbody></table>
+      <p>¹ Premium and fees plus the unfunded fuel bill, assuming the payout is spendable by the fill. Surplus payouts stay outside this cash measure. No orders were placed.</p>
+      <details><summary>Could the fuel loan cover it?</summary><p id="forward-credit"></p><p id="forward-swing" hidden></p><p id="backup-score"></p></details>
+      <details id="forward-payday" hidden><summary>Would that loan last until payday?</summary>
+        <p id="forward-payday-terms"></p><dl class="facts" id="forward-payday-cash"></dl><p id="forward-payday-check"></p>
+        <a href="/trip-cover#region=midwest&amp;road-cash&amp;pump=5.00&amp;limit=3.00&amp;timing=after&amp;diesel=recent&amp;payday&amp;weekly=55.00">Try $55 per fill on a sample trip</a>
+      </details>
+      <p class="receipt-links"><a href="https://api.gemini.com/v1/prediction-markets/events/WTI2611202200">Gemini oil event</a>
+        <a href="https://www.eia.gov/dnav/pet/hist/LeafHandler.ashx?n=PET&amp;s=EMD_EPD2D_PTE_R20_DPG&amp;f=W">EIA Midwest diesel</a></p>
+    </section>
+  </div>
+</main></body></html>

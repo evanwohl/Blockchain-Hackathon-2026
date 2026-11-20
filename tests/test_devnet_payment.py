@@ -1,9 +1,43 @@
+import base64
 import json
 
 import pytest
+from solders.keypair import Keypair
 
 from freightos import devnet
 from freightos.funding import demo_plans
+
+
+@pytest.mark.parametrize("state", ["initialized", "frozen", None])
+def test_carrier_usdc_acceptance_requires_signature_and_receiving_account(state):
+    carrier = Keypair()
+    address = str(carrier.pubkey())
+    destination = str(devnet.associated(carrier.pubkey(), devnet.MINT))
+    info = {"owner": address, "mint": str(devnet.MINT), "state": state,
+            "tokenAmount": {"amount": "0", "decimals": 6}}
+
+    def rpc(method, params):
+        assert method == "getMultipleAccounts"
+        assert params[0] == [address, destination]
+        token = {"owner": str(devnet.TOKEN), "data": {"parsed": {"info": info}}}
+        return {"context": {"slot": 42}, "value": [None, token if state else None]}
+
+    message = devnet.carrier_usdc_message(address)
+    signature = base64.b64encode(bytes(carrier.sign_message(message.encode()))).decode()
+    balances = devnet.wallet_balances(address, rpc, include_eligibility=True)
+    assert balances["usdc_eligible"] is (state == "initialized")
+    with pytest.raises(devnet.CarrierAcceptanceError, match="signature"):
+        devnet.verify_carrier_usdc(str(Keypair().pubkey()), signature, rpc)
+    with pytest.raises(devnet.CarrierAcceptanceError, match="Invalid"):
+        devnet.verify_carrier_usdc(address, "AA==", rpc)
+    if state != "initialized":
+        with pytest.raises(devnet.CarrierAcceptanceError, match="unfrozen"):
+            devnet.verify_carrier_usdc(address, signature, rpc)
+    else:
+        assert devnet.verify_carrier_usdc(address, signature, rpc) == {
+            "address": address, "usdc_account": destination, "slot": 42,
+            "message": message, "signature": signature,
+        }
 
 
 def test_signed_public_example_matches_the_driver_plan():

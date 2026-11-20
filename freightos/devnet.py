@@ -15,6 +15,7 @@ from solders.instruction import AccountMeta, Instruction
 from solders.keypair import Keypair
 from solders.message import Message
 from solders.pubkey import Pubkey
+from solders.signature import Signature
 from solders.transaction import Transaction
 
 from freightos import bill
@@ -59,7 +60,7 @@ def read_with_retry():
     return read
 
 
-def wallet_balances(address, rpc=request):
+def wallet_balances(address, rpc=request, *, include_eligibility=False):
     """Read the payer and the Circle USDC account used by PublicPayment in one slot."""
     payer = Pubkey.from_string(address)
     account = associated(payer, MINT)
@@ -67,14 +68,49 @@ def wallet_balances(address, rpc=request):
                    {"encoding": "jsonParsed", "commitment": "confirmed"}])
     native, tokens = snapshot["value"]
     amount = 0
+    eligible = False
     if tokens is not None:
         info = tokens["data"]["parsed"]["info"]
         if (tokens["owner"] != str(TOKEN) or info["owner"] != address or
                 info["mint"] != str(MINT) or info["tokenAmount"]["decimals"] != 6):
             raise ValueError("Unexpected Devnet token account")
         amount = int(info["tokenAmount"]["amount"])
-    return {"address": address, "slot": snapshot["context"]["slot"],
-            "lamports": native["lamports"] if native else 0, "usdc_raw": str(amount)}
+        eligible = info.get("state") == "initialized"
+    result = {"address": address, "slot": snapshot["context"]["slot"],
+              "lamports": native["lamports"] if native else 0, "usdc_raw": str(amount)}
+    if include_eligibility:
+        result.update(usdc_account=str(account), usdc_eligible=eligible)
+    return result
+
+
+def carrier_usdc_message(address):
+    owner = Pubkey.from_string(address)
+    return (
+        "FreightOS carrier payment preference (v1)\n"
+        "I agree to receive FreightOS demo payments in test USDC on Solana Devnet.\n"
+        f"Carrier wallet: {owner}\n"
+        f"USDC mint: {MINT}\n"
+        f"Receiving account: {associated(owner, MINT)}"
+    )
+
+
+class CarrierAcceptanceError(ValueError):
+    """The wallet did not meet the USDC acceptance requirements."""
+
+
+def verify_carrier_usdc(address, signature, rpc=request):
+    message = carrier_usdc_message(address)
+    try:
+        signed = Signature.from_bytes(base64.b64decode(signature, validate=True))
+    except (TypeError, ValueError) as exc:
+        raise CarrierAcceptanceError("Invalid carrier acceptance signature.") from exc
+    if not signed.verify(Pubkey.from_string(address), message.encode("utf-8")):
+        raise CarrierAcceptanceError("The signature does not match this carrier wallet and USDC payment preference.")
+    balances = wallet_balances(address, rpc, include_eligibility=True)
+    if not balances["usdc_eligible"]:
+        raise CarrierAcceptanceError("The carrier needs an initialized, unfrozen Devnet USDC account.")
+    return {"address": address, "usdc_account": balances["usdc_account"],
+            "slot": balances["slot"], "message": message, "signature": signature}
 
 
 def create_ata(payer, owner, mint):

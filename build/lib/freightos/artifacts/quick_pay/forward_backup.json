@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "recorded_at": "2026-11-20T02:24:09.522953+00:00",
+  "ticket_sha256": "8c259e98125d87e5a4087a7db002b7bc72f862653ad0210825b12a5b6583c4c0",
+  "plan": "delay_mix",
+  "gemini_checked": "2026-11-20T02:24:09+00:00",
+  "event": "WTI2611202200",
+  "expiry": "2026-11-20T22:00:00.000Z",
+  "fill_day": "2026-11-23",
+  "last_diesel": {
+    "week": "2026-11-16",
+    "mills": 5967,
+    "release": "2026-11-17",
+    "source_sha256": "10984d43586d6402c4ae50df8fc28dc41db114ba92f1598fa74ded31c73ad69d"
+  },
+  "prices_sha256": "cb52b449870b6cfdc0ea74e6ec9ff9a522b28e0b3bc77a304a0ee467830399fd",
+  "usual_cents": 3298,
+  "adjusted_cents": 2901,
+  "short_weight": 9,
+  "surplus_weight": 1
+}

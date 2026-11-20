@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#22271f"><title>Secured fuel credit · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/fuel_credit.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
+<main class="public-ledger trip-cover fuel-credit">
+  <a class="ledger-back" href="/public-payment">← Fuel bill and receipt</a>
+  <div class="public-spread">
+    <section class="public-cover"><div id="fuel-settings">
+      <p class="panel-label">Working capital · FOS-2048</p>
+      <h1>Cover the <em>$190 bill.</em></h1>
+      <p id="credit-intro">The sample customer offers to pay a $200 invoice early for $10. If you own SOL, you can pledge it for a fuel loan and collect the full invoice later.</p>
+      <form id="credit-form"><div class="trip-fields">
+        <label>How will you cover the bill?<select id="credit-route"><option value="policy">Find a plan for this bill</option><option value="sale">Compare selling SOL with a loan</option><option value="customer">Use a customer contribution</option><option value="combined">Pay once from reserve and loan</option><option value="loan">Borrow the full $190</option><option value="reserve">Compare separate payments</option></select></label>
+      </div><div id="customer-settings" hidden>
+        <div class="trip-fields">
+          <label>Customer can send before fuel is due<select id="customer-menu"><option value="both">$49.50 or $99</option><option value="half">Only $49.50</option><option value="full">Only $99.00</option><option value="none">Nothing early</option></select></label>
+          <label class="policy-field" hidden>SOL I can use today (dollar value)<input id="policy-budget" type="number" min="0" max="1000000" step=".01" value="80.00" required disabled></label>
+          <label class="policy-field" hidden>Cash I need left from the invoice on payday ($)<input id="policy-floor" type="number" min="0" max="1000000" step=".01" value="0.00" required disabled></label>
+          <label>Test SOL available for this payment<input id="customer-wallet" type="number" min="0" max="1000" step="0.000000001" value="0.060" required></label>
+        </div>
+        <details><summary>Adjust fees and see timing</summary><div class="trip-fields">
+          <label>Fee for $99 of early cash ($)<input id="customer-fee" type="number" min="0" max="100" step=".01" value="1.00" required></label>
+          <label>Other loan expenses due by payday ($)<input id="customer-extra" type="number" min="0" max="1000000" step=".01" value="0.00" required></label>
+          <label class="policy-field" hidden>One more payday SOL price to test ($)<input id="policy-stress" type="number" min="0" max="100000" step=".01" placeholder="Optional" disabled></label>
+          <label class="policy-field payday-switch" hidden><input type="checkbox" id="policy-profile" disabled><span>I can leave loan setup money tied up after payday</span></label>
+        </div><p>The $49.50 offer costs half the fee, rounded up to a cent. The unpaid invoice is due in 23 days. Each loan allows for seven extra days, twice its quoted borrowing rate and a 40% SOL price drop.</p></details>
+        <button class="secondary" type="submit">Refresh loan checks on public Solana</button>
+      </div><div id="combined-settings" hidden>
+        <label class="payday-switch"><input type="checkbox" id="protect-payday"><span>Allow for a late freight check<small>Seven extra days at twice the borrowing rate</small></span></label>
+        <details><summary>Compare my early-pay offer</summary><div class="trip-fields">
+          <label>Customer’s fee to pay the $200 invoice before fuel is due ($)<input id="offer-fee" type="number" min="0" max="200" step=".01" value="10.00" required></label>
+          <label>Other loan expenses due by payday ($)<input id="offer-other" type="number" min="0" max="1000000" step=".01" value="0.00" required></label>
+          <label class="payday-switch"><input id="allow-partial" type="checkbox"><span>Customer allows a partial advance<small>Same proportional fee on any amount, rounded up to a cent</small></span></label>
+          <label id="partial-expense-field" hidden>Other reserve-payment expenses due by payday ($)<input id="partial-expense" type="number" min="0" max="1000000" step=".01" value="0.00" required></label>
+        </div><p>Enter cash expenses such as network and conversion fees in sample dollars. The collateral and refundable deposit are shown separately.</p></details>
+      </div><details id="credit-terms"><summary>Adjust terms and check live</summary><div class="trip-fields">
+        <label>SOL price drop to allow for<select id="credit-drop"><option value="20">20%</option><option value="40" selected>40%</option><option value="60">60%</option></select></label>
+        <label>When will the customer pay?<select id="credit-days"><option value="23">23 days</option><option value="30">30 days</option></select></label>
+      </div><button class="primary" id="credit-check">Refresh on public Solana</button></details></form>
+      <button type="button" id="credit-jump" class="ledger-back" hidden></button>
+      <p id="credit-status" role="status" aria-live="polite">Opening the recorded loan preview…</p>
+      <p class="credit-scope">Payment preview · test funds only.</p></div>
+    </section>
+    <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label" id="credit-provider">Fuel funding · Kamino</p>
+      <h2 id="credit-heading" tabindex="-1">What borrowing would cost</h2>
+      <div id="policy-result" hidden>
+        <div class="trip-outcome"><small id="policy-label"></small><strong id="policy-total"></strong><p id="policy-action"></p></div>
+        <div id="policy-strip" aria-hidden="true" hidden><i></i><i></i><i></i><i></i></div>
+        <dl class="facts" id="policy-sources"></dl>
+        <button type="button" class="secondary" id="policy-draft" hidden>Download customer request</button>
+        <section class="spending-result"><h3>Cash for the next trip</h3><p id="policy-payday"></p><p id="policy-wait"></p><button id="policy-try-wait" type="button" class="secondary" hidden></button></section>
+        <details id="backup-panel"><summary>If customer money misses the stop</summary>
+          <p id="backup-status" role="status"></p>
+          <div id="backup-result" hidden>
+            <div class="backup-amount"><small id="backup-amount-label">Least separate cash in this check</small><strong id="backup-gap"></strong></div>
+            <p id="backup-sources"></p>
+            <label for="backup-cash">Cash I can bring from outside this wallet ($)</label>
+            <input id="backup-cash" type="number" inputmode="decimal" min="0" max="1000000" step=".01" placeholder="Enter an amount">
+            <p id="backup-balance" aria-live="polite"></p>
+            <label for="backup-invoice">Freight money received by day 30</label>
+            <select id="backup-invoice"></select><p id="backup-payday" aria-live="polite"></p>
+            <button type="button" class="secondary" id="backup-compare" hidden></button>
+            <section id="cash-splits" hidden aria-labelledby="cash-decision">
+              <h3 id="cash-decision" tabindex="-1" aria-live="polite"></h3><p id="cash-reason"></p>
+              <table><caption>Cash at the stop and on payday</caption><thead><tr>
+                <th scope="col">Bring separately</th><th scope="col">Wallet sends</th><th scope="col">Left on payday in weakest case</th>
+              </tr></thead><tbody id="cash-split-rows"></tbody></table>
+              <p id="cash-switch"></p>
+            </section>
+          </div>
+          <button type="button" class="secondary" id="backup-refresh">Check my backup on public Solana</button>
+          <a class="ledger-back" href="/fuel-stop#market=funding">Compare a smaller customer request with borrowing at mainnet prices →</a>
+          <a class="ledger-back" href="/fuel-stop">Try other wallet and cash limits instantly →</a>
+          <details id="backup-proof" hidden><summary>How this backup was checked</summary><p id="backup-terms"></p>
+            <a id="backup-download" href="/evidence/stop-backup" download="FreightOS-stop-backup.json">Download recorded payment checks</a></details>
+        </details>
+        <details><summary>Compare the customer offers</summary><dl class="facts" id="policy-offers"></dl><p id="policy-rule"></p></details>
+        <details><summary>How the price checks work</summary><p id="policy-evidence"></p><dl class="facts" id="policy-moves"></dl><p id="policy-assumptions"></p>
+          <a href="/evidence/sol-payday" download="FreightOS-SOL-settlements.json">Download Gemini settlements</a> · <a href="/evidence/fuel-swap" download="FreightOS-fuel-routes.json">Download recorded Solana checks</a></details>
+      </div>
+      <div id="sale-primary" hidden></div>
+      <div id="customer-result" hidden>
+        <div class="trip-outcome"><small id="customer-label"></small><strong id="customer-amount"></strong><p id="customer-action"></p></div>
+        <figure id="customer-funding" hidden>
+          <figcaption>Where the $190 comes from</figcaption>
+          <div class="contribution-strip" aria-hidden="true"><i></i><i></i><i></i></div>
+          <dl><div><dt>Customer</dt><dd></dd></div><div><dt>Reserve</dt><dd></dd></div><div><dt>Loan</dt><dd></dd></div></dl>
+        </figure>
+        <dl class="facts" id="customer-breakdown"></dl>
+        <button type="button" class="secondary" id="customer-request" hidden>Download customer request</button>
+        <section class="spending-result"><h3>When freight pays</h3><p id="customer-payday"></p></section>
+        <details id="customer-backup"><summary>If the customer misses the fuel stop</summary><p id="customer-delay"></p></details>
+        <div id="sale-inline"></div>
+        <details id="fuel-sale">
+          <summary>Could I pay without a loan?</summary>
+          <p>Compare keeping your SOL with selling just enough for this stop. Use available demo USDC first and keep the same three-gallon reserve.</p>
+          <p id="sale-status" role="status"></p>
+          <div id="sale-result" hidden>
+            <h3 id="sale-heading"></h3><div class="trip-outcome"><small>Fuel company would receive on Solana</small><strong id="sale-total"></strong><p id="sale-action"></p></div>
+            <dl class="facts" id="sale-facts"></dl>
+            <details><summary>If I want the SOL back on payday</summary><p id="sale-payday"></p><p id="sale-boundary"></p></details>
+            <details><summary>Where the numbers came from</summary><dl class="facts" id="sale-pools"></dl><p id="sale-check"></p>
+              <a href="/evidence/fuel-swap" download="FreightOS-fuel-exchange.json">Download recorded payment checks</a></details>
+          </div>
+          <details id="sale-terms"><summary>Change the payday price or customer payment</summary>
+          <div class="trip-fields">
+            <label>Customer cash expected before fuel<select id="sale-customer"></select></label>
+            <label>Payday price to buy back one SOL ($)<input id="sale-price" type="number" step=".01" min="0" max="100000" placeholder="Use observed price"></label>
+          </div>
+          </details>
+          <button class="secondary" type="button" id="sale-live">Refresh exchange and loan on public Solana</button>
+        </details>
+        <details id="customer-alternatives"><summary>Compare the available offers</summary><dl class="facts" id="customer-comparison"></dl><p id="customer-rate"></p></details>
+        <details><summary>Check the loan and next fuel stop</summary><p id="customer-check"></p><p>One test cent represents one dollar of fuel. The customer contribution is arranged separately. Each public simulation checks the remaining vendor payment, rollback on insufficient funds and what the next stop can still draw. SOL collateral can be liquidated.</p><a href="/evidence/customer-credit" download="FreightOS-customer-credit.json">Download the recorded comparison</a></details>
+      </div>
+      <div id="combined-result" hidden>
+        <div class="trip-outcome"><small id="combined-label">Fuel vendor would receive</small><strong id="combined-total"></strong><p id="combined-sources"></p><div class="fuel-source-strip" aria-hidden="true"><i id="combined-bar"></i></div></div>
+        <dl class="facts" id="combined-facts"></dl>
+        <button class="secondary" id="partial-request" type="button" hidden>Download advance request</button>
+        <section class="spending-result"><h3 id="combined-choice"></h3><p id="combined-comparison"></p><p id="combined-payday"></p></section>
+        <section class="spending-result"><h3 id="combined-failure-title">If the money falls short</h3><p id="combined-failure"></p></section>
+        <details><summary>Collateral, fees and next-stop assumptions</summary><p id="combined-terms"></p><p id="combined-risk"></p></details>
+        <details id="combined-loan-proof"><summary>Inspect the Devnet checks</summary><p id="combined-proof"></p><a id="combined-download" href="/evidence/atomic-fuel" download="FreightOS-combined-fuel.json">Download recorded evidence for all six cases</a></details>
+        <div id="partial-actions" hidden>
+          <button class="secondary" id="partial-saved" type="button" hidden>Replay the reserve payment check</button>
+          <button class="secondary" id="partial-live" type="button" hidden>Check reserve on public Solana</button>
+          <p role="status" id="partial-status"></p><a id="partial-evidence" href="/evidence/advance-reserve" download="FreightOS-advance-reserve.json" hidden>Download recorded reserve checks</a>
+        </div>
+        <a class="ledger-back" id="combined-wallet-link" href="/load#combined">Review with the demo carrier wallet →</a>
+      </div>
+      <div id="split-result" hidden>
+        <div class="trip-outcome"><small>Borrow for this bill</small><strong id="split-borrow"></strong><p id="split-payment"></p><div class="fuel-source-strip" aria-hidden="true"><i id="split-reserve-bar"></i></div></div>
+        <dl class="facts" id="split-facts"></dl>
+        <section class="spending-result"><h3>What you keep for the next stop</h3><p id="split-next"></p><p id="split-tradeoff"></p></section>
+        <details id="split-limit"><summary>Will this fit my SOL pledge limit?</summary>
+          <div class="trip-fields"><label>Most SOL you are willing to pledge<input id="pledge-limit" type="number" inputmode="decimal" min="0" step="0.001" max="1000" placeholder="e.g. 6.100"></label></div>
+          <p id="pledge-fit" role="status" aria-live="polite"></p>
+        </details>
+        <details><summary>Compare the costs and the risks</summary><dl class="facts" id="split-costs"></dl><p id="split-pricing"></p><dl class="facts" id="split-rate-check"></dl><p id="split-risk"></p></details>
+        <details><summary>Check the two payments</summary><p id="split-proof"></p><a href="/evidence/reserve-credit" download="FreightOS-reserve-credit.json">Download the recorded checks</a></details>
+      </div>
+      <div id="credit-result" hidden>
+        <div class="trip-outcome"><small>Estimated financing cost on $190</small><strong id="credit-cost"></strong><p id="credit-repay"></p></div>
+        <dl class="facts" id="credit-compare"></dl>
+        <section class="spending-result"><h3>What happens if SOL falls?</h3><p id="credit-pledge"></p><dl id="credit-risk"></dl><p>Kamino can liquidate collateral if SOL falls to the estimated liquidation price. The borrower still owes the loan if the freight invoice goes unpaid.</p></section>
+        <details><summary>How the loan and payment were checked</summary><p id="credit-proof"></p><p id="credit-assumptions"></p>
+          <a href="/evidence/fuel-credit" download="FreightOS-secured-loan-simulations.json">Download the recorded Solana simulations</a></details>
+        <a class="ledger-back" href="/trip-cover#region=midwest&amp;road-cash&amp;pump=5.00&amp;limit=3.00">Check a loan for just my trip’s fuel gap →</a>
+      </div>
+    </section>
+  </div>
+</main></body></html>

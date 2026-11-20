@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1a1d19"><title>Paid fuel bill · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/public_offer.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
+<main class="public-ledger offer-ledger">
+  <div class="offer-navigation"><a class="ledger-back" href="/">← Load overview</a><nav aria-label="Paid bill sections"><a href="#slip-title">Signed receipt</a><a href="#fuel-cover">Oil protection</a></nav></div>
+  <div class="public-spread offer-spread">
+    <section class="public-cover">
+      <p class="panel-label">Customer offer · FOS-2048-OFFER</p>
+      <h1>Fuel bill<br> <em>paid in full.</em></h1>
+      <p>The driver covered a $745 fuel bill with $175 from the customer and $570 from the fuel reserve. The customer and driver signed together. The fuel company received both parts in one transaction.</p>
+      <a class="preview-primary" href="#funding-check">Compare fuel money</a>
+      <p class="signed-context">Public Devnet · Sponsored test funds</p>
+    </section>
+    <section class="public-slip offer-slip" aria-labelledby="slip-title">
+      <p class="panel-label">Fuel company receipt · Solana Devnet</p>
+      <h2 id="slip-title">Received in one transaction</h2>
+      <strong class="public-amount"><span id="full-payment">7.45</span> <small>test USDC</small></strong>
+      <p>One test cent represents one dollar of the fuel bill.</p>
+      <div id="settled-split" hidden><div id="settled-bar" aria-hidden="true"></div><dl class="facts" id="settled-sources"></dl></div>
+      <button class="secondary" id="verify-offer" disabled>Verify on public Solana</button>
+      <p id="offer-status" class="public-status" role="status">Opening the saved receipt…</p>
+      <a class="receipt-fallback" href="https://explorer.solana.com/tx/2MAefNg3M2xFj27U82XEg2bwBQDhnmSUD24Ta4s7o47nN4hu5T1dMTKwyhAtHRZR9TQpFa2rAVa1yrNPx1QTGzvc?cluster=devnet" target="_blank" rel="noopener">Open the settlement on Explorer ↗</a>
+      <details class="offer-audit" id="offer-trace"><summary>Trace the money</summary><ol class="payment-stops" id="offer-stops"></ol><a href="/evidence/public-offer" download="FreightOS-public-offer.json">Download signed evidence</a></details>
+    </section>
+  </div>
+  <div class="offer-paper">
+  <p class="offer-footnote">FreightOS funded both demo wallets with test tokens. The payment and customer fee settled on devnet. Trip dates, dollar amounts and estimated savings use sample contract terms.</p>
+  <section class="offer-terms" aria-label="Cost of the customer offer">
+      <div class="receipt-cost"><h2>Why take the offer?</h2>
+        <p>The customer offered to pay a $180 fuel surcharge on day 5 for a $5 fee. That puts $175 toward fuel when it’s due. The driver keeps both freight invoices on regular terms.</p>
+        <dl id="offer-costs" hidden></dl><p id="offer-savings"></p>
+        <details id="cost-proof" class="public-fuel" hidden><summary>Compare the fees line by line</summary>
+          <table class="reference-prices"><caption>Same fuel bill and funding options</caption>
+            <thead><tr><th scope="col">Estimated cost</th><th scope="col">Take offer</th><th scope="col">Wait</th></tr></thead>
+            <tbody id="cost-proof-rows"></tbody>
+          </table>
+          <p id="cost-proof-draw"></p><p id="cost-proof-limits"></p>
+        </details>
+      </div>
+  </section>
+  <section id="funding-check" class="reserve-proof funding-check" aria-labelledby="funding-title">
+    <div class="reserve-balance">
+      <p class="panel-label">Before paying · Compare funding</p>
+      <h2 id="funding-title">What if I used my own cash?</h2>
+      <p>The fuel bill is $745. The customer can pay $175 by day 5 or the full $180 on day 28. Where is the $585 you set aside for fuel?</p>
+      <form id="funding-form">
+        <label for="funding-pocket">My fuel money is</label>
+        <select id="funding-pocket"><option value="reserve">In my Kamino reserve</option><option value="cash">Available as cash</option><option value="split">Part cash, part reserve</option><option value="none">Unavailable before the bill</option></select>
+        <div id="funding-custom" hidden>
+          <label for="funding-cash">Amount already in cash ($)</label>
+          <input id="funding-cash" type="number" min="0" max="585" step=".01" inputmode="decimal" value="200.00" required disabled>
+          <label class="funding-access"><input id="funding-access" type="checkbox" checked> I can use the reserve by day 5</label>
+        </div>
+        <button class="secondary" type="submit" id="funding-run">Compare costs</button>
+      </form>
+      <p class="funding-assumptions">Both plans refill the money used by day 28. Fees use sample terms. Interest earned and network fees are excluded.</p>
+    </div>
+    <div class="reserve-quote funding-answer">
+      <p class="panel-label">Funding estimate · $745 bill</p>
+      <p id="funding-status" role="status">Opening the funding comparison…</p>
+      <div id="funding-result" hidden>
+        <h3 id="funding-choice" tabindex="-1"></h3>
+        <dl id="funding-costs"></dl>
+        <p id="funding-verdict"></p>
+        <h4>Who covers the bill</h4><div id="funding-bar" aria-hidden="true"></div><dl class="facts" id="funding-sources"></dl>
+        <p id="funding-foot"></p><p id="funding-stress"></p>
+        <button class="secondary" id="funding-cover" hidden></button>
+      </div>
+    </div>
+  </section>
+  <section id="fuel-update" class="reserve-proof" aria-labelledby="fuel-update-title">
+    <div class="reserve-balance">
+      <p class="panel-label">After payment · Fuel budget</p>
+      <h2 id="fuel-update-title">Did the budget cover the oil move?</h2>
+      <p>Compare the paid bill with what the same trip would cost using Gemini’s next reported oil close.</p>
+      <div class="preview-outcome" id="fuel-margin" hidden><span id="margin-label"></span><strong id="margin-value"></strong></div>
+      <div class="receipt-links"><a class="ledger-back" href="/next-stop#two-stops">Use this estimate to budget for two stops</a>
+      <a class="ledger-back" href="#fuel-cover">Could an oil contract cover a higher bill?</a></div>
+    </div>
+    <div class="reserve-quote">
+      <h3>Trip estimate</h3><dl class="facts" id="fuel-update-facts"></dl>
+      <div class="check-bar"><button class="secondary" id="refresh-fuel">Refresh from Gemini</button><p id="fuel-at"></p></div>
+      <p id="fuel-status" role="status">Opening the saved market check…</p>
+      <details><summary>How the estimate works</summary>
+        <p id="fuel-method"></p><p id="fuel-quote"></p>
+        <a id="fuel-event" hidden target="_blank" rel="noopener">View Gemini’s oil close ↗</a>
+      </details>
+    </div>
+  </section>
+  <section id="fuel-cover" class="reserve-proof" aria-labelledby="cover-title">
+    <div class="reserve-balance">
+      <p class="panel-label">Next trip · Same 210 gallons</p>
+      <h2 id="cover-title">Could an oil contract cover a higher bill?</h2>
+      <p id="cover-range">Compare extra cash for fuel with buying a contract that pays if oil closes at or above a set price.</p>
+      <fieldset id="cover-timing" disabled>
+        <legend>When is the fuel bill due?</legend>
+        <label><input type="radio" name="payout-time" value="fuel" checked> Before I can spend a payout</label>
+        <label><input type="radio" name="payout-time" value="paid"> After I can spend a payout</label>
+      </fieldset>
+      <div class="receipt-links"><a class="ledger-back" href="/trip-cover">Compare oil protection for my trip</a>
+      <a id="cover-reserve" class="ledger-back" hidden>Check the cash buffer on Solana</a></div>
+    </div>
+    <div class="reserve-quote">
+      <h3 id="cover-answer">Extra cash for fuel</h3>
+      <dl id="cover-facts" class="facts"></dl><p id="cover-why" aria-live="polite"></p>
+      <details><summary>What the comparison assumes</summary>
+        <p id="cover-model"></p><p id="cover-cost"></p>
+        <a href="https://www.gemini.com/fees/predictions" target="_blank" rel="noopener">Gemini fee schedule ↗</a><br>
+        <a href="/evidence/fuel-cover" download="FreightOS-original-oil-book.json">Download the original market snapshot</a>
+      </details>
+      <button class="secondary" id="refresh-cover">Refresh oil contract prices</button>
+      <p id="cover-status" role="status">Opening the recorded order book…</p>
+    </div>
+  </section>
+  <section class="offer-examples" aria-labelledby="practice-examples">
+    <h2 id="practice-examples">Try another payment plan</h2>
+    <details class="public-fuel"><summary>Change the customer’s offer</summary><div class="flow-links">
+      <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer">Try a different fee or payment date →</a>
+          <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer&amp;surcharge_cents=50000&amp;offer_fee_cents=1500&amp;reserve_limit_cents=58500&amp;partial=1">Try taking only part of a $500 surcharge early →</a>
+          <a class="ledger-back" href="/fuel-credit#choose-funding">Find the smallest early payment that covers the next fuel stop →</a>
+          <a class="ledger-back" href="/fuel-credit#pay-without-loan">Check whether this driver can pay without borrowing →</a>
+          <a class="ledger-back" href="/fuel-credit#customer-contribution">See how a $99 customer payment changes the fuel loan →</a>
+          <a class="ledger-back" href="/fuel-credit#partial-advance">Compare taking only part of a freight invoice early →</a>
+          <a id="try-reserve-limit" class="ledger-back" href="/bill">Try an $8 offer with the planned reserve →</a>
+    </div></details>
+    <details class="public-fuel"><summary>Plan the next stop</summary>
+      <a class="ledger-back" href="/public-payment">Explore the original reserve payment and remaining vault shares →</a>
+      <a class="ledger-back next-stop-link" href="/next-stop">Check what’s left for the next stop →</a>
+      <a class="ledger-back" href="/load#credit">Follow a fuel loan through repayment →</a><a class="ledger-back" href="/fuel-credit#one-payment">Preview a combined reserve and loan payment →</a></details>
+  </section>
+  </div>
+</main>
+</body>
+</html>

@@ -23,7 +23,7 @@
       </div>
     </section>
   </div>
-    <div class="trial-workspace">
+  <div class="trial-workspace">
     <section class="matrix-panel" aria-labelledby="map-title">
       <h2 id="map-title">Load index</h2><p id="context"></p>
       <div class="case-filter"><label for="case-search">Find a load<input type="search" id="case-search" placeholder="Load ID, e.g. 004"></label>
@@ -35,10 +35,13 @@
     <section class="card case" aria-labelledby="load-title">
       <h2 id="load-title" tabindex="-1">Load detail</h2>
       <div class="inside" id="case-detail"><label for="case">Sample load</label><select id="case" disabled></select>
-        <dl id="case-facts" class="facts"></dl><p id="outcome" role="status"></p>
-        <button id="verify-sample" class="secondary" hidden>Verify vendor payment</button>
-        <button id="receipt" class="secondary" hidden>Download signed receipt</button>
-        <p id="sample-result" role="status"></p>
+        <dl id="case-facts" class="facts"></dl>
+        <p id="outcome" role="status"></p>
+        <div class="case-actions">
+          <button id="verify-sample" class="secondary" hidden>Verify vendor payment</button>
+          <button id="receipt" class="secondary" hidden>Download signed receipt</button>
+          <p id="sample-result" role="status"></p>
+        </div>
         <details id="choices" hidden><summary>What pays this bill?</summary><dl id="sources" class="facts"></dl><p id="deadline"></p></details>
         <details id="raw" hidden><summary>Full case details</summary><pre id="terms"></pre></details>
       </div>

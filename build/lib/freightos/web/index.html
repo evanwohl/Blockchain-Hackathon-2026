@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#1a1d19"><title>Fuel bill · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/media/barlow-condensed-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="modulepreload" href="/common.js"><link rel="preload" href="/api/state" as="fetch" crossorigin>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/app.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/" aria-label="FreightOS home"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill" aria-current="page">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
+<main class="desk" id="desk" data-loading>
+  <div id="load-status"><p role="status" id="load-message">Loading your fuel plan…</p><button class="secondary" id="reconnect" hidden>Check again</button></div>
+  <div class="bill-jacket">
+    <header class="bill-heading">
+      <div class="document-id"><h1>Fuel bill</h1><span class="load-ref"><span class="mobile-demo">Demo · </span><span id="load-id">—</span></span></div>
+    <button class="secondary configure" id="configure" disabled><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h5m5 0h6M4 17h10m5 0h1"/><circle cx="11.5" cy="7" r="2.5"/><circle cx="16.5" cy="17" r="2.5"/></svg>Payment options</button>
+    </header>
+    <div class="bill-summary">
+      <section class="action-panel" aria-labelledby="action-title">
+        <p class="balance-caption">Left to pay <span id="bill-status" role="status"></span></p>
+        <p class="balance-amount"><span id="balance">—</span><small id="original" hidden>of <span id="bill">—</span></small></p>
+        <div class="due-dates"><span>Fuel due <b id="bill-due"></b></span><span>Freight pays <b id="invoice-day"></b></span><button type="button" id="day-gap" aria-controls="schedule">Schedule</button></div>
+        <h2 id="action-title" tabindex="-1">Loading payment</h2>
+        <p id="payment-scope"></p>
+        <button id="open-payment" class="primary" disabled><span id="open-label">Loading plan</span></button>
+        <button class="task-link" id="reserve-receipt" hidden>View reserve receipt</button>
+        <button class="task-link" id="new-demo" hidden>Start another demo</button>
+        <a id="plan-jump" class="plan-jump" href="#plan-head">See plan costs</a>
+      </section>
+      <section class="split-figure" aria-label="How this bill is covered">
+        {{payment_slips}}
+        <div class="split-key"><span>Payment split</span><i id="allocation" aria-hidden="true"></i></div>
+        <div id="payment-log">
+          <details id="reserve-part"><summary><span>Through FreightOS</span><strong></strong></summary><p></p></details>
+          <details id="direct-part"><summary><span>You pay separately</span><strong></strong></summary><p></p></details>
+        </div>
+      </section>
+    </div>
+  </div>
+  <section class="statement bill-statement" aria-labelledby="details-title">
+    <header class="statement-head"><h2 id="details-title">Bill details</h2></header>
+    <div class="bill-tabs statement-tabs" role="tablist" aria-label="Bill details">
+    <button role="tab" id="fees-tab" aria-controls="plan-panel" aria-selected="true">Plan &amp; fees</button>
+    <button role="tab" id="dates-tab" aria-controls="dates-panel" aria-selected="false" tabindex="-1">Dates &amp; backup</button>
+  </div>
+  <div class="bill-work">
+    <section id="plan-panel" class="funding-panel statement-page" role="tabpanel" aria-labelledby="fees-tab" tabindex="0">
+      <p class="panel-label" id="plan-kind">Recommended plan</p>
+      <h2 id="plan-head" tabindex="-1">Loading plan</h2>
+      <p id="edge-reason"></p>
+      <table class="cost-lines">
+        <caption>Money for the fuel bill and estimated cost</caption>
+        <thead><tr><th scope="col">Where it comes from</th><th scope="col">For fuel</th><th scope="col">Est. cost</th></tr></thead>
+        <tbody id="sources"></tbody>
+        <tfoot><tr><th scope="row">Total</th><td id="for-fuel"></td><td id="plan-cost"></td></tr></tfoot>
+      </table>
+      <dl class="difference" aria-label="Estimated fee comparison">
+        <div class="saving"><dt id="difference-label">Estimated savings</dt><dd id="saved"></dd></div>
+        <div class="fee-row"><dt>Estimated plan cost</dt><dd id="chosen-cost"></dd></div>
+        <div class="fee-row"><dt id="alternative">Other option</dt><dd id="other-cost"></dd></div>
+      </dl>
+      <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p><dl class="pair-fees facts" id="pair-fees"></dl><p id="pair-limit"></p><p id="terms"></p><a href="/fuel-credit">Try a secured loan on the $190 sample payment →</a></details>
+      <div class="plan-checks"><h3>Adjust this plan</h3>
+        <button type="button" class="delay-launch" id="expense-note" aria-haspopup="dialog" hidden><span></span><span aria-hidden="true">→</span></button>
+      <button type="button" class="delay-launch" id="open-surcharge" aria-haspopup="dialog" hidden>Check a customer fuel surcharge <span aria-hidden="true">↗</span></button>
+      </div>
+    </section>
+    <div class="schedule-column statement-page" id="dates-panel" role="tabpanel" aria-labelledby="dates-tab" tabindex="0" hidden>
+    <details class="ledger" id="schedule" open><summary class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><span>Payment schedule</span></summary><p id="timing"></p><ol id="timeline" aria-label="Planned cash movements"></ol>
+      <details class="calendar-export"><summary>Use my trip dates</summary>
+        <form id="trip-form"><label for="trip-start">First day of the trip</label>
+        <input id="trip-start" type="date" min="1900-01-01" max="9998-12-31" required>
+        <button class="secondary" type="submit">Save calendar file</button></form>
+        <p>Includes the planned bill and funding dates. Open the file in your calendar.</p>
+      </details>
+    </details>
+    <details class="planning-stack"><summary>Check timing and fuel changes</summary>
+    <section class="deadline" id="deadline" aria-labelledby="deadline-title" hidden>
+      <header><p class="panel-label">Funding deadline</p><h2 id="deadline-title"></h2></header>
+      <ol class="deadline-path" aria-label="Reserve timing">
+        <li><span class="date-pin"></span><small>Reserve expected</small><strong id="arrival-date"></strong></li>
+        <li><span class="date-pin"></span><small>Must clear by</small><strong id="cutoff-date"></strong></li>
+      </ol>
+      <p id="cutoff-copy"></p>
+      <details id="backup-detail"><summary>Compare the backup plan</summary>
+        <dl class="backup-fees"><div><dt>With reserve</dt><dd id="normal-fee"></dd></div><div><dt>Without reserve</dt><dd id="backup-fee"></dd></div></dl>
+        <p id="backup-copy"></p><button class="secondary" id="switch-timing" type="button"></button><p id="backup-lock" hidden></p>
+      </details>
+      <button class="delay-launch" type="button" id="open-invoice-delay" aria-haspopup="dialog">What if the freight customer pays late? <span aria-hidden="true">↗</span></button>
+      <button class="delay-launch" type="button" id="open-next-trip" aria-haspopup="dialog" hidden>Check cash for the next trip <span aria-hidden="true">↗</span></button>
+    </section>
+    <section class="fuel-window" aria-labelledby="window-title"><p class="panel-label">Fuel planning</p><h2 id="window-title">If fuel prices change</h2>
+      <p id="policy-copy"></p><details id="policy-detail"><summary>Compare fuel estimates</summary><p id="budget-help"></p><table class="cost-lines"><caption>Reserve payment and cost by fuel estimate</caption>
+      <thead><tr><th scope="col">Fuel budget</th><th scope="col">From reserve</th><th scope="col">Est. cost</th></tr></thead><tbody id="policy-rows"></tbody></table><p id="policy-method"></p></details>
+    </section>
+  <details class="market-note">
+    <summary><span>How we estimate fuel</span><span id="market-assumption"></span></summary>
+    <div><p id="signal"></p><p id="quote-evidence"></p><a href="/evidence/gemini" target="_blank" rel="noopener">See the Gemini oil contracts</a> <a href="/public-offer#fuel-update">Check the paid example against Gemini →</a></div>
+  </details>
+    </details>
+    </div>
+  </div>
+  </section>
+  <section class="wallet-strip" id="wallet-strip" aria-labelledby="wallet-title" hidden>
+    <div><h2 id="wallet-title">Your fuel reserve</h2><p id="wallet-summary"></p></div>
+    <div class="wallet-actions"><button class="secondary" id="open-return">Check unused money</button><button class="plain" id="last-return" hidden>View wallet receipt</button></div>
+  </section>
+  <dialog id="surcharge" aria-labelledby="surcharge-title"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Customer terms · FOS-2048</p><button class="close" type="button" data-dismiss aria-label="Close surcharge check">×</button></div>
+    <h2 id="surcharge-title">When does the fuel money arrive?</h2>
+    <div class="surcharge-work"><div>
+    <p id="surcharge-help">Use a fuel surcharge the customer agreed to pay on top of the freight invoice. Leave out anything already included in the freight rate.</p>
+    <form id="surcharge-form" aria-describedby="surcharge-help">
+      <div class="surcharge-fields">
+        <label>Agreed surcharge<span class="expense-input"><span aria-hidden="true">$</span><input id="surcharge-amount" type="number" inputmode="decimal" step=".01" min=".01" max="10000000000" value="180" required></span></label>
+        <label><span id="surcharge-date-label">Trip day it clears</span><span class="expense-input"><input id="surcharge-day" type="number" inputmode="numeric" step="1" min="1" max="365" value="5" required></span></label>
+      </div>
+      <label class="offer-toggle"><input type="checkbox" id="has-surcharge-offer"> My customer offers early pay for a fee</label>
+      <div class="surcharge-fields" id="offer-fields" hidden>
+        <label>Regular pay day<span class="expense-input"><input id="regular-pay-day" type="number" inputmode="numeric" step="1" min="2" max="365" value="28" disabled required></span></label>
+        <label><span id="customer-fee-label">Fee they keep</span><span class="expense-input"><span aria-hidden="true">$</span><input id="customer-fee" type="number" inputmode="decimal" step=".01" min="0" disabled required></span></label>
+      </div>
+      <label class="offer-toggle" id="partial-field" hidden><input type="checkbox" id="allow-partial"> My customer allows a smaller advance at the same rate</label>
+      <details id="road-cash-field"><summary>Keep cash for tolls and repairs</summary>
+        <label>Cash to leave in my wallet<span class="expense-input"><span aria-hidden="true">$</span><input id="road-cash" type="number" min="0" max="10000000000" step=".01" inputmode="decimal" aria-describedby="road-cash-help"></span></label>
+        <p id="road-cash-help">FreightOS uses the rest of your available money to price fuel funding.</p>
+      </details>
+      <details id="reserve-limit-field"><summary>Set a fuel reserve limit</summary>
+        <label>Most I’ll use for fuel<span class="expense-input"><span aria-hidden="true">$</span><input id="reserve-limit" type="number" min="0" max="10000000000" step=".01" inputmode="decimal" aria-describedby="reserve-limit-help"></span></label>
+        <p id="reserve-limit-help">Applies to each fuel estimate. Leave blank to use the available reserve.</p>
+      </details>
+      <button type="submit" class="secondary" id="check-surcharge">Check plan</button>
+    </form>
+    <p id="surcharge-status" role="status"></p></div>
+    <section id="surcharge-before" aria-labelledby="surcharge-before-title"><h3 id="surcharge-before-title">Without a surcharge</h3><dl class="facts" id="surcharge-base"></dl></section>
+    <section id="surcharge-result" aria-labelledby="surcharge-outcome" hidden>
+      <h3 id="surcharge-outcome" tabindex="-1"></h3>
+      <div id="offer-limit" hidden><span id="offer-limit-label">Highest fee worth paying</span><strong id="offer-limit-value"></strong></div>
+      <dl id="partial-dates" hidden></dl>
+      <dl class="facts" id="surcharge-facts"></dl>
+      <details id="offer-sources" hidden><summary>How the fuel bill gets paid</summary><dl class="facts" id="offer-source-rows"></dl></details>
+      <p id="surcharge-boundary"></p>
+      <details id="whole-comparison" hidden><summary>Compare keeping more cash available</summary>
+        <p id="whole-tradeoff"></p><button id="compare-whole" class="secondary" type="button">Check whole-payment options</button>
+      </details>
+      <div class="budget-option" id="budget-option" hidden><p id="budget-tradeoff"></p><button class="secondary" id="compare-budget" type="button">Compare this limit</button></div>
+      <button class="primary" id="apply-surcharge" type="button">Use this plan</button>
+      <a class="offer-receipt-link" href="/public-offer" id="public-offer-example" hidden>View the $5 sample offer’s paid receipt →</a>
+    </section></div>
+  </div></dialog>
+  <dialog id="next-trip" aria-labelledby="expense-heading"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Trip planning · FOS-2048</p><button class="close" type="button" aria-label="Close next-trip check" data-dismiss>×</button></div>
+    <h2 id="expense-heading">Cash for the next trip</h2>
+    <div class="expense-layout"><div>
+        <label for="trip-expense" id="trip-expense-label"></label>
+        <div class="expense-input"><span aria-hidden="true">$</span><input id="trip-expense" type="text" inputmode="decimal" autocomplete="off" maxlength="16" placeholder="0.00" aria-describedby="expense-help"></div>
+        <p id="expense-help"></p>
+        <label id="trip-return-choice" hidden><input type="checkbox" id="include-return" checked> Include unused fuel reserve</label>
+        <div id="expense-result" role="status" aria-atomic="true"><strong></strong><span></span><small id="expense-comparison" hidden></small></div>
+        <button type="button" class="secondary" id="apply-expense" hidden>Use this funding plan</button>
+      </div><div class="expense-limits">
+        <details><summary>Compare available cash</summary>
+          <table class="cost-lines"><caption>Late-payment plans across the tested fuel budgets</caption>
+            <thead><tr><th scope="col">Funding plan</th><th scope="col">Cash for next trip</th><th scope="col">Highest est. cost</th></tr></thead><tbody id="expense-plans"></tbody>
+          </table>
+          <p>We compare costs across all tested fuel budgets. Cash includes invoice proceeds and wallet funds after planned bills and repayments. Early-pay dates must hold. The next trip’s income is excluded.</p><p id="expense-yield-note" hidden></p>
+        </details>
+      </div></div>
+  </div></dialog>
+  <dialog id="invoice-delay" aria-labelledby="delay-heading"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Payment timing · FOS-2048</p><button type="button" class="close" aria-label="Close timing comparison" data-dismiss>×</button></div>
+    <h2 id="delay-heading" tabindex="-1">If freight pays a week late</h2>
+    <dl class="delay-dates"><div><dt>Fuel due</dt><dd id="delay-bill-date"></dd></div><div><dt>Usual refill</dt><dd id="delay-refill-date"></dd></div><div><dt>Late freight</dt><dd id="delay-freight-date"></dd></div></dl>
+    <p id="delay-gap"></p><p id="delay-wallet"></p>
+    <div class="delay-options">
+      <section><h3>Keep the refill date</h3><p class="delay-price"><strong id="delay-safe-fee"></strong> estimated cost</p>
+        <p id="delay-terms"></p><button class="secondary" type="button" id="switch-invoice"></button></section>
+      <section id="refill-choice" hidden><h3>Refill when freight pays</h3><p class="delay-price"><strong id="refill-cost"></strong> estimated cost</p>
+        <p id="refill-tradeoff"></p><button type="button" class="secondary" id="switch-refill"></button>
+        <details><summary>Cost of the extra week</summary><p id="refill-yield"></p><a href="/evidence/reserve-yield" target="_blank" rel="noopener">Open the recorded Kamino rate</a></details>
+      </section>
+    </div>
+    <div class="delay-footer"><p>Usual terms cost <strong id="delay-normal-fee"></strong>.</p><button type="button" class="secondary" id="usual-invoice">Use usual terms</button></div>
+    <button type="button" class="delay-launch" id="from-delay-to-expense" hidden>Check cash for my next trip <span aria-hidden="true">→</span></button>
+    <p id="invoice-lock" hidden></p>
+  </div></dialog>
+  <dialog id="wallet-dialog" aria-labelledby="wallet-head"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Fuel reserve</p><button type="button" class="close" aria-label="Close wallet details" data-dismiss>×</button></div>
+    <h2 id="wallet-head" tabindex="-1">Money for the road</h2><p id="wallet-copy"></p>
+    <div class="wallet-amount" id="wallet-outcome" hidden><span id="wallet-label"></span><strong id="wallet-amount"></strong></div>
+    <dl class="facts" id="wallet-facts"></dl>
+    <button class="primary" id="confirm-return" hidden>Return to my wallet</button>
+    <button class="secondary" id="retry-return" hidden>Check again</button>
+    <div class="receipt-tools" id="wallet-tools" hidden><button class="secondary" id="verify-return">Verify return</button><button class="secondary" id="download-return">Download receipt</button></div>
+    <p id="wallet-status" role="status"></p>
+  </div></dialog>
+  <dialog id="record" aria-labelledby="record-title"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Outside payment</p><button type="button" class="close" aria-label="Close payment record" data-dismiss>×</button></div>
+    <h2 id="record-title"></h2><p id="record-help"></p>
+    <div class="amount-slip outside"><dl class="facts" id="record-facts"></dl><svg class="slip-seal" viewBox="-39 -39 78 78" aria-hidden="true" focusable="false"><use href="#engraving"/><circle r="12" fill="var(--slip-stock)"/><path class="seal-arrow" d="M-5 0H5M1-4l4 4-4 4"/><path class="seal-check" d="m-5 0 3 3 7-7"/></svg></div>
+    <label id="reference-field" for="payment-reference">Payment reference (optional)<input id="payment-reference" type="text" maxlength="80" autocomplete="off"></label>
+    <button class="secondary" id="statement" hidden>Save bill statement</button>
+    <button id="save-record" class="primary"></button><p id="record-error" role="status"></p>
+  </div></dialog>
+  <dialog id="settings" aria-labelledby="settings-title"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Load plan</p><button type="button" class="close" aria-label="Close settings" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <h2 id="settings-title">Payment options</h2>
+    <div class="settings-scroll">
+    <fieldset class="funding-options" id="profile" aria-describedby="access-help">
+      <legend>Which situation fits this sample load?</legend>
+      <label><input type="radio" name="funding" value="quick pay" checked><span>I can get invoices paid early</span><small></small></label>
+      <label><input type="radio" name="funding" value="credit line"><span>I also have bank credit</span><small></small></label>
+      <label><input type="radio" name="funding" value="cash on hand"><span>I have cash for the bill</span><small></small></label>
+      <label id="custom-funding" hidden><input type="radio" name="funding" disabled><span>Use my fuel surcharge</span><small></small></label>
+    </fieldset>
+    <p id="access-help"></p>
+    <label for="scenario">Fuel budget</label><select id="scenario"><option value="oil stress">Allow for higher fuel prices</option><option value="fuel budget">Original fuel estimate</option></select>
+    <label class="no-reserve" id="late-freight-field"><input type="checkbox" id="late-freight">Plan for the main customer to pay a week late</label>
+    <label class="no-reserve" id="later-refill-field" hidden><input type="checkbox" id="later-refill">The fuel reserve can wait until the freight is paid</label>
+    <label class="no-reserve" id="no-reserve-field"><input type="checkbox" id="no-reserve">Plan without the fuel reserve</label>
+    <fieldset class="cash-choice" hidden>
+        <legend>What matters more on this trip?</legend>
+        <div class="cash-labels" aria-hidden="true"><span></span><span>Cost</span><span>Cash left</span></div>
+        <label><input type="radio" name="cash-priority" value="credit line" checked><span>Lowest cost</span><b></b><strong></strong></label>
+        <label><input type="radio" name="cash-priority" value="road cash"><span>Keep road cash</span><b></b><strong></strong></label>
+        <p class="cash-note"></p>
+      </fieldset>
+    </div>
+    <footer class="settings-confirm"><dl><div><dt>Fuel bill</dt><dd id="draft-bill">—</dd></div><div><dt>Est. cost</dt><dd id="draft-cost">—</dd></div></dl>
+      <button class="primary" id="apply">Update plan</button></footer>
+  </div></dialog>
+  <dialog id="payment" aria-labelledby="title"><div class="sheet">
+    <div class="dialog-head"><p class="eyebrow">Demo payment <span class="sheet-load" id="receipt-load"></span></p><button type="button" class="close" aria-label="Close payment" data-dismiss><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <ol id="steps" aria-label="Payment progress"><li>1 · Set aside</li><li>2 · Approve</li><li>3 · Receipt</li></ol>
+    <div class="payment-record">
+      <h2 id="title" tabindex="-1">Loading your plan</h2><p id="instruction"></p><div class="amount-slip"><dl id="facts" class="facts"></dl><svg class="slip-seal" viewBox="-39 -39 78 78" aria-hidden="true" focusable="false"><use href="#engraving"/><circle r="12" fill="var(--slip-stock)"/><path class="seal-arrow" d="M-5 0H5M1-4l4 4-4 4"/><path class="seal-check" d="m-5 0 3 3 7-7"/></svg></div><p id="review-clock" hidden></p>
+    </div>
+    <button id="primary" class="primary" disabled>Loading</button>
+    <button id="cancel" class="plain" hidden>Cancel review</button><p role="status" id="status"></p>
+    <button class="primary" id="return-bill" hidden>Return to bill</button>
+    <div class="receipt-tools" id="receipt-head" hidden><button id="verify" class="secondary">Verify payment</button><button id="download" class="secondary">Download receipt</button></div>
+    <p id="verified" role="status"></p>
+    <button id="reset" class="plain" hidden>Start another demo</button>
+    <details id="challenge" hidden><summary>Test the vendor protection</summary><p>Try the reviewed payment with a different recipient.</p><button class="secondary" id="check">Test a different vendor</button><p id="result" role="status"></p></details>
+    <details id="proof" hidden><summary>Transfer details and network fee</summary><p>Demo payments use USDC, a digital dollar. The fuel reserve uses Kamino on a local copy of Solana.</p><button type="button" class="secondary" id="check-public">Check public vault balance</button><p id="public-result" role="status"></p><a id="public-account" target="_blank" rel="noopener" hidden>See the custody account on Solana Explorer</a><p id="network-details" hidden></p><pre id="details"></pre></details>
+  </div></dialog></main>
+<footer class="environment"><div class="frame"><span class="environment-name"><i aria-hidden="true"></i>Test payments</span><a class="public-bill-link" href="/public-payment">See the public Devnet payment →</a></div></footer>
+</body></html>

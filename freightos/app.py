@@ -1021,15 +1021,21 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, KeyError, IndexError, ArithmeticError, RuntimeError):
                     self.respond(503, {"error": "Devnet could not verify these loan terms. Check the wallet and try again."})
                 return
-            if self.path == "/api/devnet-wallet":
+            if self.path in ("/api/devnet-wallet", "/api/devnet-wallet/accept-usdc"):
                 address = data.get("address")
                 if not isinstance(address, str):
                     raise ValueError("Enter a wallet address")
                 devnet.Pubkey.from_string(address)
                 try:
-                    self.respond(200, devnet.wallet_balances(address))
+                    if self.path.endswith("/accept-usdc"):
+                        self.respond(200, devnet.verify_carrier_usdc(address, data.get("signature"), devnet.request))
+                    else:
+                        self.respond(200, {**devnet.wallet_balances(address, devnet.request, include_eligibility=True),
+                                           "acceptance_message": devnet.carrier_usdc_message(address)})
+                except devnet.CarrierAcceptanceError as exc:
+                    self.respond(400, {"error": str(exc)})
                 except (OSError, ValueError, KeyError, TypeError):
-                    self.respond(503, {"error": "Devnet balances are unavailable. Try again."})
+                    self.respond(503, {"error": "Devnet wallet verification is unavailable. Try again."})
                 return
             if self.path == "/api/load-calendar":
                 calendar = project_load(data)

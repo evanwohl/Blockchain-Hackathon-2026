@@ -14,7 +14,7 @@
 .check-bar { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem 1.2rem; }
 #sample-result:empty { display: none; }
 
-.bill-work .funding-panel h2, .trial-workspace h2 { font: 600 clamp(2.1rem,3.4vw,3.5rem)/1.02 var(--display); letter-spacing: -.03em; }
+.bill-work .funding-panel h2 { font: 600 clamp(2.1rem,3.4vw,3.5rem)/1.02 var(--display); letter-spacing: -.03em; }
 .bill-work #edge-reason { line-height: 1.55; max-width: 60ch; margin: .85rem 0 1.3rem; }
 .bill-work .difference { background: #e6e9da; border: 0; border-block: 1px solid #adb69b; padding: 1.15rem; }
 .bill-work .saving dd { font-size: clamp(2.7rem,4.2vw,4.5rem); line-height: 1; }
@@ -27,15 +27,56 @@
 .bill-work .ledger > summary { min-height: 64px; }
 .bill-work .delay-launch { min-height: 44px; }
 
-.trial-workspace .case { border: 0; border-top: 2px solid var(--ink); background: var(--sheet); padding: var(--sheet-gap); }
-.trial-workspace .stats { padding-top: 1.25rem; border-color: var(--ink); }
-.trial-workspace .legend { margin-top: .8rem; }
-#load-map button { font: .72rem var(--serial); color: #353c31; background-color: #eeeaf2; background-image: none; border: 1px solid #b6b1c0; }
-#load-map button[data-used="true"] { background: #e1e9b5; border-color: #a4ae84; }
-#load-map button[aria-pressed="true"] { color: #fff; background: #30372a; }
-.trial-workspace #case-facts dd { flex: 0 0 auto; max-width: none; white-space: nowrap; word-break: normal; }
-.trial-workspace #case-facts dt { min-width: 0; }
-.trial-workspace .legend i:not(.used) { background: #eeeaf2; }
+.trial-workspace {
+  display: grid;
+  grid-template-columns: minmax(0,1.15fr) minmax(0,1fr);
+  align-items: start;
+  gap: var(--sheet-gap);
+  margin: var(--sheet-gap) var(--inset) 0;
+}
+.trial-workspace > section { min-width: 0; border-top: 2px solid var(--olive-ink); padding-top: 1rem; }
+.trial-workspace h2 { font: 600 clamp(2rem,3vw,2.75rem)/1.05 var(--display); letter-spacing: -.025em; }
+.trial-workspace .case { background: var(--sheet); padding: clamp(1rem,2.4vw,1.75rem); }
+.trial-workspace .stats { grid-column: 1 / -1; }
+.trial-workspace .stats .inside { max-width: 56rem; }
+.matrix-panel p { color: var(--muted); font-size: .875rem; margin-top: .45rem; }
+#load-map {
+  --columns: 12;
+  display: grid;
+  grid-template-columns: repeat(var(--columns),minmax(0,1fr));
+  gap: .3rem;
+  margin-block: 1rem .65rem;
+}
+#load-map button {
+  min-height: 2rem;
+  padding: 0;
+  font: .75rem var(--serial);
+  color: var(--ink);
+  background: var(--outside-lines), #eeeaf2;
+  border: 1px solid #b6b1c0;
+}
+#load-map button[data-used="true"], .legend i.used { background: #e1e9b5; border-color: #a4ae84; }
+#load-map button:hover { border-color: var(--ink); }
+#load-map button[aria-pressed="true"] { color: var(--sheet); background: var(--olive-ink); border-color: var(--olive-ink); }
+.legend { display: flex; flex-wrap: wrap; gap: .45rem 1rem; font-size: .875rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: .4rem; }
+.legend i { background: var(--outside-lines), #eeeaf2; border: 1px solid #b6b1c0; }
+.trial-workspace .facts dd { flex: none; overflow-wrap: normal; }
+.trial-workspace summary::after { flex: none; }
+.case label { margin-top: .85rem; }
+.case #outcome:not(:empty) { padding: .7rem .85rem; border-left: 2px solid #a1ae84; background: #edf0e2; color: var(--olive-ink); }
+.case-actions:not(:has(button:not([hidden]))) { display: none; }
+.case-actions { display: grid; gap: .45rem; margin-bottom: .85rem; }
+.case-actions #sample-result { font-size: .875rem; color: var(--muted); }
+#load-title { width: fit-content; scroll-margin-top: 1rem; }
+
+@media (max-width: 840px) {
+  .trial-workspace { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 550px) {
+  .trial-summary { grid-template-columns: minmax(0,1fr); }
+  #load-map { --columns: 8; }
+}
 
 .public-slip { background: var(--paper); }
 .public-slip > h2 { margin: .6rem 0 1rem; font: 600 clamp(2.05rem,3vw,3.3rem)/1.02 var(--display); letter-spacing: -.025em; }
@@ -75,8 +116,6 @@
   .public-ledger .reserve-proof { grid-template-columns: 1fr; }
   .reserve-proof .reserve-balance { border-right: 0; border-bottom: 1px solid var(--paper-edge); }
   .trip-outcome { padding: .9rem 1rem; }
-  .trial-workspace .case { padding: 1.1rem; }
-  #load-map { --columns: 8; }
 }
 
 #credit-jump { padding: .65rem 0; background: transparent; border: 0; text-align: start; text-decoration: underline; }

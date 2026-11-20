@@ -1,0 +1,438 @@
+{
+  "as_of": "2026-11-19T04:44:44.362038+00:00",
+  "status": "illustrative carrier; research only",
+  "gemini": {
+    "index": "KK_RFR_WTIUSDC",
+    "prior_event": "WTI2611182200",
+    "lower_inclusive": "81",
+    "upper_exclusive": "82",
+    "stress_contract": "GEMI-WTI2611202200-HI90",
+    "stress_level": "90",
+    "extra_fuel_cents_interval": [
+      4000,
+      4500
+    ],
+    "gallons": "210",
+    "pass_through": "1",
+    "interpretation": "Selected price at the threshold. Moves above it can cost more. No probability assigned."
+  },
+  "outcomes": {
+    "sample": {
+      "status": "funded",
+      "cost_cents": 1345,
+      "cash_after_settlement_cents": 244155,
+      "balances_cents": {
+        "0": 0,
+        "1": 19000,
+        "4": 74500,
+        "5": 0,
+        "7": 0,
+        "28": 244155
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 300000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "one day",
+          "day": 1,
+          "receipt_cents": 19000
+        }
+      ],
+      "funding": [
+        {
+          "source": "reserve redemption",
+          "net_proceeds_cents": 55500,
+          "cost_cents": 345
+        }
+      ],
+      "alternatives": [
+        {
+          "excluded_source": "reserve redemption",
+          "best_alternative": {
+            "status": "funded",
+            "cost_cents": 15000,
+            "cash_after_settlement_cents": 230500,
+            "balances_cents": {
+              "0": 0,
+              "1": 285000,
+              "5": 210500,
+              "7": 210500,
+              "28": 230500
+            },
+            "payments": [
+              {
+                "invoice": "primary load",
+                "option": "one day",
+                "day": 1,
+                "receipt_cents": 285000
+              },
+              {
+                "invoice": "backhaul",
+                "option": "standard",
+                "day": 28,
+                "receipt_cents": 20000
+              }
+            ],
+            "funding": []
+          },
+          "additional_cost_cents": 13655,
+          "minimum_useful_capacity_cents": 55500,
+          "cost_at_threshold_cents": 1345,
+          "cost_one_cent_below_cents": 15000
+        }
+      ]
+    },
+    "no reserve access": {
+      "status": "funded",
+      "cost_cents": 15000,
+      "cash_after_settlement_cents": 230500,
+      "balances_cents": {
+        "0": 0,
+        "1": 285000,
+        "5": 210500,
+        "7": 210500,
+        "28": 230500
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "one day",
+          "day": 1,
+          "receipt_cents": 285000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 20000
+        }
+      ],
+      "funding": []
+    },
+    "redemption late": {
+      "status": "funded",
+      "cost_cents": 15000,
+      "cash_after_settlement_cents": 230500,
+      "balances_cents": {
+        "0": 0,
+        "1": 285000,
+        "5": 210500,
+        "6": 210500,
+        "7": 210500,
+        "28": 230500
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "one day",
+          "day": 1,
+          "receipt_cents": 285000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 20000
+        }
+      ],
+      "funding": []
+    },
+    "linked elections": {
+      "status": "funded",
+      "cost_cents": 16000,
+      "cash_after_settlement_cents": 229500,
+      "balances_cents": {
+        "0": 0,
+        "1": 304000,
+        "4": 304000,
+        "5": 229500,
+        "7": 229500,
+        "28": 229500
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "one day",
+          "day": 1,
+          "receipt_cents": 285000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "one day",
+          "day": 1,
+          "receipt_cents": 19000
+        }
+      ],
+      "funding": []
+    },
+    "baseline fuel": {
+      "status": "funded",
+      "cost_cents": 1333,
+      "cash_after_settlement_cents": 248667,
+      "balances_cents": {
+        "0": 0,
+        "1": 19000,
+        "4": 70000,
+        "5": 0,
+        "7": 0,
+        "28": 248667
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 300000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "one day",
+          "day": 1,
+          "receipt_cents": 19000
+        }
+      ],
+      "funding": [
+        {
+          "source": "reserve redemption",
+          "net_proceeds_cents": 51000,
+          "cost_cents": 333
+        }
+      ]
+    },
+    "cash available": {
+      "status": "funded",
+      "cost_cents": 0,
+      "cash_after_settlement_cents": 320000,
+      "balances_cents": {
+        "0": 74500,
+        "1": 74500,
+        "4": 74500,
+        "5": 0,
+        "7": 0,
+        "28": 320000
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 300000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 20000
+        }
+      ],
+      "funding": []
+    },
+    "approved line": {
+      "status": "funded",
+      "cost_cents": 501,
+      "cash_after_settlement_cents": 244999,
+      "balances_cents": {
+        "0": 0,
+        "1": 14500,
+        "4": 74500,
+        "5": 0,
+        "7": 0,
+        "28": 244999
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 300000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 20000
+        }
+      ],
+      "funding": [
+        {
+          "source": "reserve redemption",
+          "net_proceeds_cents": 60000,
+          "cost_cents": 356
+        },
+        {
+          "source": "approved bank line",
+          "net_proceeds_cents": 14500,
+          "cost_cents": 145
+        }
+      ],
+      "alternatives": [
+        {
+          "excluded_source": "reserve redemption",
+          "best_alternative": {
+            "status": "funded",
+            "cost_cents": 745,
+            "cash_after_settlement_cents": 244755,
+            "balances_cents": {
+              "0": 0,
+              "1": 74500,
+              "5": 0,
+              "7": 0,
+              "28": 244755
+            },
+            "payments": [
+              {
+                "invoice": "primary load",
+                "option": "standard",
+                "day": 28,
+                "receipt_cents": 300000
+              },
+              {
+                "invoice": "backhaul",
+                "option": "standard",
+                "day": 28,
+                "receipt_cents": 20000
+              }
+            ],
+            "funding": [
+              {
+                "source": "approved bank line",
+                "net_proceeds_cents": 74500,
+                "cost_cents": 745
+              }
+            ]
+          },
+          "additional_cost_cents": 244,
+          "minimum_useful_capacity_cents": 27200,
+          "cost_at_threshold_cents": 744,
+          "cost_one_cent_below_cents": 745
+        },
+        {
+          "excluded_source": "approved bank line",
+          "best_alternative": {
+            "status": "funded",
+            "cost_cents": 1345,
+            "cash_after_settlement_cents": 244155,
+            "balances_cents": {
+              "0": 0,
+              "1": 19000,
+              "4": 74500,
+              "5": 0,
+              "7": 0,
+              "28": 244155
+            },
+            "payments": [
+              {
+                "invoice": "primary load",
+                "option": "standard",
+                "day": 28,
+                "receipt_cents": 300000
+              },
+              {
+                "invoice": "backhaul",
+                "option": "one day",
+                "day": 1,
+                "receipt_cents": 19000
+              }
+            ],
+            "funding": [
+              {
+                "source": "reserve redemption",
+                "net_proceeds_cents": 55500,
+                "cost_cents": 345
+              }
+            ]
+          },
+          "additional_cost_cents": 844,
+          "minimum_useful_capacity_cents": 14500,
+          "cost_at_threshold_cents": 501,
+          "cost_one_cent_below_cents": 1345
+        }
+      ]
+    },
+    "delayed primary receipt": {
+      "status": "funded",
+      "cost_cents": 10345,
+      "cash_after_settlement_cents": 235155,
+      "balances_cents": {
+        "0": 0,
+        "1": 19000,
+        "4": 74500,
+        "5": 0,
+        "7": 291000,
+        "28": 235155,
+        "40": 235155
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "seven days",
+          "day": 7,
+          "receipt_cents": 291000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "one day",
+          "day": 1,
+          "receipt_cents": 19000
+        }
+      ],
+      "funding": [
+        {
+          "source": "reserve redemption",
+          "net_proceeds_cents": 55500,
+          "cost_cents": 345
+        }
+      ]
+    },
+    "same elections must survive all listed delays": {
+      "status": "funded",
+      "cost_cents": 15000,
+      "cash_after_settlement_cents": 230500,
+      "balances_cents": {
+        "0": 0,
+        "1": 285000,
+        "5": 210500,
+        "6": 210500,
+        "7": 210500,
+        "28": 230500,
+        "40": 230500
+      },
+      "payments": [
+        {
+          "invoice": "primary load",
+          "option": "one day",
+          "day": 1,
+          "receipt_cents": 285000
+        },
+        {
+          "invoice": "backhaul",
+          "option": "standard",
+          "day": 28,
+          "receipt_cents": 20000
+        }
+      ],
+      "funding": []
+    }
+  },
+  "terms": "TQL published 28-day standard, 1-day at 5% and 7-day at 3%. The two invoice faces, eligibility, independent elections, settlement deadlines, fuel exposure, available reserve, two-dollar cost and bank credit are illustrative. Day 0 is Nov 19 UTC. Both payment offers and collateral are assumed unencumbered. The redemption is modeled as arriving on the USD rail on day 4, with principal and costs replenished on day 28. No deposit or credit access established. The operating balance earns zero interest. Kamino APY is a sensitivity for forgone variable carry. Account-specific route eligibility, execution pricing and completed USD settlement remain unknown.",
+  "comparison": "An equally informed operator manually selecting the same actions has identical economics. No independent investment alpha or customer savings have been demonstrated.",
+  "sources": [
+    "https://www.tql.com/carriers/faqs",
+    "https://support.ramp.com/ramp-stablecoin-account-overview/",
+    "https://help.coinbase.com/en/coinbase/other-topics/business/automate-withdrawals-liquidation",
+    "https://api.kamino.finance/kvaults/HDsayqAsDWy3QvANGqh2yNraqcD8Fnjgh73Mhb3WRS5E/metrics",
+    "https://kamino.com/terms",
+    "https://api.gemini.com/v1/prediction-markets/events?search=Oil+%28WTI%29&status=settled&limit=20"
+  ],
+  "input_sha256": {
+    "artifacts/quick_pay/gemini_settlements.json": "1483b64a77197a5725358da407cfde557d9fbe51719bf0882763de2a91f510cb",
+    "artifacts/quick_pay/vault_metrics.json": "bdee89602a92ab7635b007b89b2248d6e2f9b4bbf315f4def3cf7176e028b203",
+    "artifacts/gemini_ladder/active.json": "799dc0f3c0d051029a935d20501bfefd6b5dcdef8dd2dba505f0be6ca3b8e551",
+    "artifacts/quick_pay/sample_calendar.json": "14527e72cdd797c0611e7875999beaa578c76b07c0591eb65bf526bc2582b32e"
+  }
+}

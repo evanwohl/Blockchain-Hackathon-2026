@@ -1,0 +1,748 @@
+import { showPumpValue } from "./pump_value.js";
+import { el, facts, money, request, saveFile } from "./common.js";
+
+import { budgetPlan, runEvidence, showSchedule } from "./payday.js";
+import { setFuelGap } from "./trip_credit.js";
+
+const form = el("trip-cover-form");
+const result = el("trip-result");
+let current;
+let mix;
+let revision = 0;
+
+function generalBudget(d, later) {
+  const plan = d.combined;
+  const hasCover = plan.legs.length > 0;
+  const beforeCost = plan.upfront_cents + d.cash_only_cents;
+  el("trip-bound").textContent = "Cash to set aside through $" + d.ceiling + " oil";
+  el("trip-cash").textContent = money(later ? plan.cash_cents : d.cash_only_cents);
+  el("trip-why").textContent = !d.cash_only_cents ? "Your budget covers the modeled trip through $" + d.ceiling + " oil."
+    : later && hasCover ? "This includes " + money(plan.upfront_cents) + " to buy the contracts. If payouts arrive late, the same plan needs " + money(beforeCost) + " in all."
+    : "Keep cash available for the fill. " + (hasCover ? "Buying oil contracts would also use " + money(plan.upfront_cents) + " before the stop."
+      : "The checked prices give no lower cash requirement.");
+  const rows = [["Diesel at the entered price", money(d.pump_bill_cents)], ["Extra cash without a hedge", money(d.cash_only_cents)]];
+  if (later && d.offers) rows.push(["With the best single oil contract", money(d.best_single_cents)], ["With the lowest-cost mix", money(plan.cash_cents)]);
+  if (!later && hasCover) rows.push(["With contracts bought before the stop", money(beforeCost)]);
+  if (d.regional) rows.splice(1, 0, regionalCost(d.regional));
+  facts(el("trip-options"), rows);
+  const link = el("trip-reserve");
+  link.hidden = !d.cash_only_cents;
+  link.href = "/next-stop#fuel-buffer=" + d.cash_only_cents;
+  link.textContent = "Check the " + money(d.cash_only_cents) + " cash buffer on Solana →";
+  return plan;
+}
+
+function reserveBudget(d, later) {
+  const reserve = d.reserve;
+  const plan = later ? reserve.plan : null;
+  const split = later ? reserve.split : null;
+  const roadShort = Math.max(0, reserve.road_cents - reserve.available_cents);
+  const fullBuffer = money(d.cash_only_cents);
+  el("trip-bound").textContent = split ? "Extra money needed outside the reserve" : plan ? "Cost of oil protection on Gemini" : "Additional cash for the cash-only plan";
+  el("trip-cash").textContent = money(split ? split.outside_total_cents : plan ? plan.upfront_cents : reserve.before_shortfall_cents);
+  let why;
+  if (roadShort) why = "The reserve is " + money(roadShort) + " below your road-cash target before buying fuel.";
+  else if (plan?.legs.length) why = "Pay this from separate Gemini funds. With payouts spendable by the fill, the reserve can cover the rest through $" + d.ceiling + " oil.";
+  else if (plan) why = "The reserve can cover extra fuel and leave your road cash available. Buying protection would add a fee.";
+  else if (split) why = "Keep " + money(reserve.road_cents) + " for the road. You would need "
+    + money(split.upfront_cents) + " in Gemini and another " + money(split.outside_fuel_cents)
+    + " available for fuel. This assumes the payout is ready at the stop.";
+  else if (d.trip.spend_limit_cents === 0) why = "Keep " + money(reserve.road_cents) + " for the road. Your zero spending limit uses cash for fuel.";
+  else if (later) why = "The available oil contracts cannot cover the modeled bill within this reserve limit. This is the cash-only backup.";
+  else why = "Until payouts are spendable, budget the full " + fullBuffer + " for extra fuel. Keep " + money(reserve.road_cents) + " for the road.";
+  el("trip-why").textContent = why;
+  const rows = [["Available from the demo reserve", money(reserve.available_cents)], ["Requested for tolls and repairs", money(reserve.road_cents)],
+    ["Reserve available for extra fuel", money(reserve.fuel_cash_cents)]];
+  if (plan?.legs.length) rows.push(["Maximum fuel still due after payouts", money(plan.residual_cents)],
+    ["Protection plus remaining fuel", money(plan.cash_cents)]);
+  else if (split) rows.push(["Oil contracts including fees", money(split.upfront_cents)],
+    ["Fuel to cover separately after payouts", money(split.outside_fuel_cents)],
+    ["Extra money with cash alone", money(reserve.before_shortfall_cents)]);
+  else rows.push(["Extra fuel in the cash-only plan", fullBuffer]);
+  if (d.regional) rows.push(regionalCost(d.regional));
+  facts(el("trip-options"), rows);
+  const cashOnlyDraw = d.trip.spend_limit_cents === undefined ? d.cash_only_cents : Math.min(d.cash_only_cents, reserve.fuel_cash_cents);
+  const fuel = split ? split.reserve_cents : plan ? plan.residual_cents : cashOnlyDraw;
+  const link = el("trip-reserve");
+  link.hidden = !fuel;
+  link.href = "/next-stop#fuel-buffer=" + fuel + "&road=" + reserve.road_cents;
+  link.textContent = "Check the " + money(fuel) + " fuel payment and road cash →";
+  return split ? d.combined : plan;
+}
+
+function targetBudget(d, later) {
+  const target = d.pump_target;
+  const payment = later ? target.after : target.before;
+  const cost = later ? target.plan.upfront_cents : 0;
+  const reserve = d.reserve;
+  const roadShort = reserve ? Math.max(0, reserve.road_cents - reserve.available_cents) : 0;
+  const missing = payment.short_cents + roadShort;
+  el("trip-bound").textContent = missing ? (roadShort ? "Still needed for fuel and road cash" : "Short at the pump") : mix && later ? "Cost of the selected oil protection" : "Least to spend on oil protection";
+  el("trip-cash").textContent = money(missing || cost);
+  let why = cost ? "Spend " + money(cost) + " on Gemini. " : "Use cash for this fill. ";
+  why += "Allow " + money(payment.outside_cents) + " beyond your fuel budget at the pump";
+  why += payment.reserve_cents ? ", plus " + money(payment.reserve_cents) + " from your reserve." : ".";
+  if (roadShort) why += " Your reserve also needs " + money(roadShort) + " to reach your road-cash target.";
+  else if (!later && missing) why += " Oil payouts arrive after this stop.";
+  else if (later && payment.short_cents && target.minimum_spend_cents !== null) {
+    why += " Meeting your pump limit would require " + money(target.minimum_spend_cents) + " in Gemini.";
+  } else if (later && payment.short_cents) why += " Keep extra cash available for the part oil protection cannot cover.";
+  el("trip-why").textContent = why;
+  const rows = [["Extra pump cash you have", money(d.trip.pump_cash_cents)], ["Extra pump cash needed", money(payment.outside_cents)]];
+  if (reserve) rows.push(["Reserve payment for fuel", money(payment.reserve_cents)], ["Money kept for the road", money(Math.min(reserve.road_cents, reserve.available_cents))]);
+  if (later && target.minimum_spend_cents > 0) {
+    rows.push(["Minimum for this pump limit using one oil threshold",
+      target.single_spend_cents === null ? "Out of reach" : money(target.single_spend_cents)]);
+  }
+  if (d.trip.spend_limit_cents !== undefined) rows.push(["Gemini spending limit", money(d.trip.spend_limit_cents)]);
+  if (d.regional) rows.push(regionalCost(d.regional));
+  facts(el("trip-options"), rows);
+  const link = el("trip-reserve");
+  link.hidden = !payment.reserve_cents;
+  if (reserve) {
+    link.href = "/next-stop#fuel-buffer=" + payment.reserve_cents + "&road=" + reserve.road_cents;
+    link.textContent = "Preview the " + money(payment.reserve_cents) + " reserve payment →";
+  }
+  return later ? target.plan : null;
+}
+
+function showProtectionChoice(target, later) {
+  const change = later && target?.protection_change;
+  el("protection-choice").hidden = !change;
+  if (!change) return;
+  el("protection-extra").textContent = money(change.extra_cents);
+  el("protection-covered").textContent = money(target.after.short_cents);
+  el("protection-terms").textContent = "Raising your protection budget to " + money(change.total_cents)
+    + " covers the modeled fuel gap if payouts arrive before the stop. If payouts arrive late, you still need "
+    + money(target.before.short_cents) + " at the pump.";
+  const outcomes = change.outcomes;
+  facts(el("protection-outcomes"), outcomes.map((row, index) => {
+    const next = outcomes[index + 1]?.from_strike;
+    const label = index === 0 ? "Oil below $" + next : next ? "$" + row.from_strike + " to below $" + next : "$" + row.from_strike + " or higher";
+    return [label, money(row.extra_payout_cents)];
+  }));
+  const largest = Math.max(1, ...outcomes.map(row => Math.abs(row.extra_payout_cents)));
+  for (const [index, cell] of [...el("protection-outcomes").querySelectorAll("dd")].entries()) {
+    const payout = outcomes[index].extra_payout_cents;
+    cell.style.setProperty("--payout", (100 * Math.abs(payout) / largest) + "%");
+    cell.dataset.loss = String(payout < 0);
+  }
+  const range = change.market_value;
+  el("protection-value").textContent = "These are changes in settlement payout from switching plans before buying. The extra premium is paid in every outcome."
+    + (range ? " Prices consistent with Gemini’s displayed quotes put the added payouts at " + money(range.low_cents) + " to "
+      + money(range.high_cents) + " before fees. Realized payouts depend on where oil settles." : "");
+  const draw = el("protection-draw");
+  draw.hidden = !range;
+  if (range) draw.textContent = "With your current budget, the largest modeled draw is " + money(target.after.short_cents)
+    + ". Weighting possible draws using prices consistent with the same quotes gives " + money(change.draw_low_cents)
+    + " to " + money(change.draw_high_cents) + ". This assumes timely payouts, the trip’s diesel estimate and oil capped at the tested ceiling. Actual borrowing can differ.";
+  el("protection-try").textContent = "Try the " + money(change.total_cents) + " budget";
+}
+
+function regionalCost(region) {
+  return [region.name + " pump allowance included in estimate", money(region.allowance_cents)];
+}
+
+function showSpendingLimit(d, later) {
+  const limit = d.trip.spend_limit_cents;
+  el("spending-result").hidden = limit === undefined;
+  if (limit === undefined) return;
+  el("limit-title").textContent = "Oil protection limit · " + money(limit);
+  const change = later && d.limit_comparison;
+  el("limit-benchmark").hidden = el("limit-difference").hidden = !change;
+  if (change) {
+    el("limit-benchmark").textContent = "Compared with spending " + money(change.unrestricted_upfront_cents) + " on protection.";
+    const difference = change.outside_change_cents;
+    facts(el("limit-difference"), [["Less spent upfront", money(change.kept_upfront_cents)],
+      [difference < 0 ? "Less needed overall" : "Extra needed overall", money(Math.abs(difference))]]);
+  }
+  const minimum = d.reserve?.minimum_spend_cents;
+  el("limit-threshold").hidden = !later || minimum == null || limit >= minimum;
+  if (!el("limit-threshold").hidden) {
+    el("limit-threshold").textContent = "Covering the rest entirely from the reserve after payouts would require at least "
+      + money(minimum) + " for protection.";
+  }
+}
+
+function showBackup(check, plan, trip) {
+  el("backup-budget").hidden = !check;
+  if (!check) return;
+  const amount = check.target_cents;
+  const swing = check.volatility;
+  const weeks = swing?.weeks || check.records.length;
+  el("backup-heading").textContent = amount === null ? "How did weekly backup cash perform?" : "Plan for " + money(amount) + " in backup cash";
+  el("backup-explanation").textContent = (amount === null ? "The price history is too old to size this week’s backup." :
+    "The latest " + check.window + " observed weeks point to " + money(amount) + " beyond your fuel money and usable reserve, aiming to cover 9 in 10 stops.")
+    + (plan?.legs.length ? " This assumes the hedge payout is spendable at the pump." : " This uses cash alone at the pump.");
+  el("backup-period").textContent = "What would have happened over " + weeks + " later fills";
+  el("backup-scaled-row").hidden = !swing;
+  const comparison = swing || check;
+  for (const key of swing ? ["recent", "scaled", "fixed"] : ["recent", "fixed"]) {
+    el("backup-" + key + "-misses").textContent = comparison[key].misses + " of " + weeks;
+    el("backup-" + key + "-mean").textContent = money(comparison[key].mean_cents);
+  }
+  el("backup-limit").textContent = "The biggest remaining shortfall with weekly updates was "
+    + money(comparison.recent.worst_uncovered_cents) + ". This is money to have available. The loan check simulates a vendor payment on Devnet.";
+  el("backup-method").textContent = "The fixed buffer used " + check.fixed_weeks + " weeks through " + check.fixed_through
+    + ". Each updated buffer used the latest " + check.window + " observations ending at least a week before the start of that fill week. "
+    + "Both use the same trip and recorded quotes. The last observed week ended " + check.through + ". Fuel prices can move together across weeks.";
+  el("swing-backup").hidden = !swing;
+  if (swing) {
+    const target = swing.target_cents;
+    el("swing-target").textContent = target == null ? "A current price-adjusted estimate is unavailable."
+      : "Allow " + money(target) + " in backup if oil and diesel keep moving at their recent pace. The usual estimate is " + money(amount) + ".";
+    el("swing-tail").textContent = "The largest remaining shortfall was " + money(swing.scaled.worst_uncovered_cents)
+      + " with the adjustment" + (swing.worst_week ? " in the week ending " + swing.worst_week : "")
+      + ". The largest with the usual buffer was " + money(swing.recent.worst_uncovered_cents) + ".";
+    el("swing-loan").hidden = !target || target > 100000000;
+    el("swing-loan").textContent = "Check borrowing capacity for " + money(target || 0);
+    el("swing-loan").onclick = () => openLoan(target, {backup: check, adjusted: true});
+    el("backup-method").textContent += " For the price-adjusted buffer we resize each prior oil and diesel move using the average size of moves over 8 and 26 observations. We reprice the fuel and oil payout together, then take the same budget percentile.";
+  }
+  const button = el("backup-loan");
+  button.hidden = !amount || amount > 100000000;
+  button.textContent = "Check borrowing capacity for " + money(amount || 0);
+  button.onclick = () => openLoan(amount, {backup: check});
+  el("backup-download").onclick = () => saveFile("FreightOS-weekly-backup.json", JSON.stringify({
+    trip, quote_at: current.checked_at, price_source: current.source,
+    reserve_for_fuel_cents: current.reserve?.fuel_cash_cents || 0,
+    selected_plan: plan || {legs: [], upfront_cents: 0}, ...check
+  }, null, 2), "application/json");
+}
+
+function showPayday(check, plan) {
+  const days = el("payday-days").value;
+  const run = (mix === "price_original" ? check?.late_payday : check?.payday)?.[days];
+  el("payday-run").hidden = !run;
+  if (!run) return;
+  const available = run.target_cents != null;
+  const credit = el("payday-credit");
+  const field = el("payday-weekly");
+  const editing = available && (field.value !== "" || field.validity.badInput);
+  el("payday-cash").hidden = !available || editing;
+  el("payday-budget-fields").hidden = el("payday-budget-help").hidden = !available;
+  el("payday-terms").textContent = "Each week you buy " + run.gallons + " gallons with " + money(run.weekly_cash_cents)
+    + " of fuel money. All " + run.stops + " stops share one " + money(run.reserve_cents) + " reserve."
+    + (!available ? " The latest complete run is too old to size the next one." : editing ? "" : " These are two ways to cover the estimated backup with cash.");
+  if (available && !editing) showSchedule(el("payday-cash"), run, 0);
+  const flexField = el("payday-flex");
+  const flex = flexField.value === "" ? null : Math.round(flexField.valueAsNumber * 100);
+  const budget = editing && field.validity.valid && flexField.validity.valid
+    ? budgetPlan(run, Math.round(field.valueAsNumber * 100), flex) : null;
+  function applyFlex(cents, reopenLoan) {
+    const repayLimit = el("repay-limit").value;
+    el("gap-credit").open = false;
+    flexField.value = (cents / 100).toFixed(2);
+    el("payday-flex-options").open = true;
+    render();
+    if (reopenLoan && !credit.hidden) {
+      credit.click();
+      el("repay-limit").value = repayLimit;
+    } else {
+      el("payday-run").open = true;
+      el("payday-fit-title").focus();
+    }
+  }
+  el("payday-fit").hidden = !editing;
+  const needed = budget ? budget.request : run.target_cents;
+  credit.hidden = (editing && !budget) || !needed || needed > 100000000;
+  credit.textContent = budget ? "Check a " + money(needed) + " loan on Solana" : "Check how much a loan could cover";
+  if (editing) {
+    const adjusted = budget && flex !== null;
+    el("payday-fit-title").textContent = !budget ? "Enter a valid cash amount" : !needed ? "Your fuel cash covers the target"
+      : money(needed) + (adjusted ? " still needed before the first fill" : " to bridge the weekly payments");
+    el("payday-fit-note").textContent = !budget ? "Use a nonnegative dollar amount within each field’s limit, with up to two decimal places."
+      : adjusted ? "Of your " + money(run.stops * budget.weekly) + " in extra fuel cash, move up to " + money(budget.moved)
+        + " forward. This plan covered at least 25 of the 26 recent sample trips." + (budget.equal_request > needed ? " Equal payments would need a " + money(budget.equal_request) + " loan." : "")
+      : !needed ? "Keeping the same amount for each fill covered at least 25 of the 26 recent runs."
+      : budget.schedule ? "If you can move cash between fills, these amounts cover the same target with " + money(run.stops * budget.weekly)
+        + " in total and no loan. Keeping equal payments requires the bridge."
+      : "This is the smallest upfront loan that, with " + money(budget.weekly) + " per fill, would have covered at least 25 of the 26 recent runs.";
+    const best = el("payday-flex-best");
+    best.hidden = !budget || needed <= budget.floor;
+    if (!best.hidden) {
+      best.textContent = "Try moving " + money(budget.floor_flex) + (budget.floor ? " to borrow " + money(budget.floor) : " to cover it with cash");
+      best.onclick = () => applyFlex(budget.floor_flex, false);
+    }
+    el("payday-flex-options").hidden = !flexField.validity.badInput && flex === null && (!budget || budget.equal_request === budget.floor);
+    const schedule = el("payday-fit-schedule");
+    const cash = adjusted ? budget.contributions : budget?.schedule;
+    schedule.hidden = !cash || (!adjusted && !needed);
+    if (!schedule.hidden) facts(schedule, cash.map((v, i) => ["Fill " + (i + 1), money(v)]));
+    const history = budget?.history || [];
+    let historyNote = history.length ? "Setting a loan size before each of " + history.length + " later historical runs left "
+      + history.filter(p => p.short).length + " short. This assumes the loan was available." : "";
+    if (adjusted && history.length) {
+      const mean = key => money(Math.round(history.reduce((sum, row) => sum + row[key], 0) / history.length));
+      const equalMisses = history.filter(row => row.equal_deficit > 0).length;
+      historyNote += " Equal contributions left " + equalMisses + " short. Average planned borrowing "
+        + (mean("draw") === mean("equal_draw") ? "was " + mean("draw") + " with either schedule."
+          : "fell from " + mean("equal_draw") + " to " + mean("draw") + " with the adjusted schedule.");
+    }
+    el("payday-fit-history").textContent = historyNote;
+  }
+  credit.onclick = () => openLoan(needed, {payday: run, budget, onFlex: cents => applyFlex(cents, true)});
+  el("payday-method").textContent = "Unused fuel cash carries to the next stop. "
+    + (plan?.legs.length ? (run.payout_stop === 2 ? "One oil payout becomes available at fill two. " : "Only the first fill can receive the selected oil payout. ") + "Its premium of " + money(run.premium_cents) + " is paid separately. " : "These stops use cash alone. ")
+    + "We reprice consecutive weekly diesel changes from your starting price. Each estimate covers at least 25 of the last 26 complete historical runs. Training runs overlap. The later checks use separate stretches. New price shocks can exceed the estimate.";
+  el("payday-evidence").textContent = runEvidence(run);
+  el("payday-download").onclick = () => saveFile("FreightOS-fuel-until-payday.json", JSON.stringify({trip: current.trip,
+    quoted_at: current.checked_at, plan: plan || {legs: [], upfront_cents: 0}, weekly_budget: budget, ...run}, null, 2), "application/json");
+}
+
+function showPriceRule(report, names, key, checks) {
+  const rule = el("payday-priority").value;
+  const policy = report.price_policy;
+  const limit = policy.current?.[rule];
+  el("payday-price-rule").hidden = !limit;
+  el("payday-price-missing").hidden = !!limit;
+  const totals = policy.summary;
+  const measure = rule === "average" ? "average_cents" : "hard_cents";
+  const history = policy.records;
+  const bought = history.filter(r => r[rule].choice !== "cash").length;
+  el("payday-price-replay").textContent = history.length ? "Using only fuel paths completed before each decision and holding the contract quotes fixed, the rule would have bought protection for "
+    + bought + " of " + history.length + " scored trips with enough prior history. " + (rule === "average" ? "Average cash needed" : "Cash needed in the hardest tenth")
+    + " was " + money(totals[rule][measure]) + " with the rule, " + money(totals.cash[measure]) + " with cash alone and "
+    + money(totals.fitted[measure]) + " buying the fitted hedge every time. Every replay uses the displayed contract prices." : "Too few earlier observations to check the rule on later trips.";
+  if (!limit) return;
+  el("payday-price-source").textContent = current.source === "live" ? "Gemini quote" : "Recorded quote";
+  const choice = limit.choice;
+  const pick = {cash: "cash_mix", original: "price_original", fitted: key}[choice];
+  el("payday-price-title").textContent = choice === "cash" ? "Keep the premium in cash" : "Price check favors the " + (choice === "original" ? "original hedge" : "hedge for these fills");
+  el("payday-price-note").textContent = choice === "cash" ? "Neither quoted position reduced your cash requirement across every tested starting week after its price and fees."
+    : "At its quoted price, this position gave the largest minimum reduction in cash needed across the tested starting weeks.";
+  const days = el("payday-days").value;
+  const runs = {cash: checks?.cash_mix?.payday?.[days], original: checks?.original?.late_payday?.[days], fitted: checks?.[key]?.payday?.[days]};
+  const weekly = el("payday-weekly"), flex = el("payday-flex");
+  const other = choice === "cash" ? "fitted" : "cash";
+  const backup = el("payday-price-backup");
+  backup.hidden = runs[choice]?.target_cents == null || runs[other]?.target_cents == null || !weekly.validity.valid || (weekly.value !== "" && !flex.validity.valid);
+  if (!backup.hidden) {
+    const need = name => weekly.value === "" ? runs[name].target_cents : budgetPlan(runs[name], Math.round(weekly.valueAsNumber * 100),
+      flex.value === "" ? null : Math.round(flex.valueAsNumber * 100)).request;
+    const selected = need(choice), alternative = need(other);
+    const label = weekly.value === "" ? "upfront backup target" : "upfront gap after your fuel contributions";
+    backup.textContent = selected === alternative ? "Both plans have the same " + label + " of " + money(selected) + "."
+      : "The " + label + " is " + money(selected) + " for this plan and " + money(alternative)
+        + (other === "cash" ? " without oil protection." : " with the hedge for these fills.");
+    if (selected) backup.textContent += " You can check a loan for that gap separately.";
+  }
+  const button = el("payday-price-apply");
+  button.hidden = mix === pick;
+  button.textContent = choice === "cash" ? "Preview fuel budget without a hedge" : "Preview this hedge and fuel budget";
+  button.onclick = () => {
+    mix = pick;
+    render();
+    el("payday-cover-choice").focus();
+  };
+  el("payday-price-rows").replaceChildren(...["original", "fitted"].map(name => {
+    const row = document.createElement("tr");
+    const heading = document.createElement("th");
+    heading.scope = "row";
+    heading.textContent = names[name];
+    row.append(heading);
+    row.insertCell().textContent = money(report.scores[name].premium_cents);
+    const cap = limit.max_price_cents[name];
+    row.insertCell().textContent = cap === null ? "No qualifying price" : money(cap);
+    return row;
+  }));
+  const scenarios = ["original", "fitted"].map(name => {
+    const target = limit.quote_targets[name];
+    if (!target) return names[name] + (limit.max_price_cents[name] === null ? " had no qualifying price." : " would exceed its limit even at one cent per contract.");
+    const legs = target.legs.map(leg => leg.target + "¢ at the $" + leg.strike + " oil threshold");
+    return names[name] + " would total " + money(target.all_in_cents) + " at " + legs.join(", ") + ".";
+  });
+  el("payday-price-ticks").textContent = scenarios.join(" ") + " Each example keeps the quantities fixed and reduces asks together in whole ticks. All legs would need enough size at those prices.";
+  const counts = policy.current.cohorts.map(rows => rows.length);
+  const low = Math.min(...counts), high = Math.max(...counts);
+  el("payday-price-basis").textContent = "The limit is the highest whole-cent price that improved on keeping cash in all "
+    + counts.length + " historical schedules. Each uses " + (low === high ? low : low + "–" + high)
+    + " separate fuel stretches through " + policy.current.through + ", with any payout available at fill two. Schedules share weeks.";
+}
+
+function showPaydayCover(target, later) {
+  const days = el("payday-days").value;
+  const key = "payday_" + days;
+  const fitted = target?.[key];
+  const report = later && fitted?.horizon;
+  el("payday-cover").hidden = !report;
+  if (!report) return;
+  const scores = report.scores;
+  const names = {cash: "No oil hedge", original: "Original hedge", fitted: "Hedge for these fills"};
+  showPriceRule(report, names, key, target.backup_checks);
+  const rows = Object.entries(names).map(([name, label]) => {
+    const row = document.createElement("tr");
+    const heading = document.createElement("th");
+    heading.scope = "row";
+    heading.textContent = label;
+    row.append(heading);
+    for (const cents of [scores[name].mean_late_cents, scores[name].late_cents]) {
+      const cell = row.insertCell();
+      cell.textContent = money(cents);
+    }
+    return row;
+  });
+  el("payday-cover-rows").replaceChildren(...rows);
+  const delta = scores.fitted.late_cents - scores.cash.late_cents;
+  el("payday-cover-summary").textContent = "Across " + report.count + " separate historical stretches, the hedge for these fills needed "
+    + (delta ? money(Math.abs(delta)) + (delta < 0 ? " less" : " more") + " cash than going without protection"
+      : "the same cash as going without protection") + " in the hardest tenth. Each amount includes the premium and fees.";
+  el("payday-cover-choice").value = mix === key ? "horizon" : mix === "price_original" ? "" : !mix || mix === "cash_mix" ? mix || "" : "other";
+  el("payday-cover-dates").textContent = mix === key ? "Your fuel schedule below waits until fill two to count the payout. The oil contracts would cost "
+    + money(scores.fitted.premium_cents) + " upfront."
+    : mix === "price_original" ? "Your schedule uses the original hedge and waits until fill two to count its payout."
+    : mix === "cash_mix" ? "Your fuel schedule assumes no oil payout. You can still check a loan for any shortfall."
+    : "Your current schedule budgets for any payout at the first fill. Preview the hedge for these fills to budget for a one-fill delay.";
+  el("payday-cover-method").textContent = "The engine priced positions in 0.01-contract steps at the quoted Gemini prices using " + report.training_count
+    + " earlier, overlapping stretches ending by " + report.trained_through + ". All plans use the same fuel reserve, pump cash and diesel paths. "
+    + "One paper position can pay once. Through payday, extra cash is the upfront price plus the biggest fuel shortfall at any fill. Each plan has its own hardest stretches. Regional diesel and oil-index proxies can differ from actual prices.";
+  const wins = report.starts.filter(r => r.fitted < r.cash).length;
+  el("payday-cover-shifts").textContent = "Starting the later replay in different weeks, the fitted hedge used less hard-stretch cash than cash alone in "
+    + wins + " of " + report.starts.length + " schedules. These schedules share weeks.";
+  el("payday-cover-download").onclick = () => saveFile("FreightOS-hedge-through-payday.json", JSON.stringify({
+    days: Number(days), checked_at: current.checked_at, trip: current.trip, reserve: current.reserve, source: current.source,
+    original: target.plan, fitted: fitted.plan, ...report}, null, 2), "application/json");
+}
+
+function showPastFills(target, selected, later) {
+  const history = selected?.fill_replay;
+  el("fill-history").hidden = !history;
+  if (!history) { el("payday-run").hidden = true; return; }
+  const sample = later ? history.after : history.before;
+  const peak = sample.peak;
+  const plan = later ? selected.plan : null;
+  const fundingName = !plan?.legs.length ? "cash_mix" : !mix || mix === "price_original" ? "original" : mix;
+  const fundingCheck = target.backup_checks?.[fundingName];
+  showBackup(fundingCheck, plan, current.trip);
+  showPayday(fundingCheck, plan);
+  showPaydayCover(target, later);
+  el("fill-history-answer").textContent = "Your fuel money ran short in " + sample.short_weeks + " of "
+    + sample.weeks + " weekly scenarios. " + (peak.short_cents ? "The largest gap was " + money(peak.short_cents)
+    + " using the price moves from the week ending " + peak.week + "." : "Your budget covered every replayed fill.");
+  el("history-peak-moves").hidden = !(later && history.oil_window && peak.short_cents);
+  if (!el("history-peak-moves").hidden) {
+    const diesel = (Math.abs(peak.diesel_move_mills) / 10).toLocaleString("en-US");
+    const oil = money(Math.abs(peak.oil_move_cents));
+    const move = (value, amount) => value > 0 ? "rose " + amount : value < 0 ? "fell " + amount : "held steady";
+    el("history-peak-moves").textContent = "That week, diesel " + move(peak.diesel_move_mills, diesel + "¢ per gallon")
+      + ". Oil " + move(peak.oil_move_cents, oil + " per barrel") + " by the contract deadline.";
+  }
+  const compareCosts = later && selected.plan.legs.length > 0;
+  showPumpValue(compareCosts && sample.pump_value, current.trip, selected.plan);
+  el("history-costs").hidden = !compareCosts;
+  if (compareCosts) {
+    el("history-cash-ready").textContent = el("history-cash-late").textContent = money(history.before.tail_cash_cents);
+    el("history-plan-ready").textContent = money(sample.tail_cash_cents);
+    el("history-plan-late").textContent = money(sample.one_late.tail_cash_cents);
+  }
+  const rows = compareCosts ? [] : [["Average extra cash in the hardest 10% of weeks", money(sample.tail_cash_cents)]];
+  if (peak.short_cents) rows.push(["Fuel bill in the largest-gap week", money(peak.bill_cents)],
+    ["Oil payout spendable at that stop", money(peak.payout_cents)]);
+  facts(el("fill-history-facts"), rows);
+  const delays = later && sample.delays;
+  el("history-delays").hidden = !delays;
+  if (delays) {
+    el("history-delays").textContent = delays.count ? "If payouts arrived after the fill in "
+      + (delays.count === 1 ? "just one badly timed week" : delays.count + " badly timed weeks")
+      + " out of " + sample.weeks + ", the hardest weeks could average " + money(delays.tail_cash_cents)
+      + " including the premium. That would use at least as much cash as skipping the hedge."
+      : "Even with every payout ready at the pump, this mix used at least as much cash as skipping the hedge in the hardest weeks.";
+  }
+  const oilWindow = history.oil_window;
+  const weekday = stamp => new Date(stamp + "T12:00:00Z").toLocaleDateString("en-US", {weekday: "long", timeZone: "UTC"});
+  const timing = oilWindow ? "Gemini’s reference close was " + weekday(oilWindow.from) + " and the contract expires " + weekday(oilWindow.to)
+    + ". Each replay uses WTI spot prices on those weekdays inside the diesel week. Weeks missing either oil price are skipped."
+    : "The replay uses regional pump prices and assumes zero oil payout.";
+  el("fill-history-method").textContent = timing + " We apply Monday-to-Monday regional diesel changes to your entered pump price, through "
+    + sample.end + ". The 10% rows average extra cash in each plan’s hardest weeks, including upfront costs. Actual station prices, Gemini index settlements and fill dates can differ.";
+  const picker = el("history-plan");
+  el("history-choice").hidden = !(later && mix !== "risk" && target.cash_mix);
+  for (const option of picker.options) {
+    option.disabled = option.hidden = !!option.value && !target[option.value];
+  }
+  picker.value = mix === "risk" || mix === "price_original" ? "" : mix || "";
+  const fitted = later && (mix === "history_mix" || mix === "delay_mix") && selected;
+  el("history-tradeoff").hidden = !fitted;
+  if (fitted) {
+    const stressed = mix === "delay_mix";
+    const base = target.fill_replay.after;
+    const difference = stressed ? sample.one_late.tail_cash_cents - base.one_late.tail_cash_cents : sample.tail_cash_cents - base.tail_cash_cents;
+    const cost = difference ? money(Math.abs(difference)) + (difference < 0 ? " less than" : " more than") : "the same amount as";
+    el("history-tradeoff").textContent = "Fitted on " + fitted.training_weeks + " earlier weeks. Of those, " + fitted.short_training_weeks + " needed extra pump money before payouts. Across the " + sample.weeks
+      + " later weeks, the hardest tenth needed " + cost + " the original hedge "
+      + (stressed ? "with one badly timed payout." : "with every payout on time.") + " Upfront cost is " + money(fitted.plan.upfront_cents) + ".";
+  }
+  const check = fitted && fitted.sensitivity;
+  el("history-months").hidden = !check;
+  if (check) el("history-sensitivity").textContent = "Leaving out one calendar month at a time, the fitted mix used less cash in the hardest tenth in "
+    + check.lower + " of " + check.months + " comparisons.";
+  const standby = later && sample.one_late;
+  el("history-standby").hidden = !standby?.week;
+  if (standby?.week) {
+    el("standby-need").textContent = "Delaying the payout in the week ending " + standby.week
+      + " gives the highest hard-week average. At that stop you would need " + money(standby.short_cents)
+      + " beyond your available fuel money. If the payout arrived on time, you would need " + money(standby.on_time_cents) + ".";
+    el("standby-loan").textContent = "Check a loan for " + money(standby.short_cents);
+    el("standby-loan").onclick = () => openLoan(standby.short_cents, {week: standby.week, payout: standby.payout_cents});
+  }
+  const button = el("history-loan");
+  button.hidden = !peak.short_cents;
+  button.textContent = "Check borrowing for the " + money(peak.short_cents) + " replayed gap";
+  button.onclick = () => openLoan(peak.short_cents, {week: peak.week});
+}
+
+function openLoan(cents, source) {
+  setFuelGap(cents, null, source);
+  el("gap-credit").open = true;
+  el("gap-title").focus();
+}
+
+function render() {
+  let d = current;
+  const later = document.querySelector('input[name="timing"]:checked').value === "after";
+  const target = d.pump_target;
+  const risk = later && target?.funding_risk;
+  const alternative = risk?.alternative;
+  el("funding-risk").hidden = !risk || (mix && mix !== "risk");
+  if (risk) {
+    el("risk-weight").textContent = "Oil ranges where extra cash may be needed carry up to " + risk.after_pct
+      + "% of the weight implied by Gemini prices with the smaller-gap plan."
+      + (alternative ? " The other mix reduces that bound to " + alternative.weight_pct + "%." : "")
+      + " A range counts if any tested price leaves a gap. These weights describe market pricing.";
+    el("risk-switch").hidden = !alternative;
+    el("risk-tradeoff").textContent = alternative ? "Within the same " + money(target.plan.upfront_cents)
+      + " protection budget, the other mix covers different oil prices. Your largest modeled fuel gap rises from "
+      + money(target.after.short_cents) + " to " + money(alternative.short_cents) + "."
+      : "The tested mixes gave no verified improvement within one extra gallon’s cost in the worst case.";
+    el("risk-switch").textContent = mix === "risk" ? "Return to the smaller peak gap" : "Preview the other mix";
+    if (alternative && mix === "risk") d = {...d, pump_target: {...target, ...alternative}};
+  }
+  if (later && target?.[mix]?.plan) d = {...d, pump_target: {...target, ...target[mix]}};
+  showPastFills(target, d.pump_target, later);
+  el("reserve-observation").hidden = !d.reserve;
+  if (d.reserve) {
+    el("reserve-observation").textContent = (d.source === "live" ? "Public Devnet check" : "Recorded Devnet check")
+      + " · slot " + d.reserve.slot.toLocaleString("en-US") + ". The reserve amount comes from simulating a withdrawal of your Kamino vault shares. Oil protection uses separate Gemini funds.";
+  }
+  let plan;
+  if (d.pump_target) {
+    plan = targetBudget(d, later);
+    el("spending-result").hidden = true;
+  } else {
+    plan = d.reserve ? reserveBudget(d, later) : generalBudget(d, later);
+    showSpendingLimit(d, later);
+  }
+  const floor = later && d.pump_target?.floor_option;
+  el("fuel-floor").hidden = !floor;
+  if (floor) {
+    el("fuel-floor-note").textContent = "Even with more oil protection, the smallest modeled fuel gap is " + money(floor.short_cents)
+      + (floor.below_strike ? ". The pump bill can run high before oil reaches the first payout at $" + floor.below_strike + "."
+        : ". Available payouts and contract quantities limit what the plan can cover.");
+    el("floor-try").hidden = d.pump_target.after.short_cents <= floor.short_cents;
+    el("floor-try").textContent = "Try " + money(floor.premium_cents) + " of protection for that gap";
+  }
+  showProtectionChoice(d.pump_target, later);
+  setFuelGap(d.pump_target ? (later ? d.pump_target.after : d.pump_target.before).short_cents : 0,
+    later ? d.pump_target?.protection_change : null);
+  const region = d.regional;
+  el("regional-evidence").hidden = !region;
+  if (region) {
+    const recent = d.trip.diesel_model === "recent";
+    const comparison = region.comparison;
+    el("pattern-validation").hidden = el("pattern-try").hidden = el("pattern-bills").hidden = el("pattern-score").hidden = el("pattern-price").hidden = !comparison;
+    if (comparison) {
+      el("pattern-price").textContent = "Fuel bill before protection if oil reaches $" + d.ceiling + " on this trip.";
+      facts(el("pattern-bills"), [["Standard estimate", money(comparison.standard_bill_cents)],
+        ["Using recent weeks", money(comparison.recent_bill_cents)]]);
+      el("pattern-score").textContent = "On the same " + comparison.weeks + " historical weeks, the standard estimate was low "
+        + comparison.standard.misses + " times. The recent estimate was low " + comparison.recent.misses
+        + " times. Both use each week’s observed WTI spot move. The trip uses a Gemini oil index, and your station’s price can differ.";
+      const gain = comparison.gain;
+      el("pattern-performance").textContent = "The scoring rule penalizes budgeting one cent too little nine times as heavily as budgeting one cent too much. "
+        + "Lower is better. Standard scored " + comparison.standard.score.toFixed(2) + "¢/gal and recent scored " + comparison.recent.score.toFixed(2)
+        + "¢/gal. The approximate 90% interval for the score improvement is " + gain.low.toFixed(2) + " to " + gain.high.toFixed(2)
+        + "¢/gal, allowing for four weeks of dependence. The largest underestimate was " + comparison.standard.worst_miss_cents
+        + "¢/gal with standard and " + comparison.recent.worst_miss_cents + "¢/gal with recent.";
+      el("pattern-try").textContent = recent ? "Compare using the standard estimate" : "Compare using recent weeks";
+    }
+    el("regional-test").textContent = recent ? "At a flat oil price, this estimate adds " + region.cents_per_gallon
+      + "¢ per gallon. It blends the standard allowance with models trained on this region and all five regions. The fitted responses to rising and falling oil use 52 weekly changes through "
+      + comparison.through + "." : "We added " + region.cents_per_gallon + "¢ per gallon for the " + region.name
+      + ". That allowance came from the 90th percentile of weekly diesel changes left unexplained by oil across "
+      + region.training_weeks + " earlier weeks.";
+    el("regional-limit").textContent = recent ? "The model was refitted before each historical test, leaving a week for data releases. Its largest underestimate was " + region.worst_miss_cents + "¢ per gallon. Individual stations and fill dates can differ." : "Using the oil move that actually happened, the regional pump price finished above the oil estimate in "
+      + region.oil_only_misses + " of " + region.test_weeks + " later weeks. With the allowance, it exceeded the estimate in "
+      + region.allowance_misses + ". The largest remaining gap was about " + region.worst_miss_cents + "¢ per gallon. "
+      + "The check uses weekly EIA diesel and WTI spot prices through " + region.test_end + ". Your station price and the time until you fill up can differ.";
+    const four = region.four_fills;
+    el("regional-tail").hidden = !four;
+    if (four) el("regional-tail").textContent = "For " + d.trip.gallons + " gallons each week, the worst tenth of "
+      + four.windows + " overlapping four-fill runs averaged " + money(four.tail_cents)
+      + " in extra fuel cash above the regional allowance. Each fill starts from the previous week’s price. Cheaper weeks contribute zero.";
+  }
+  const legs = plan?.legs || [];
+  el("trip-method").textContent = "The model starts from your diesel price and Gemini’s $" + Number(d.anchor).toFixed(2)
+    + " oil close. It uses " + (d.trip.diesel_model ? "the region’s recent diesel response" : "the sample trip’s diesel sensitivity") + " and tests closes through $" + d.ceiling
+    + " per barrel. " + d.offers + " of " + d.contracts_checked + " thresholds had matching offers and displayed quantity. They expire "
+    + new Date(d.expiry).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }) + " UTC.";
+  facts(el("trip-legs"), legs.map(leg => ["Oil at $" + leg.strike + " or higher", (leg.lots / 100).toFixed(2) + " units at " + money(leg.price)]));
+  const fees = legs.reduce((sum, leg) => sum + leg.fee_cents, 0);
+  el("trip-fees").textContent = legs.length ? "The mix costs " + money(plan.upfront_cents) + " including " + money(fees)
+    + " in estimated fees. Each winning unit pays $1. Assumes fills at displayed prices and zero transfer cost. Local diesel prices may differ. No orders placed."
+    : "The model uses available offers at the best displayed price for each threshold. Local diesel prices may differ. No orders placed.";
+  if (d.reserve && legs.length) {
+    el("trip-fees").textContent += " With this mix already bought, delayed payouts would still leave a "
+      + money(d.reserve.before_shortfall_cents) + " fuel and road-cash shortfall.";
+  }
+  el("trip-pending").hidden = true;
+  result.hidden = false;
+}
+
+async function compare(source, submitted = false) {
+  const attempt = ++revision;
+  const status = el("trip-status");
+  el("trip-check").disabled = el("trip-recorded").disabled = true;
+  const includeReserve = el("use-trip-reserve").checked;
+  if (source === "live") status.textContent = includeReserve ? "Checking Gemini prices and your Solana reserve…" : "Checking Gemini prices…";
+  if (source === "recorded") status.textContent = "Opening the recorded comparison…";
+  try {
+    const body = source ? { source, gallons: el("trip-gallons").valueAsNumber, pump_mills: Math.round(el("trip-pump").valueAsNumber * 1000),
+      budget_cents: Math.round(el("trip-budget").valueAsNumber * 100) } : undefined;
+    if (body && el("trip-region").value) {
+      body.region = el("trip-region").value;
+      if (el("use-recent-pattern").checked) body.diesel_model = "recent";
+    }
+    if (body && el("trip-limit").value !== "") body.spend_limit_cents = Math.round(el("trip-limit").valueAsNumber * 100);
+    if (body && el("pump-cash").value !== "") body.pump_cash_cents = Math.round(el("pump-cash").valueAsNumber * 100);
+    if (body && includeReserve) body.road_cents = Math.round(el("trip-road").valueAsNumber * 100);
+    const data = await request("/api/trip-cover", body, AbortSignal.timeout(45000));
+    if (attempt !== revision) return;
+    mix = null;
+    current = data;
+    render();
+    const stamp = new Date(data.checked_at).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" });
+    status.textContent = (data.source === "live" ? "Checked with Gemini" : "Recorded Gemini prices") + " · " + stamp + " UTC";
+    el("trip-recorded").hidden = true;
+    if (submitted && matchMedia("(max-width: 720px)").matches && (form.contains(document.activeElement) || document.activeElement === document.body || document.activeElement === status)) {
+      el("trip-heading").focus();
+    }
+  } catch (error) {
+    if (attempt !== revision) return;
+    status.textContent = error.message.startsWith("The weekly diesel model") ? error.message : current ? "Refresh unavailable. The previous comparison is still shown." : "Comparison unavailable. Try again or use the recorded prices.";
+    el("trip-recorded").hidden = false;
+  } finally {
+    if (attempt === revision) el("trip-check").disabled = el("trip-recorded").disabled = false;
+  }
+}
+
+function setPatternVisibility() {
+  const hidden = !el("trip-region").value;
+  el("recent-pattern").hidden = el("use-recent-pattern").disabled = hidden;
+  if (hidden) el("use-recent-pattern").checked = false;
+}
+
+form.oninput = () => {
+  setPatternVisibility();
+  revision++;
+  el("trip-road").disabled = el("trip-road-fields").hidden = !el("use-trip-reserve").checked;
+  setFuelGap(0);
+  current = null;
+  result.hidden = el("trip-recorded").hidden = true;
+  el("trip-check").disabled = el("trip-pending").hidden = false;
+  el("trip-status").textContent = "Compare these amounts to update your budget.";
+};
+el("history-plan").onchange = event => {
+  mix = event.target.value || null;
+  if (mix?.startsWith("payday_")) el("payday-days").value = mix.slice(7);
+  render();
+};
+el("usual-gap").onclick = () => {
+  render();
+  (el("gap-credit").hidden ? el("history-loan") : el("gap-title")).focus();
+};
+el("risk-switch").onclick = () => {
+  mix = mix === "risk" ? null : "risk";
+  render();
+};
+el("pattern-try").onclick = () => {
+  if (!current?.regional?.comparison) return;
+  const source = current.source;
+  el("use-recent-pattern").checked = current.trip.diesel_model !== "recent";
+  form.dispatchEvent(new Event("input"));
+  el("trip-status").focus();
+  compare(source, true);
+};
+function tryLimit(cents) {
+  if (cents == null) return;
+  const source = current.source;
+  el("trip-limit").value = (cents / 100).toFixed(2);
+  form.dispatchEvent(new Event("input"));
+  el("trip-status").focus();
+  compare(source, true);
+}
+el("protection-try").onclick = () => tryLimit(current?.pump_target?.minimum_spend_cents);
+el("floor-try").onclick = () => tryLimit(current?.pump_target?.floor_option?.premium_cents);
+form.onsubmit = event => { event.preventDefault(); compare("live", true); };
+el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded", true); };
+document.querySelector(".trip-timing").onchange = () => { if (current) { mix = null; render(); } };
+el("payday-weekly").oninput = () => { if (current) render(); };
+el("payday-flex").oninput = () => { if (current) render(); };
+el("payday-price-refresh").onclick = () => {
+  if (form.reportValidity() && !el("trip-check").disabled) {
+    el("trip-status").focus();
+    compare("live", true);
+  }
+};
+el("payday-priority").onchange = () => { if (current) render(); };
+el("payday-cover-choice").onchange = event => {
+  mix = event.target.value === "horizon" ? "payday_" + el("payday-days").value : event.target.value || null;
+  render();
+};
+el("payday-days").onchange = () => {
+  if (!current) return;
+  if (mix === "price_original" && !current.pump_target?.["payday_" + el("payday-days").value]) mix = null;
+  if (mix?.startsWith("payday_")) {
+    const key = "payday_" + el("payday-days").value;
+    mix = current.pump_target?.[key] ? key : null;
+  }
+  render();
+};
+function openExample() {
+  form.reset();
+  const example = new URLSearchParams(location.hash.slice(1));
+  el("payday-run").open = example.has("payday") || example.has("compare-hedges");
+  el("payday-cover").open = example.has("compare-hedges");
+  const weekly = example.get("weekly");
+  el("payday-weekly").value = weekly && /^\d{1,7}(\.\d{1,2})?$/.test(weekly) && Number(weekly) <= 1000000 ? Number(weekly).toFixed(2) : "";
+  const flex = example.get("flex");
+  el("payday-flex").value = flex && /^\d{1,7}(\.\d{1,2})?$/.test(flex) && Number(flex) <= 5000000 ? Number(flex).toFixed(2) : "";
+  el("payday-flex-options").open = !!el("payday-flex").value;
+  el("payday-days").value = example.get("payday") === "30" ? "30" : "23";
+  el("backup-budget").open = example.has("backup");
+  el("fill-history").open = example.has("replay") || example.has("backup");
+  const region = example.get("region");
+  const includeReserve = example.has("road-cash");
+  if ([...el("trip-region").options].some(option => option.value === region)) el("trip-region").value = region;
+  setPatternVisibility();
+  el("use-recent-pattern").checked = !el("use-recent-pattern").disabled && example.get("diesel") === "recent";
+  for (const [key, field] of [["limit", "trip-limit"], ["pump", "pump-cash"]]) {
+    const amount = example.get(key);
+    if (amount !== null && /^\d{1,7}(\.\d{1,2})?$/.test(amount) && Number(amount) <= 1000000) {
+      el(field).value = Number(amount).toFixed(2);
+    }
+  }
+  const hasLimit = el("trip-limit").value !== "" || el("pump-cash").value !== "";
+  el("protection-limit").open = hasLimit;
+  el("use-trip-reserve").checked = includeReserve;
+  el("trip-road").disabled = el("trip-road-fields").hidden = !includeReserve;
+  const timing = example.get("timing") === "after" ? "after" : "before";
+  document.querySelector('input[name="timing"][value="' + timing + '"]').checked = true;
+  setFuelGap(0);
+  current = null;
+  result.hidden = el("trip-recorded").hidden = true;
+  el("trip-pending").hidden = true;
+  el("trip-status").textContent = "Opening the sample trip…";
+  compare(el("trip-region").value || includeReserve || hasLimit ? "recorded" : undefined);
+}
+window.addEventListener("hashchange", openExample);
+openExample();

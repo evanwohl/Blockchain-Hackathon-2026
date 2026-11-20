@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#233b2c"><title>Fuel funding desk · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/fuel-stop.css"><link rel="stylesheet" href="/fuel-desk.css">
+  <script type="module" src="/fuel-desk.js"></script>
+</head>
+<body class="driver-desk">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" width="38" height="38" alt="">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/fuel-desk" aria-current="page">Funding desk</a><a href="/bill">Fuel bill</a></nav></div></header>
+<main>
+  <header class="desk-banner"><div class="desk-wrap">
+    <div><p class="desk-kicker">Fuel funding · 30-day terms</p><h1>Fuel funding <em>desk.</em></h1><p>Cover today’s diesel bill and see what you keep when freight pays.</p></div>
+    <dl class="desk-dates"><div><dt>Fuel due today</dt><dd id="desk-bill">$190.00</dd></div><div><dt>Freight invoice · Day 30</dt><dd id="desk-invoice">$200.00</dd></div></dl>
+  </div></header>
+  <div class="desk-wrap desk-grid">
+    <aside class="desk-side">
+      <details id="desk-terms"><summary><span>Your funding terms</span><strong id="desk-offer-line">$90 early · $3 fee</strong></summary>
+        <form id="desk-form">
+          <label>Load or invoice reference (optional)<input id="trip-ref" type="text" maxlength="64" placeholder="e.g. Load 2048"></label>
+          <div class="desk-pair"><label>Fuel bill due today ($)<input id="bill" type="number" min=".01" max="2500" step=".01" inputmode="decimal" value="190.00" aria-describedby="desk-bill-help" required></label><label>Freight due on day 30 ($)<input id="invoice" type="number" min="0" max="1000000" step=".01" inputmode="decimal" value="200.00" required></label></div>
+          <small id="desk-bill-help">One stop, up to $2,500 in fuel.</small>
+          <label for="terms">What will the customer pay early?</label>
+          <select id="terms"><option value="counter">A specific amount</option><option value="partial">Any amount up to $99</option><option value="none">Nothing before the stop</option></select>
+          <div class="desk-pair" id="fixed-offer"><label>Cash they send ($)<input id="advance" type="number" inputmode="decimal" min=".01" max="1000000" step=".01" value="90.00" required></label><label>Fee they keep ($)<input id="discount" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="3.00" required></label></div>
+          <label id="scaled-offer" hidden>Customer fee per $99 ($)<input id="fee" type="number" inputmode="decimal" min="0" max="100" step=".01" value="1.00" required disabled></label>
+          <div class="desk-pair"><label>Cash I can bring ($)<input id="cash" type="number" min="0" max="1000000" step=".01" value="75.00" inputmode="decimal" required></label><label>SOL I can use ($)<input id="budget" type="number" min="0" max="1000000" step=".01" value="80.00" inputmode="decimal" required></label></div>
+          <label>Borrowing in this Kamino market<select id="borrower-state"><option value="ready">All loan accounts ready</option><option value="new">My first loan here</option><option value="returning">Previous loan closed · reuse my accounts</option></select></label>
+          <small id="borrower-help">Use the setup that matches your wallet. The sample has its accounts ready.</small>
+          <label id="stops-field" hidden>Identical stops, 30 days apart<select id="stops"><option value="1">This stop only</option><option value="2">2 stops</option><option value="3">3 stops</option><option value="4">4 stops</option><option value="5">5 stops</option><option value="6">6 stops</option><option value="7">7 stops</option><option value="8">8 stops</option><option value="9">9 stops</option><option value="10">10 stops</option><option value="11">11 stops</option><option value="12">12 stops</option></select></label>
+          <label id="booked-field" hidden>How should we plan this run?<select id="booked"><option value="">Compare the full run at the highest SOL price</option></select></label>
+          <label>Spendable wallet dollars and fuel reserve ($)<input id="stable" type="number" min="0" max="1000000" step=".01" value="20.43" inputmode="decimal" aria-describedby="stable-help" required></label>
+          <small id="stable-help">Include only dollars ready for fuel and reserve money you can withdraw. Exclude the SOL entered above.</small>
+          <label>Cash I need left on payday ($)<input id="target" type="number" min="0" max="1000000" step=".01" value="3.00" inputmode="decimal" required></label>
+          <details class="desk-stress"><summary>Test a different SOL price</summary><label>Extra payday price per SOL ($)<input id="stress" type="number" min=".01" max="100000" step=".01" value="150.00" inputmode="decimal" required></label><small>The plan also checks nine recorded 30-day price moves from Gemini.</small><small id="desk-stress-range" hidden></small></details>
+          <button type="submit" class="desk-secondary">Review my plan</button> <button type="reset" class="desk-reset">Restore sample</button>
+        </form>
+      </details>
+      <a class="desk-receipt-jump" href="/fuel-desk?example=balanced-route">Try a partially booked $745 route</a>
+      <a class="desk-receipt-jump" href="/fuel-desk?example=balanced-route&amp;view=sale">Compare selling or pledging SOL to keep road cash</a>
+      <a class="desk-receipt-jump" href="#signed-loan">Inspect a settled loan on Devnet</a>
+    </aside>
+    <section class="desk-decision" aria-labelledby="plan-heading">
+      <header class="desk-plan-heading"><p class="desk-kicker" id="desk-basis">Recorded mainnet estimate</p><h2 id="plan-heading" tabindex="-1">Your payment plan</h2><p id="desk-split" hidden></p><button id="desk-liquidity" type="button" hidden></button> <button id="jump-payoff" type="button" hidden></button></header>
+      <p id="desk-status" role="status">Pricing the fuel bill…</p><button id="desk-retry" type="button" class="desk-secondary" hidden>Try pricing again</button>
+      <div id="mix" class="funding-slip" hidden><span class="visually-hidden" id="mix-preview"></span>
+        {{funding_fields}}
+        <button id="desk-first-quote" type="button" class="desk-secondary" hidden>Price this as my first loan</button>
+        <details id="desk-setup" hidden><summary>What does my first loan need?</summary><p id="setup-opening"></p><dl id="setup-costs"></dl><p id="setup-alternatives"></p>
+          <details><summary>Exact SOL amounts and pricing evidence</summary><p id="setup-return"></p><a href="/evidence/borrower-setup" download="FreightOS-loan-account-deposits.json">Download the recorded account deposits</a></details>
+          <button id="desk-repeat" type="button" class="desk-secondary">Compare borrowing over four stops</button>
+        </details>
+        <div class="desk-actions"><button type="button" id="desk-save">Save my funding sheet</button><button type="button" id="mix-request">Download customer request</button></div>
+      </div>
+      <div id="series-panel" hidden>
+        <p class="series-caption" id="series-total-label">Total cash left across the run</p><dl id="series-totals" aria-labelledby="series-total-label"></dl><p id="series-verdict"></p>
+        <button type="button" id="size-route" class="desk-secondary" hidden>Compare loan amounts too</button>
+        <details id="booking-check" hidden><summary id="booking-heading">Why this borrowing date?</summary><p id="booking-method"></p><table><caption id="booking-caption">Cash you could miss versus the best timing for the outcome</caption><thead><tr><th scope="col">First loan</th><th scope="col">Most cash missed</th></tr></thead><tbody></tbody></table><p id="booking-witness"></p><p id="booking-swap" hidden></p><p>Recorded terms: <a href="/evidence/mainnet-fuel-lending">Kamino lending</a> · <a href="/evidence/mainnet-fuel-pools">Orca swaps</a> · <a href="/evidence/gemini-collateral-paths">Gemini collateral history</a></p></details>
+        <h3 id="series-funding-title">How to fund each stop</h3>
+        <label id="funding-stage-field" hidden>Show funding for <select id="funding-stage"></select></label>
+        <table id="series-funding" aria-labelledby="series-funding-title"><thead><tr><th scope="col">Source</th><th scope="col">First stop</th><th scope="col">Each later stop</th></tr></thead><tbody></tbody></table>
+        <p id="booking-collateral" hidden></p>
+        <details id="series-prices"><summary>What if SOL costs less on payday?</summary><table><caption>Cash left across the run with each funding split held fixed</caption><thead><tr><th scope="col">SOL price</th><th scope="col">Open now</th><th scope="col">Stay debt-free</th></tr></thead><tbody></tbody></table></details>
+        <details id="series-terms"><summary>When does this comparison hold?</summary><p id="series-renewal"></p><p id="series-scope"></p></details>
+        <details id="split-proof" hidden><summary>See the loan and sale pay one vendor</summary><p>Public Devnet example of the $95 split, at one test cent per modeled dollar. A sponsor supplies test SOL to a returning borrower. The check covers the last part of the fuel bill.</p>
+          <dl id="split-receipt" aria-label="Simulated transfer in test USDC" hidden></dl>
+          <p id="split-proof-result" role="status"></p><button id="split-simulate" type="button">Recheck on public Devnet</button> <a href="/evidence/split-payment" download="FreightOS-split-payment.json">Download simulation evidence</a>
+        </details>
+        <details id="series-proof"><summary>See a repeat loan simulated on Solana</summary><p>A separate Devnet example reuses the borrower from the signed fuel payment below. The sponsor supplies test SOL, a token account and payoff cash inside the simulation. The loan is repaid immediately.</p>
+          <p id="repeat-proof-result" role="status"></p><button id="repeat-simulate" type="button">Run on public Devnet</button> <a href="/evidence/repeat-credit" download="FreightOS-repeat-simulation.json">Download saved simulation</a>
+        </details>
+        <div class="desk-actions"><button type="button" id="series-save">Save this run’s funding sheet</button><button type="button" id="series-single">Show this stop on its own</button></div>
+      </div>
+        <details id="payoff-check" hidden><summary>How can I repay if freight pays late?</summary>
+          <label id="exit-stage-field" hidden>Loan to check <select id="exit-stage"></select></label>
+          <label>Plan my repayment <select id="exit-keep"><option value="100">Keep all my pledged SOL</option><option value="75">Keep at least three quarters</option><option value="0">Use what repayment needs</option><option value="cash">Enter my cash budget</option></select></label>
+          <div id="cash-exit-form" hidden><label>Cash I can put toward this payoff ($)<input id="cash-exit-budget" type="number" min="0" max="1000000" step=".01" inputmode="decimal" value="30.00" required></label> <button id="cash-exit-check" type="button">Check my budget</button></div>
+          <p id="cash-exit-status" role="status" hidden></p>
+          <dl id="exit-amounts" aria-live="polite"></dl><div id="exit-retained" hidden><span id="exit-retained-label"></span><progress id="exit-retained-bar" max="100" aria-label="Minimum share of pledged SOL kept"></progress></div><p id="exit-how"></p><p id="exit-price"></p><button id="cash-exit-quarter" type="button" hidden></button>
+          <details id="midtrip" hidden><summary>What if I have this cash on day 15?</summary>
+            <p id="midtrip-intro">Try paying part of the fuel loan early if SOL falls before freight pays.</p>
+            <div class="midtrip-input"><label>Assumed SOL price on day 15 ($)<input id="midtrip-price" type="number" min=".01" max="100000" step=".01" value="55.00" inputmode="decimal" required></label><label>After day 15, allow for<select id="midtrip-drop"><option value="0">Recorded Gemini moves</option><option value="1500">Another 15% fall</option><option value="3000">Another 30% fall</option><option value="4500">Another 45% fall</option><option value="6000">Another 60% fall</option></select></label><label>Spare SOL I could use<select id="midtrip-topup"><option value="0">Use cash alone</option><option value="250000000">Up to 0.25 SOL</option><option value="1000000000">Up to 1 SOL</option></select></label><button id="midtrip-check" type="button">Check early payment</button></div>
+            <p id="midtrip-verdict" role="status"></p><dl id="midtrip-amounts" hidden></dl>
+            <table id="pledge-compare" hidden aria-label="Cash alone compared with adding collateral"><thead><tr><td></td><th scope="col">Cash alone</th><th scope="col">With spare SOL</th></tr></thead><tbody>
+              <tr><th scope="row">Pay on day 15</th><td></td><td></td></tr>
+              <tr><th scope="row">Cash left for the road</th><td></td><td></td></tr>
+              <tr><th scope="row">Extra SOL pledged, up to</th><td></td><td></td></tr>
+              <tr><th scope="row">Due on day 30</th><td></td><td></td></tr>
+            </tbody></table><p id="pledge-tradeoff" hidden></p>
+            <details id="midtrip-sale" hidden><summary id="sale-title">Sell some spare SOL</summary>
+              <label for="sale-policy">When could I sell?</label>
+              <select id="sale-policy"><option value="standard">At my estimated price</option><option value="historical">Beat pledging in all replays</option><option value="budget">Set a payday downside limit</option></select>
+              <div id="sale-budget" hidden><label for="sale-loss">Most I could give up versus pledging on payday ($)</label>
+              <div><input id="sale-loss" type="number" value="1.00" min="0" max="1000000" step=".01" inputmode="decimal" required><button id="sale-apply" type="button">Compare limit</button></div></div>
+              <p id="sale-result" role="status"></p><p id="sale-fill"></p><button type="button" id="sale-minimum" hidden></button><dl id="sale-amounts"></dl><p id="sale-limit"></p><p id="sale-crossover"></p><details><summary>What if SOL falls or recovers?</summary>
+              <p id="sale-stress"></p><p id="sale-histories"></p><p id="sale-yield"></p><a href="/evidence/pledge-yield" id="sale-yield-link">View the Kamino share history</a></details>
+              <details id="sale-later" hidden><summary>Would this sale have gone through on later trips?</summary>
+                <p id="sale-later-summary"></p><dl id="sale-later-results"></dl>
+                <p>The opening loan and your settings stay fixed. Each replay sizes the payment, pledge and sale limit using trips that had already ended. We model a day-15 fill using recorded Orca pool fees and liquidity at your assumed price. Later trips can overlap. These are hypothetical fills.</p><a href="/evidence/mainnet-fuel-pools">View the recorded Orca pools</a>
+              </details>
+              <div id="sale-proof" hidden><button type="button" id="sale-live">Check sale and repayment on Devnet</button>
+              <p id="sale-receipt" role="status"></p><a id="sale-evidence" hidden>Download the saved simulation</a></div>
+            </details>
+            <p id="downside-cost" hidden></p><p id="midtrip-risk"></p><details id="midtrip-limits"><summary>Which SOL prices change my plan?</summary><p id="midtrip-trigger"></p></details>
+            <details id="midtrip-history"><summary>How did this rule do on later trips?</summary><p id="midtrip-audit"></p><p>We start at your day-15 price and replay the remaining half of each matched 30-day Gemini SOL settlement history. FreightOS uses the recorded Kamino terms, twice the observed borrowing rate and a 10 percentage point cushion below the liquidation threshold. Settlement observations can miss moves between them. This assumes your loan is still open on day 15. Check the current loan and price before paying.</p><a href="/evidence/gemini-collateral-paths">View recorded Gemini settlements</a></details>
+            <details id="downside-proof" hidden><summary id="downside-proof-title"></summary><p>Separate immediate Devnet simulation of the sample fuel loan, using sponsored funds at 1:100 scale.</p><p id="downside-receipt" role="status"></p><button id="downside-live" type="button">Check this amount on public Devnet</button> <a id="downside-evidence" hidden download="FreightOS-partial-payment.json">Download saved evidence</a></details>
+            <details id="midtrip-proof"><summary>Verify the $10.68 partial payment</summary><p>In this separate public Devnet example, a sponsor supplies the cash at 1:100 scale just after the fuel purchase.</p><p id="midtrip-receipt" role="status"></p><button id="midtrip-live" type="button">Recheck on public Devnet</button> <a href="/evidence/midtrip-payment" download="FreightOS-midtrip-payment.json">Download evidence</a></details>
+          </details>
+          <details id="exit-mechanics"><summary>How the payoff works</summary><p>Kamino can lend temporary USDC to close the fuel loan and release the SOL. An Orca sale then repays the temporary credit in the same transaction. The estimate includes a flash-fee allowance. Collateral presets quote sales in whole cents. A cash-budget check prices the exact USDC output across the two recorded Orca pools. The SOL price check assumes one USDC is worth one dollar. Network fees and temporary account deposits require separate SOL. The loan must still hold its collateral. Reprice at payoff and plan the next stop using the SOL you have left.</p><p id="exit-budget-prices" hidden></p></details>
+          <details id="exit-proof"><summary id="exit-proof-title">Verify a payoff with zero starting USDC</summary><p id="exit-proof-scope">This separate public Devnet example opens and immediately closes the sample $72.98 loan at 1:100 scale. A sponsor supplies test SOL for the opening, accounts and network fee.</p>
+            <dl id="exit-receipt" hidden></dl><p id="exit-proof-result" role="status"></p>
+            <button id="exit-simulate" type="button">Recheck payoff on public Devnet</button> <a id="exit-evidence" href="/evidence/collateral-exit" download="FreightOS-collateral-payoff.json">Download payoff evidence</a>
+          </details>
+        </details>
+    </section>
+    <section class="desk-receipt" id="signed-loan" aria-labelledby="receipt-heading">
+      <div class="desk-proof-heading"><p class="desk-kicker">Public Solana Devnet</p><h2 id="receipt-heading">A fuel loan that settled.</h2><p>This separate $7 example uses test funds. Kamino lent to the driver, the fuel vendor received payment, and repayment released the collateral.</p></div>
+      <div class="desk-proof-body">{{loan_receipt}}</div>
+    </section>
+  </div>
+</main></body></html>

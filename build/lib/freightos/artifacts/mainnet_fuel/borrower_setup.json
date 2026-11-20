@@ -1,0 +1,27 @@
+{
+  "rpc": "https://api.mainnet-beta.solana.com",
+  "genesis": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+  "commitment": "finalized",
+  "from_slot": 471687414,
+  "through_slot": 471687414,
+  "block_time": 1795166991,
+  "method": "getMinimumBalanceForRentExemption",
+  "accounts": {
+    "obligation": {
+      "size": 3344,
+      "lamports": 17637760
+    },
+    "profile": {
+      "size": 1032,
+      "lamports": 5892800
+    },
+    "collateral_farm_user": {
+      "size": 920,
+      "lamports": 5323840
+    }
+  },
+  "collateral_farm": "955xWFhSDcDiUgUr4sBRtCpTLiMd4H5uZLAmgtP3R3sX",
+  "debt_farm": "11111111111111111111111111111111",
+  "klend_layout": "https://github.com/Kamino-Finance/klend/blob/686913ee421e0c5f3dc44c4c8344461ee0e4fb89/programs/klend/src/utils/consts.rs",
+  "farm_layout": "https://github.com/Kamino-Finance/farms-sdk/blob/98a42f25597eefe5a7f8a51a0bd59df4c46d0f7f/src/%40codegen/farms/accounts/userState.ts"
+}
