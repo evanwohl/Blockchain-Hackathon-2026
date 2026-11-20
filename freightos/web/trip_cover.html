@@ -64,6 +64,16 @@
             <thead><tr><th scope="col">Timing</th><th scope="col">Cash only</th><th scope="col">Selected plan</th></tr></thead>
             <tbody><tr><th scope="row">On time</th><td id="history-cash-ready"></td><td id="history-plan-ready"></td></tr>
             <tr><th scope="row">One payout late</th><td id="history-cash-late"></td><td id="history-plan-late"></td></tr></tbody></table>
+          <details id="backup-budget" hidden><summary id="backup-heading">How much backup cash should I keep?</summary>
+            <p id="backup-explanation"></p>
+            <table class="reference-prices" id="backup-results"><caption id="backup-period"></caption>
+              <thead><tr><th scope="col">Buffer</th><th scope="col">Fills short</th><th scope="col">Average set aside</th></tr></thead>
+              <tbody><tr><th scope="row">Updated weekly</th><td id="backup-recent-misses"></td><td id="backup-recent-mean"></td></tr>
+              <tr><th scope="row">Kept fixed</th><td id="backup-fixed-misses"></td><td id="backup-fixed-mean"></td></tr></tbody></table>
+            <p id="backup-limit"></p><button type="button" id="backup-loan" class="secondary"></button>
+            <details><summary>How was each week checked?</summary><p id="backup-method"></p>
+              <button type="button" class="secondary" id="backup-download">Download weekly figures</button></details>
+          </details>
           <p id="history-tradeoff" hidden></p>
           <p id="fill-history-answer"></p><p id="history-peak-moves"></p><dl class="facts" id="fill-history-facts"></dl>
           <p id="history-delays" hidden></p>
@@ -103,8 +113,8 @@
             <label>Fee on another offer ($, optional)<input id="gap-offer" type="number" min="0" max="1000000" step=".01" aria-describedby="gap-offer-help"></label>
           </div><p id="gap-offer-help">Compare a fee quoted for the same fuel amount and repayment date.</p><button id="gap-check" class="secondary">Check loan on Devnet</button>
           <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>
-          <p id="gap-status" role="status"></p><div id="gap-answer" hidden>
-            <h3 id="gap-verdict"></h3><dl class="facts" id="gap-facts"></dl>
+          <p id="gap-status" role="status"></p><p id="gap-coverage" hidden></p><div id="gap-answer" hidden>
+            <h3 id="gap-verdict"></h3><button type="button" id="gap-full-cap" class="secondary" hidden></button><dl class="facts" id="gap-facts"></dl>
             <p id="gap-payout" hidden></p><p id="gap-comparison"></p><p id="gap-protection" hidden></p><p id="gap-risk"></p>
             <details><summary>What if I sold some SOL instead?</summary><p id="gap-sale"></p></details>
             <details><summary>How was the loan checked?</summary><p id="gap-proof"></p></details>

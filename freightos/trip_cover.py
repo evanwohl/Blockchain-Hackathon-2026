@@ -13,7 +13,7 @@ from math import ceil
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from freightos import diesel_model, fill_replay, fuel_cover, fuel_update, regional_diesel
+from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, regional_diesel
 from hedging.quick_pay import integer
 
 SNAPSHOT = fuel_cover.SNAPSHOT.with_name("trip_cover.json.gz")
@@ -388,26 +388,34 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
     base = target["plan"]
     cash = fill_replay.summary(later, offers, {"legs": [], "upfront_cents": 0})
 
-    def replay(plan):
+    checks = {}
+    cash_check = backup.estimate(later, [row[1] for row in later], as_of)
+    if cash_check:
+        checks["cash_mix"] = cash_check
+        target["backup_checks"] = checks
+
+    def replay(plan, name):
         window = {"from": reference.isoformat(), "to": expiry.isoformat()} if offsets else None
         after = fill_replay.summary(later, offers, plan)
         after["one_late"] = fill_replay.one_late_summary(later, offers, plan)
         if plan["legs"]:
             ready, _ = fill_replay.pump_gaps(later, offers, plan)
+            if cash_check:
+                checks[name] = backup.estimate(later, ready, as_of)
             after["delays"] = fill_replay.delay_threshold(ready, [row[1] for row in later], plan["upfront_cents"])
         return {"before": cash, "after": after, "oil_window": window}
 
-    target["fill_replay"] = replay(base)
+    target["fill_replay"] = replay(base, "original")
     risk = target["funding_risk"]
     if risk and "alternative" in risk:
         other = risk["alternative"]
-        other["fill_replay"] = replay(other["plan"])
+        other["fill_replay"] = replay(other["plan"], "risk")
     if not base["legs"]:
         return
     cash_plan = {"legs": [], "upfront_cents": 0, "cash_cents": gaps[-1], "residual_cents": gaps[-1]}
     capacity = fuel_cash + trip["pump_cash_cents"]
     loan_free = portfolio(offers, gaps, fuel_cash=capacity) if target["minimum_spend_cents"] is not None else None
-    target["cash_mix"] = {"plan": cash_plan, "after": target["before"], "fill_replay": replay(cash_plan),
+    target["cash_mix"] = {"plan": cash_plan, "after": target["before"], "fill_replay": replay(cash_plan, "cash_mix"),
                           "protection_change": protection_change(offers, gaps, capacity, cash_plan, loan_free) if loan_free else None}
     if not early:
         return
@@ -428,9 +436,10 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
         change = None
         if short and loan_free:
             change = protection_change(offers, gaps, capacity, candidate, loan_free)
-        choice = {"plan": candidate, "training_weeks": len(early), "original_train_cents": original,
+        choice = {"plan": candidate, "training_weeks": len(early), "short_training_weeks": sum(row[1] > 0 for row in early),
+                  "original_train_cents": original,
                   "train_cents": fitted, "after": {"reserve_cents": draw, "outside_cents": residual-draw, "short_cents": short},
-                  "protection_change": change, "fill_replay": replay(candidate)}
+                  "protection_change": change, "fill_replay": replay(candidate, key)}
         if not one_late:
             choice["sensitivity"] = fill_replay.month_sensitivity(later, offers, base, candidate)
         target[key] = choice

@@ -1,4 +1,4 @@
-import { el, facts, money, request } from "./common.js";
+import { el, facts, money, request, saveFile } from "./common.js";
 
 import { setFuelGap } from "./trip_credit.js";
 
@@ -162,12 +162,44 @@ function showSpendingLimit(d, later) {
   }
 }
 
+function showBackup(check, plan, trip) {
+  el("backup-budget").hidden = !check;
+  if (!check) return;
+  const amount = check.target_cents;
+  const weeks = check.records.length;
+  el("backup-heading").textContent = amount === null ? "How did weekly backup cash perform?" : "Plan for " + money(amount) + " in backup cash";
+  el("backup-explanation").textContent = (amount === null ? "The price history is too old to size this week’s backup." :
+    "The latest " + check.window + " observed weeks point to " + money(amount) + " beyond your fuel money and usable reserve, aiming to cover 9 in 10 stops.")
+    + (plan?.legs.length ? " This assumes the hedge payout is spendable at the pump." : " This uses cash alone at the pump.");
+  el("backup-period").textContent = "What would have happened over " + weeks + " later fills";
+  for (const key of ["recent", "fixed"]) {
+    el("backup-" + key + "-misses").textContent = check[key].misses + " of " + weeks;
+    el("backup-" + key + "-mean").textContent = money(check[key].mean_cents);
+  }
+  el("backup-limit").textContent = "The biggest remaining shortfall with weekly updates was "
+    + money(check.recent.worst_uncovered_cents) + ". This is money to have available. The loan check simulates a vendor payment on Devnet.";
+  el("backup-method").textContent = "The fixed buffer used " + check.fixed_weeks + " weeks through " + check.fixed_through
+    + ". Each updated buffer used the latest " + check.window + " observations ending at least a week before the start of that fill week. "
+    + "Both use the same trip and recorded quotes. The last observed week ended " + check.through + ". Fuel prices can move together across weeks.";
+  const button = el("backup-loan");
+  button.hidden = !amount || amount > 100000000;
+  button.textContent = "Check borrowing capacity for " + money(amount || 0);
+  button.onclick = () => openLoan(amount, {backup: check});
+  el("backup-download").onclick = () => saveFile("FreightOS-weekly-backup.json", JSON.stringify({
+    trip, quote_at: current.checked_at, price_source: current.source,
+    reserve_for_fuel_cents: current.reserve?.fuel_cash_cents || 0,
+    selected_plan: plan || {legs: [], upfront_cents: 0}, ...check
+  }, null, 2), "application/json");
+}
+
 function showPastFills(target, selected, later) {
   const history = selected?.fill_replay;
   el("fill-history").hidden = !history;
   if (!history) return;
   const sample = later ? history.after : history.before;
   const peak = sample.peak;
+  const plan = later ? selected.plan : null;
+  showBackup(target.backup_checks?.[plan?.legs.length ? mix || "original" : "cash_mix"], plan, current.trip);
   el("fill-history-answer").textContent = "Your fuel money ran short in " + sample.short_weeks + " of "
     + sample.weeks + " weekly scenarios. " + (peak.short_cents ? "The largest gap was " + money(peak.short_cents)
     + " using the price moves from the week ending " + peak.week + "." : "Your budget covered every replayed fill.");
@@ -219,7 +251,7 @@ function showPastFills(target, selected, later) {
     const base = target.fill_replay.after;
     const difference = stressed ? sample.one_late.tail_cash_cents - base.one_late.tail_cash_cents : sample.tail_cash_cents - base.tail_cash_cents;
     const cost = difference ? money(Math.abs(difference)) + (difference < 0 ? " less than" : " more than") : "the same amount as";
-    el("history-tradeoff").textContent = "Fitted on " + fitted.training_weeks + " earlier weeks. Across the " + sample.weeks
+    el("history-tradeoff").textContent = "Fitted on " + fitted.training_weeks + " earlier weeks. Of those, " + fitted.short_training_weeks + " needed extra pump money before payouts. Across the " + sample.weeks
       + " later weeks, the hardest tenth needed " + cost + " the original hedge "
       + (stressed ? "with one badly timed payout." : "with every payout on time.") + " Upfront cost is " + money(fitted.plan.upfront_cents) + ".";
   }
@@ -234,16 +266,16 @@ function showPastFills(target, selected, later) {
       + " gives the highest hard-week average. At that stop you would need " + money(standby.short_cents)
       + " beyond your available fuel money. If the payout arrived on time, you would need " + money(standby.on_time_cents) + ".";
     el("standby-loan").textContent = "Check a loan for " + money(standby.short_cents);
-    el("standby-loan").onclick = () => openReplayLoan(standby, standby.payout_cents);
+    el("standby-loan").onclick = () => openLoan(standby.short_cents, {week: standby.week, payout: standby.payout_cents});
   }
   const button = el("history-loan");
   button.hidden = !peak.short_cents;
   button.textContent = "Check borrowing for the " + money(peak.short_cents) + " replayed gap";
-  button.onclick = () => openReplayLoan(peak);
+  button.onclick = () => openLoan(peak.short_cents, {week: peak.week});
 }
 
-function openReplayLoan(scenario, payout = null) {
-  setFuelGap(scenario.short_cents, null, scenario.week, payout);
+function openLoan(cents, source) {
+  setFuelGap(cents, null, source);
   el("gap-credit").open = true;
   el("gap-title").focus();
 }
@@ -438,7 +470,8 @@ document.querySelector(".trip-timing").onchange = () => { if (current) { mix = n
 function openExample() {
   form.reset();
   const example = new URLSearchParams(location.hash.slice(1));
-  el("fill-history").open = example.has("replay");
+  el("backup-budget").open = example.has("backup");
+  el("fill-history").open = example.has("replay") || example.has("backup");
   const region = example.get("region");
   const includeReserve = example.has("road-cash");
   if ([...el("trip-region").options].some(option => option.value === region)) el("trip-region").value = region;
