@@ -43,7 +43,7 @@ def terms(drop, days):
         raise ValueError("Choose one of the displayed collateral stresses and payment dates")
 
 
-def transaction(collateral, block):
+def transaction(collateral, block, advance=ADVANCE):
     proof = json.loads(devnet.SAMPLE.read_text())
     vendor = Pubkey.from_string(proof["decision"]["vendor"])
     instructions = []
@@ -57,11 +57,13 @@ def transaction(collateral, block):
             data = data[:4] + struct.pack("<Q", wrapped)
         if program == KLEND and data[:8] == bytes.fromhex("d8e0bf1bcc9766af"):
             data = data[:8] + struct.pack("<Q", collateral)
+        if program == KLEND and data[:8] == bytes.fromhex("a1808ff5abc7c206"):
+            data = data[:8] + struct.pack("<Q", advance)
         accounts = [AccountMeta(Pubkey.from_string(address), role >= 2, role in (1, 3)) for address, role in row["a"]]
         instructions.append(Instruction(program, data, accounts))
     transfer = [AccountMeta(associated(OWNER, devnet.MINT), False, True), AccountMeta(devnet.MINT, False, False),
                 AccountMeta(vendor, False, True), AccountMeta(OWNER, True, False)]
-    instructions.append(Instruction(TOKEN, struct.pack("<BQB", 12, ADVANCE, 6), transfer))
+    instructions.append(Instruction(TOKEN, struct.pack("<BQB", 12, advance, 6), transfer))
     message = MessageV0.try_compile(OWNER, instructions, [], Hash.from_string(block))
     return VersionedTransaction.populate(message, [Signature.default()])
 
@@ -89,12 +91,12 @@ def configured_rate(reserve):
     raise ValueError("Borrow utilization is outside the Kamino rate curve")
 
 
-def evaluate(run, drop, days):
+def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP):
     value = run["response"]["value"]
     if value["err"] is not None:
         raise ValueError("Kamino declined this collateralized payment")
     collateral = run["collateral"]
-    message = transaction(collateral, run["block"]).message
+    message = transaction(collateral, run["block"], advance).message
     keys = list(message.account_keys)
     proof = json.loads(devnet.SAMPLE.read_text())
     vendor = Pubkey.from_string(proof["decision"]["vendor"])
@@ -102,7 +104,7 @@ def evaluate(run, drop, days):
     def change(account, owner):
         before, after = devnet.token_balances(value, keys, account, devnet.MINT, owner)
         return after - before
-    if change(vendor, Pubkey.from_string(proof["vendor_owner"])) != ADVANCE or change(owner_cash, OWNER) != 0:
+    if change(vendor, Pubkey.from_string(proof["vendor_owner"])) != advance or change(owner_cash, OWNER) != 0:
         raise ValueError("Borrow proceeds and fuel payment do not reconcile")
     obligation, debt, backing = [read_program_account(a, disc, size) for a, disc, size in zip(value["accounts"],
                                  ("a8ce8d6a584caca7", "2bf2ccca1af73b7f", "2bf2ccca1af73b7f"), (3344, 8624, 8624))]
@@ -117,7 +119,7 @@ def evaluate(run, drop, days):
     stable_price = Decimal(uint(debt, 248)) / UNIT
     pledged = Decimal(uint(obligation, 1192)) / UNIT
     principal = Decimal(uint(obligation, 1296)) / UNIT
-    if price <= 0 or stable_price <= 0 or abs(pledged - price * collateral / LAMPORTS) > Decimal(".00001") or principal < ADVANCE:
+    if price <= 0 or stable_price <= 0 or abs(pledged - price * collateral / LAMPORTS) > Decimal(".00001") or principal < advance:
         raise ValueError("Debt or collateral value differs from the payment")
     apr = configured_rate(debt)
     repayment = principal * (apr * days / 365).exp()
@@ -129,24 +131,28 @@ def evaluate(run, drop, days):
     adjusted_debt = repayment / 10**6 * stable_price * factor
     needed = max(principal / 10**6 * stable_price * factor / (Decimal(initial)/100),
                  adjusted_debt / ((Decimal(100-drop)/100) * (Decimal(liquidation-10)/100)))
-    minimum = ceiling(needed / price * LAMPORTS / STEP) * STEP
+    minimum = ceiling(needed / price * LAMPORTS / step) * step
     scale = int(proof["decision"]["raw_units_per_cent"])
-    cost = ceiling((repayment - ADVANCE) / scale)
+    cost = ceiling((repayment - advance) / scale)
     fee = value["fee"]
     setup = value["preBalances"][keys.index(OWNER)] - value["postBalances"][keys.index(OWNER)] - collateral - fee
+    if fee < 0 or setup < 0:
+        raise ValueError("Unexpected loan setup balance change")
     return {"slot": run["response"]["context"]["slot"], "checked_at": run["checked_at"], "days": days, "drop": drop,
-            "advance_raw": ADVANCE, "collateral_lamports": collateral, "minimum_lamports": minimum,
+            "advance_raw": advance, "collateral_lamports": collateral, "minimum_lamports": minimum,
             "current_ltv_bps": ceiling(10000 * principal / 10**6 * stable_price * factor / pledged),
             "stress_ltv_bps": ceiling(10000 * adjusted_debt / stressed), "liquidation_pct": liquidation,
+            "remaining_liquidity_raw": uint(debt, 224, 8),
             "rate_bps": ceiling(apr * 10000), "repay_cents": ceiling(repayment / scale), "cost_cents": cost,
-            "advance_cents": ADVANCE // scale, "fee_headroom_cents": 1000 - cost,
+            "advance_cents": advance // scale, **({"fee_headroom_cents": 1000 - cost} if advance == ADVANCE else {}),
             "liquidation_price_cents": ceiling(100 * adjusted_debt * price / (pledged * liquidation / 100)),
+            "entry_cash_cents": ceiling((fee + setup) * price * 100 / LAMPORTS),
             "fee_lamports": fee, "setup_lamports": setup, "sol_price": str(price.quantize(Decimal(".01")))}
 
 
-def simulate(collateral, rpc, min_slot=0):
+def simulate(collateral, rpc, min_slot=0, advance=ADVANCE):
     block = rpc("getLatestBlockhash", [{"commitment": "confirmed", "minContextSlot": min_slot}])["value"]["blockhash"]
-    tx = transaction(collateral, block)
+    tx = transaction(collateral, block, advance)
     addresses = [route()[key] for key in ("obligation", "usd", "sol")]
     response = rpc("simulateTransaction", [base64.b64encode(bytes(tx)).decode(),
                    {"encoding": "base64", "sigVerify": False, "replaceRecentBlockhash": True, "commitment": "confirmed",
@@ -170,3 +176,65 @@ def capture(drop, days, rpc=devnet.request):
 def saved(drop, days):
     terms(drop, days)
     return json.loads(gzip.decompress((DATA / "credit_examples.json.gz").read_bytes()))[f"{drop}-{days}"]
+
+
+def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recorded=False):
+    terms(drop, days)
+    if type(gap_cents) is not int or not 0 < gap_cents <= 100_000_000:
+        raise ValueError("Enter a positive fuel shortfall")
+    if type(pledge_millis) is not int or not 0 <= pledge_millis <= 1_000_000:
+        raise ValueError("Enter a SOL pledge limit between 0 and 1,000")
+    result = {"gap_cents": gap_cents, "remaining_cents": gap_cents, "loan": None}
+    if not pledge_millis:
+        return result
+    scale = json.loads(devnet.SAMPLE.read_text())["decision"]["raw_units_per_cent"]
+    model_ratio = 10_000 // scale
+    step = LAMPORTS // (1000 * model_ratio)
+    cap = pledge_millis * step
+
+    def funded(quote):
+        pledged = quote["collateral_lamports"]
+        cents = quote["advance_cents"]
+        if not (0 < cents <= gap_cents and quote["minimum_lamports"] <= pledged <= cap and pledged % step == 0):
+            raise ValueError("Loan falls outside the trip limits")
+        quote.pop("fee_headroom_cents", None)
+        sale_price = Decimal(quote["sol_price"])
+        holding_cost = quote["entry_cash_cents"] + quote["cost_cents"]
+        quote.update(pledge_millis=pledged // step, model_ratio=model_ratio,
+                     buyback_break_even_cents=ceiling(100 * sale_price * (cents + holding_cost) / cents))
+        return {**result, "remaining_cents": gap_cents - cents, "loan": quote}
+
+    if recorded:
+        samples = json.loads(gzip.decompress((DATA / "trip_credit.json.gz").read_bytes()))
+        if (drop, days) != (40, 23) or f"{gap_cents}-{pledge_millis}" not in samples:
+            raise ValueError("No saved check for these terms")
+        sample = samples[f"{gap_cents}-{pledge_millis}"]
+        return funded(evaluate(sample["run"], drop, days, sample["cents"] * scale, step=1))
+    if rpc("getGenesisHash", []) != devnet.GENESIS:
+        raise ValueError("This preview requires public Solana Devnet")
+    cents = 100
+    observation = simulate(STEP, rpc, advance=cents * scale)
+    for attempt in range(5):
+        quote = evaluate(observation, drop, days, cents * scale, step=1)
+        required = quote["minimum_lamports"]
+        projected = min(gap_cents, cap * cents // required)
+        projected = min(projected, cents + quote["remaining_liquidity_raw"] // scale)
+        if attempt:
+            projected = min(projected, cents)
+        if not projected:
+            return result
+        pledge = min(cap, ((required * projected + cents * step - 1) // (cents * step)) * step)
+        if cents == projected and pledge == observation["collateral"] and pledge >= required:
+            return funded(quote)
+        observation = simulate(pledge, rpc, quote["slot"], projected * scale)
+        cents = projected
+    raise ValueError("The market moved while checking the pledge limit")
+
+
+def compare_fee(result, offer_cents):
+    loan = result["loan"]
+    if loan is None or result["remaining_cents"]:
+        return None
+    entry_and_financing = loan["entry_cash_cents"] + loan["cost_cents"]
+    return {"entry_and_financing_cents": entry_and_financing,
+            "room_cents": None if offer_cents is None else offer_cents - entry_and_financing}

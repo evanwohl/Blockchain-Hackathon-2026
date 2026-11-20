@@ -60,6 +60,22 @@
         </section>
         <dl id="trip-options" class="facts"></dl><p id="reserve-observation" hidden></p>
         <a id="trip-reserve" class="ledger-back">Check the cash buffer on Solana →</a>
+        <details id="gap-credit" hidden><summary id="gap-title">Check a fuel loan</summary>
+          <p>If you already own SOL, see how much of this fuel gap it could cover. Kamino would hold your pledge until you repay the loan.</p>
+          <form id="gap-form"><div class="trip-fields">
+            <label>Most SOL I would pledge<input id="gap-cap" type="number" min="0" max="1000" step=".001" value="1" required></label>
+            <label>Time until I repay<select id="gap-days"><option value="23">23 days</option><option value="30">30 days</option></select></label>
+            <label>SOL price drop to allow for<select id="gap-drop"><option value="20">20%</option><option value="40" selected>40%</option><option value="60">60%</option></select></label>
+            <label>Fee on another offer ($, optional)<input id="gap-offer" type="number" min="0" max="1000000" step=".01" aria-describedby="gap-offer-help"></label>
+          </div><p id="gap-offer-help">Compare a fee quoted for the same fuel amount and repayment date.</p><button id="gap-check" class="secondary">Check loan on Devnet</button>
+          <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>
+          <p id="gap-status" role="status"></p><div id="gap-answer" hidden>
+            <h3 id="gap-verdict"></h3><dl class="facts" id="gap-facts"></dl>
+            <p id="gap-comparison"></p><p id="gap-risk"></p>
+            <details><summary>What if I sold some SOL instead?</summary><p id="gap-sale"></p></details>
+            <details><summary>How was the loan checked?</summary><p id="gap-proof"></p></details>
+          </div>
+        </details>
         <details id="regional-evidence" hidden><summary>How much can diesel move on its own?</summary>
           <p id="regional-test"></p><p id="regional-limit"></p>
           <a href="/evidence/regional-diesel" download="FreightOS-regional-diesel.json">Download weekly prices and EIA sources</a>
