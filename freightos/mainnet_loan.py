@@ -129,7 +129,13 @@ def payday_at(row, high, price):
     return row["payday_cents"] + ceil_div(restore * high, LAMPORTS) - ceil_div(restore * price, LAMPORTS)
 
 
-def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None, path=None, setup=None, repeat=False):
+def secured_schedule(lending, native_available, gap, low, marks):
+    max_draw = int(Decimal(native_available) * lending["sol_price"] * lending["initial"]
+                   / (LAMPORTS * lending["usd_price"]) * 100 / lending["factor"])
+    return list(loan_schedule(min(gap, max_draw), low, lending, marks))
+
+
+def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None, path=None, setup=None, repeat=False, schedule=None):
     bill, reference = plan["bill_cents"], plan["reference_cents"]
     low, high = plan["low_price_cents"], plan["high_price_cents"]
     own = min(bill, cash)
@@ -137,9 +143,8 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
     gap = max(0, vendor - stable)
     rate = lending["apr"]
     marks = collateral_path.barriers(path, lending["sol_price"], rate * 2) if path else []
-    max_draw = int(Decimal(native_available) * lending["sol_price"] * lending["initial"]
-                   / (LAMPORTS * lending["usd_price"]) * 100 / lending["factor"])
-    schedule = list(loan_schedule(min(gap, max_draw), low, lending, marks))
+    if schedule is None:
+        schedule = secured_schedule(lending, native_available, gap, low, marks)
     target = plan["floor_cents"]
     loan_spend = 2 * LOAN_FEE_ALLOWANCE
     close_refund = 0
@@ -251,6 +256,22 @@ def _boundary_draws(first, last, gap, cap, allowance, pledged, repayments, start
     return np.array(sorted(set(candidates)), dtype=np.intp)
 
 
+def funding_row(plan, net, discount, cash, stable, draw, terms, costs, fee, rent, loan_spend, close_refund):
+    bill, received, high = plan["bill_cents"], plan["receipt_cents"], plan["high_price_cents"]
+    invoice = plan.get("invoice_cents", reserve_credit.INVOICE_CENTS)
+    own = min(cash, max(0, bill - net))
+    vendor = max(0, bill - net - own)
+    dollars = min(vendor, stable)
+    sale = vendor - dollars - draw
+    pledge, repay = terms
+    restore = costs[sale] + (fee if vendor else 0) + (loan_spend if draw else 0)
+    return dict(advance_cents=net, fee_cents=discount, invoice_balance_cents=invoice-net-discount,
+                cash_cents=own, stable_cents=dollars, surplus_cents=max(0, net-bill), draw_cents=draw,
+                sale_cents=sale, pledge_lamports=pledge, repay_cents=repay,
+                restore_lamports=restore, opening_lamports=restore + pledge + (rent if sale else 0) + (close_refund if draw else 0),
+                payday_cents=received - bill + sale + draw - discount - repay - ceil_div(restore * high, LAMPORTS))
+
+
 def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offer_fee, amount, *,
                  loan_spend=2 * LOAN_FEE_ALLOWANCE, close_refund=0, show_loan=False):
     bill, received = plan["bill_cents"], plan["receipt_cents"]
@@ -278,17 +299,7 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
 
     def describe(net, draw):
         discount = offer_fee if menu == "counter" and net else customer_credit.customer_fee(net, offer_fee)
-        own = min(cash, max(0, bill - net))
-        vendor = max(0, bill - net - own)
-        dollars = min(vendor, stable)
-        sale = vendor - dollars - draw
-        pledge, repay = schedule[draw]
-        restore = costs[sale] + (fee if vendor else 0) + (loan_spend if draw else 0)
-        return dict(advance_cents=net, fee_cents=discount, invoice_balance_cents=invoice-net-discount,
-                    cash_cents=own, stable_cents=dollars, surplus_cents=max(0, net-bill), draw_cents=draw,
-                    sale_cents=sale, pledge_lamports=pledge, repay_cents=repay,
-                    restore_lamports=restore, opening_lamports=restore + pledge + (rent if sale else 0) + (close_refund if draw else 0),
-                    payday_cents=received - bill + sale + draw - discount - repay - ceil_div(restore * high, LAMPORTS))
+        return funding_row(plan, net, discount, cash, stable, draw, schedule[draw], costs, fee, rent, loan_spend, close_refund)
 
     for early in amounts:
         discount = offer_fee if menu == "counter" and early else customer_credit.customer_fee(early, offer_fee)

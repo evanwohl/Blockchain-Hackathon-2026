@@ -3,7 +3,7 @@ from decimal import ROUND_HALF_UP
 from fractions import Fraction
 
 from hedging.quick_pay import integer
-from freightos import collateral_path, fuel_floor, mainnet_loan, mainnet_stop, payday_policy, route_booking
+from freightos import collateral_path, fuel_floor, mainnet_loan, mainnet_stop, payday_policy, route_booking, route_sizing
 
 MAX_BILL = 250_000
 VENDOR_FEE_LAMPORTS = 5_000
@@ -36,13 +36,16 @@ def quote(data):
         booked = integer(data["booked"], "confirmed stops", stops)
         if booked < 1 or stops < 2:
             raise ValueError("Enter at least one confirmed stop in a recurring route")
+    balance = data.get("balance", False)
+    if type(balance) is not bool or (balance and booked is None):
+        raise ValueError("Choose confirmed stops before sizing a recurring loan")
     try:
-        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked)
+        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance)
     except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError) as exc:
         raise RuntimeError("Recorded funding terms could not be verified") from exc
 
 
-def _price(bill, invoice, values, stress, offer, state, stops, booked):
+def _price(bill, invoice, values, stress, offer, state, stops, booked, balance):
     lending = mainnet_loan.saved()
     reference = int((lending["sol_price"] * 100).to_integral_value(rounding=ROUND_HALF_UP))
     cases, _ = payday_policy.price_cases(reference, stress)
@@ -54,10 +57,15 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked):
     gap = max(0, bill - values["cash"] - values["stable"])
     # Even a fee-free swap at the highest opening spot cannot return more than this much USDC.
     max_sale = cap * max(p["price"]**2 for p in pools) // (fuel_floor.Q64**2 * mainnet_stop.SCALE)
-    costs, _ = mainnet_stop.split_costs(pools, min(gap, max_sale))
+    costs, second_leg = mainnet_stop.split_costs(pools, min(gap, max_sale))
+    path = collateral_path.saved()
+    schedule = None
+    if balance:
+        marks = collateral_path.barriers(path, lending["sol_price"], lending["apr"] * 2)
+        schedule = mainnet_loan.secured_schedule(lending, cap, gap, min(prices), marks)
     loan = mainnet_loan.compare(plan, costs, values["stable"], values["cash"], cap, cap, VENDOR_FEE_LAMPORTS, observation["rent"],
                                 lending, [c["price_cents"] for c in cases if "start" in c],
-                                offer_terms=offer, path=collateral_path.saved(),
+                                offer_terms=offer, path=path, schedule=schedule,
                                 setup=mainnet_loan.borrower_setup(returning=state == "returning") if state != "ready" else None, repeat=stops > 1)
     result = {**plan, "mainnet": {"slot": observation["accounts"]["context"]["slot"], "secured_loan": loan}}
     if stops > 1:
@@ -67,6 +75,15 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked):
             series = result["series"]
             series["booking"] = route_booking.compare(series["first"], series["later"], series["debt_free"],
                                                      booked, stops, prices, plan["floor_cents"])
+            if balance:
+                route_sizing.size(series, plan, prices, schedule, costs, values["cash"], values["stable"], cap,
+                                  VENDOR_FEE_LAMPORTS, observation["rent"], loan["setup"])
+                for row in (series["first"], series["later"], series["debt_free"]):
+                    if row and row["sale_cents"] and series.get("sizing"):
+                        sale = row["sale_cents"]
+                        volumes = (sale - second_leg[sale], second_leg[sale])
+                        row["swap"] = dict(max_lamports=costs[sale], legs=[
+                            dict(pool=pool, output_cents=cents) for pool, cents in zip(observation["addresses"], volumes) if cents])
             choice = series["booking"]["choice"]
             series["choice"] = "unfunded" if choice is None else {None: "debt_free", 1: "open"}.get(choice["open_stop"], "defer")
     return result

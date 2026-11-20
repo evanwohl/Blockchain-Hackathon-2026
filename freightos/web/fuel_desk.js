@@ -5,13 +5,14 @@ import {showCycle} from "./load_credit.js";
 
 const form = el("desk-form");
 let current, controller, timer, revision = 0;
+let sizeLoans = true;
 
 function terms() {
   const cents = id => Math.round(el(id).valueAsNumber * 100);
   const menu = el("terms").value;
   const stops = el("borrower-state").value === "new" ? Number(el("stops").value) : 1;
   const booked = stops > 1 && el("booked").value ? {booked: Math.min(stops, Number(el("booked").value))} : {};
-  return {...booked, borrower_state: el("borrower-state").value, stops, bill: cents("bill"), invoice: cents("invoice"), stable: cents("stable"), stress: cents("stress"), cash: cents("cash"), budget: cents("budget"),
+  return {...booked, balance: !!booked.booked && sizeLoans, borrower_state: el("borrower-state").value, stops, bill: cents("bill"), invoice: cents("invoice"), stable: cents("stable"), stress: cents("stress"), cash: cents("cash"), budget: cents("budget"),
     target: cents("target"), offer_menu: menu, offer_amount: menu === "counter" ? cents("advance") : null,
     offer_fee: menu === "counter" ? cents("discount") : menu === "partial" ? cents("fee") : 0};
 }
@@ -194,6 +195,7 @@ form.oninput = event => {
   if (event.target.id !== "trip-ref") price(180, false);
 };
 form.onreset = () => {
+  sizeLoans = true;
   el("mix-priority").value = "most_cash"; el("payday-allow").checked = true; el("desk-setup").open = false;
   setTimeout(() => price(0, false), 0);
 };
@@ -210,6 +212,7 @@ el("desk-first-quote").onclick = () => {
   price(0, true);
 };
 el("desk-repeat").onclick = () => { el("stops").value = "4"; price(0, true); };
+el("size-route").onclick = () => { sizeLoans = !sizeLoans; price(0, true); };
 el("series-single").onclick = () => { el("stops").value = "1"; price(0, true); };
 el("series-save").onclick = () => { if (current?.quote.series) saveRun(current.quote, el("trip-ref").value.trim()); };
 el("desk-retry").onclick = () => price(0, false);
@@ -217,10 +220,11 @@ el("desk-save").onclick = fundingSheet;
 el("mix-request").onclick = () => downloadOffer(selected(), el("trip-ref").value.trim());
 el("cycle-verify").onclick = () => showCycle(true);
 const example = new URLSearchParams(location.search).get("example");
-if (["repeat-run", "booked-route"].includes(example)) {
+if (["repeat-run", "booked-route", "balanced-route"].includes(example)) {
   el("bill").value = "186"; el("borrower-state").value = "new"; el("stops").value = "4";
 }
-if (example === "booked-route") {
+if (["booked-route", "balanced-route"].includes(example)) {
+  sizeLoans = example === "balanced-route";
   for (const [id, value] of Object.entries({bill: 745, invoice: 3100, cash: 250, budget: 600, stable: 150, target: 2000, advance: 250, discount: 5}))
     el(id).value = value;
   el("booked").add(new Option("2 confirmed stops", "2", false, true));

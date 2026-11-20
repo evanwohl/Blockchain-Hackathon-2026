@@ -37,7 +37,7 @@
           <button type="submit" class="desk-secondary">Review my plan</button> <button type="reset" class="desk-reset">Restore sample</button>
         </form>
       </details>
-      <a class="desk-receipt-jump" href="/fuel-desk?example=booked-route">Try a partially booked $745 route</a>
+      <a class="desk-receipt-jump" href="/fuel-desk?example=balanced-route">Try a partially booked $745 route</a>
       <a class="desk-receipt-jump" href="#signed-loan">Inspect a settled loan on Devnet</a>
     </aside>
     <section class="desk-decision" aria-labelledby="plan-heading">
@@ -54,13 +54,18 @@
       </div>
       <div id="series-panel" hidden>
         <p class="series-caption" id="series-total-label">Total cash left across the run</p><dl id="series-totals" aria-labelledby="series-total-label"></dl><p id="series-verdict"></p>
-        <details id="booking-check" hidden><summary>Why this borrowing date?</summary><p id="booking-method"></p><table><caption>Cash you could miss versus the best timing for the outcome</caption><thead><tr><th scope="col">First loan</th><th scope="col">Most cash missed</th></tr></thead><tbody></tbody></table><p id="booking-witness"></p><p>Recorded terms: <a href="/evidence/mainnet-fuel-lending">Kamino lending</a> · <a href="/evidence/mainnet-fuel-pools">Orca swaps</a> · <a href="/evidence/gemini-collateral-paths">Gemini collateral history</a></p></details>
+        <button type="button" id="size-route" class="desk-secondary" hidden>Compare loan amounts too</button>
+        <details id="booking-check" hidden><summary id="booking-heading">Why this borrowing date?</summary><p id="booking-method"></p><table><caption id="booking-caption">Cash you could miss versus the best timing for the outcome</caption><thead><tr><th scope="col">First loan</th><th scope="col">Most cash missed</th></tr></thead><tbody></tbody></table><p id="booking-witness"></p><p id="booking-swap" hidden></p><p>Recorded terms: <a href="/evidence/mainnet-fuel-lending">Kamino lending</a> · <a href="/evidence/mainnet-fuel-pools">Orca swaps</a> · <a href="/evidence/gemini-collateral-paths">Gemini collateral history</a></p></details>
         <h3 id="series-funding-title">How to fund each stop</h3>
         <label id="funding-stage-field" hidden>Show funding for <select id="funding-stage"></select></label>
         <table id="series-funding" aria-labelledby="series-funding-title"><thead><tr><th scope="col">Source</th><th scope="col">First stop</th><th scope="col">Each later stop</th></tr></thead><tbody></tbody></table>
         <p id="booking-collateral" hidden></p>
         <details id="series-prices"><summary>What if SOL costs less on payday?</summary><table><caption>Cash left across the run with each funding split held fixed</caption><thead><tr><th scope="col">SOL price</th><th scope="col">Open now</th><th scope="col">Stay debt-free</th></tr></thead><tbody></tbody></table></details>
         <details id="series-terms"><summary>When does this comparison hold?</summary><p id="series-renewal"></p><p id="series-scope"></p></details>
+        <details id="split-proof" hidden><summary>See the loan and sale pay one vendor</summary><p>Public Devnet example of the $95 split, at one test cent per modeled dollar. A sponsor supplies test SOL to a returning borrower. The check covers the last part of the fuel bill.</p>
+          <dl id="split-receipt" aria-label="Simulated transfer in test USDC" hidden></dl>
+          <p id="split-proof-result" role="status"></p><button id="split-simulate" type="button">Recheck on public Devnet</button> <a href="/evidence/split-payment" download="FreightOS-split-payment.json">Download simulation evidence</a>
+        </details>
         <details id="series-proof"><summary>See a repeat loan simulated on Solana</summary><p>A separate Devnet example reuses the borrower from the signed fuel payment below. The sponsor supplies test SOL, a token account and payoff cash inside the simulation. The loan is repaid immediately.</p>
           <p id="repeat-proof-result" role="status"></p><button id="repeat-simulate" type="button">Run on public Devnet</button> <a href="/evidence/repeat-credit" download="FreightOS-repeat-simulation.json">Download saved simulation</a>
         </details>

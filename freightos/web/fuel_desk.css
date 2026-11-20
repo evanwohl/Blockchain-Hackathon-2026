@@ -109,3 +109,8 @@
   #funding-stage { min-height: 44px; border: 1px solid #849284; border-radius: 0; padding-inline: .65rem; background: var(--paper); color: var(--ink); }
   #series-funding.pick-stage .other-stage { display: none; }
 }
+
+#split-receipt:not([hidden]) { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem 1rem; padding: 1rem; margin: 1rem 0; background: #e8eedb; color: #243d2b; font-variant-numeric: tabular-nums; }
+#split-receipt dt { font-size: .8rem; }
+#split-receipt dd { margin: .15rem 0 0; text-align: start; font: 600 1.7rem/1 var(--display); }
+#split-receipt > div:last-child { grid-column: 1/-1; border-top: 1px solid #a4b498; padding-top: .7rem; display: flex; justify-content: space-between; align-items: baseline; }

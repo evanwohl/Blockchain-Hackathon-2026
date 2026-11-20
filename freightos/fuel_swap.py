@@ -52,19 +52,23 @@ def pool_accounts(pool, slot, rpc):
     return (pool, Pubkey.from_bytes(data[133:165]), Pubkey.from_bytes(data[213:245]), *arrays, oracle), result["context"]["slot"]
 
 
-def instructions(plan, route, output, maximum, rent, reserve, customer, follow):
+def swap_instructions(payer, cash, route, output, maximum, rent):
     ops = []
-    if output:
-        pool, sol_vault, usd_vault, *ticks = route
-        wrapped = Pubkey.create_with_seed(plan.payer, SEED, devnet.TOKEN)
-        ops.append(create_account_with_seed(CreateAccountWithSeedParams(from_pubkey=plan.payer, to_pubkey=wrapped, base=plan.payer,
-                   seed=SEED, lamports=rent + maximum, space=165, owner=devnet.TOKEN)))
-        ops.append(Instruction(devnet.TOKEN, b"\x12" + bytes(plan.payer), [account(wrapped, True), account(credit.SOL)]))
-        data = hashlib.sha256(b"global:swap").digest()[:8] + struct.pack("<QQ", output, maximum) + bytes(16) + bytes((0, 1))
-        ops.append(Instruction(ORCA, data, [account(devnet.TOKEN), account(plan.payer, signer=True), account(pool, True),
-                   account(wrapped, True), account(sol_vault, True), account(plan.cash, True), account(usd_vault, True),
-                   *[account(key, True) for key in ticks]]))
-        ops.append(Instruction(devnet.TOKEN, b"\x09", [account(wrapped, True), account(plan.payer, True), account(plan.payer, signer=True)]))
+    pool, sol_vault, usd_vault, *ticks = route
+    wrapped = Pubkey.create_with_seed(payer, SEED, devnet.TOKEN)
+    ops.append(create_account_with_seed(CreateAccountWithSeedParams(from_pubkey=payer, to_pubkey=wrapped, base=payer,
+               seed=SEED, lamports=rent + maximum, space=165, owner=devnet.TOKEN)))
+    ops.append(Instruction(devnet.TOKEN, b"\x12" + bytes(payer), [account(wrapped, True), account(credit.SOL)]))
+    data = hashlib.sha256(b"global:swap").digest()[:8] + struct.pack("<QQ", output, maximum) + bytes(16) + bytes((0, 1))
+    ops.append(Instruction(ORCA, data, [account(devnet.TOKEN), account(payer, signer=True), account(pool, True),
+               account(wrapped, True), account(sol_vault, True), account(cash, True), account(usd_vault, True),
+               *[account(key, True) for key in ticks]]))
+    ops.append(Instruction(devnet.TOKEN, b"\x09", [account(wrapped, True), account(payer, True), account(payer, signer=True)]))
+    return ops
+
+
+def instructions(plan, route, output, maximum, rent, reserve, customer, follow):
+    ops = swap_instructions(plan.payer, plan.cash, route, output, maximum, rent) if output else []
     burn = reserve["eligible_shares_raw"] - reserve["retained_shares_raw"]
     if burn:
         ops.append(devnet.vault_instruction(plan.route, plan.payer, plan.cash, plan.shares, burn, venue=devnet.VENUE))

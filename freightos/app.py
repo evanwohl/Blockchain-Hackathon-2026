@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, bill, collateral_path, credit_exit, customer_credit, devnet, driver_desk, diesel_model, load_credit, mainnet_loan, mainnet_stop, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, repeat_credit, replay_prices, reserve_credit, reserve_return, road_cash, stop_backup, trip_cover
+from freightos import atomic_fuel, bill, collateral_path, credit_exit, customer_credit, devnet, driver_desk, diesel_model, load_credit, mainnet_loan, mainnet_stop, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, repeat_credit, split_payment, replay_prices, reserve_credit, reserve_return, road_cash, stop_backup, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -626,6 +626,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/trip-cover":
             self.respond(200, {**trip_cover.saved(), "source": "recorded"})
             return
+        if self.path == "/evidence/split-payment":
+            self.reply(200, "application/json", gzip.decompress(split_payment.SAMPLE.read_bytes()), static=True)
+            return
+        if self.path in ("/api/split-payment", "/api/split-payment/simulate"):
+            try:
+                result = self.server.split_payment.read() if self.path.endswith("/simulate") else split_payment.saved()
+                self.respond(200, result)
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+                self.respond(503, {"error": "The combined Devnet loan and sale could not be verified."})
+            return
         if self.path == "/evidence/repeat-credit":
             self.reply(200, "application/json", gzip.decompress(repeat_credit.SAMPLE.read_bytes()), static=True)
             return
@@ -1194,6 +1204,7 @@ def main():
     server.policy_checks = {menu: PublicCheck(lambda m=menu: payday_policy.quotes(m, True)) for menu in customer_credit.MENUS}
     server.swap_checks = {net: PublicCheck(lambda n=net: fuel_swap.capture(n)[0]) for net in customer_credit.ADVANCES}
     server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
+    server.split_payment = PublicCheck(split_payment.simulate)
     server.repeat_credit = PublicCheck(lambda: repeat_credit.verify(repeat_credit.capture()))
     server.settled_credit = PublicCheck(lambda: load_credit.settled(devnet.request))
     server.forward_check = PublicCheck(forward.ResultCheck().read)
