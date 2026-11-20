@@ -3,7 +3,7 @@
 import gzip
 import json
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from functools import cache
@@ -13,7 +13,7 @@ from math import ceil
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, regional_diesel
+from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, pump_value, regional_diesel
 from hedging.quick_pay import integer
 
 SNAPSHOT = fuel_cover.SNAPSHOT.with_name("trip_cover.json.gz")
@@ -376,6 +376,20 @@ def pump_target(offers, gaps, pump_cash, reserve_cash, spend_limit, gallon_cents
             "plan": plan, "minimum_spend_cents": minimum}
 
 
+def pump_price_check(samples, offers, plan, trip, fill, as_of):
+    prices = fill_replay.prices()["diesel_mills"][trip["region"]]
+    result = pump_value.evaluate(samples, offers, plan, prices, fill, as_of)
+    if result and len(plan["legs"]) == 1:
+        leg, = plan["legs"]
+        ticks = [(price, sum(cost(leg["lots"], {"price": price}))) for price in range(1, 100)]
+        def highest(limit):
+            return max((price for price, all_in in ticks if all_in <= limit), default=None)
+        result["single_quote"] = {"ask": leg["price"], "strike": leg["strike"],
+                                  "mean_limit": highest(result["mean_ceiling_cents"]),
+                                  "tail_limit": highest(result["tail_ceiling_cents"])}
+    return result
+
+
 def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fuel):
     reference = datetime.fromisoformat(fuel["close_expiry"]).astimezone(timezone.utc).date()
     expiry = datetime.fromisoformat(fuel["expiry"]).astimezone(timezone.utc).date()
@@ -400,6 +414,8 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
         after["one_late"] = fill_replay.one_late_summary(later, offers, plan)
         if plan["legs"]:
             ready, _ = fill_replay.pump_gaps(later, offers, plan)
+            if offsets:
+                after["pump_value"] = pump_price_check(later, offers, plan, trip, expiry + timedelta(days=offsets[1]), as_of)
             if cash_check:
                 checks[name] = backup.estimate(later, ready, as_of)
             after["delays"] = fill_replay.delay_threshold(ready, [row[1] for row in later], plan["upfront_cents"])

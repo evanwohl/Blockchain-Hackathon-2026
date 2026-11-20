@@ -7,12 +7,13 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from fractions import Fraction
 from functools import cache
 from html import unescape
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from freightos import devnet, diesel_model, freight_credit, fuel_update, next_stop, public_offer, trip_cover
+from freightos import devnet, diesel_model, fill_replay, freight_credit, fuel_update, next_stop, public_offer, trip_cover
 from freightos.fuel_markets import reported_close
 
 TICKET = trip_cover.SNAPSHOT.with_name("forward_fill.json.gz")
@@ -165,6 +166,22 @@ def cash_edge(plan, funds, gallons):
                 "maximum_saving_cents": payout - premium}
 
 
+@cache
+def published_value():
+    ticket = saved()
+    trip = ticket["trip"]
+    plan = ticket["plans"][ticket["primary"]]
+    settled, = [item for item in ticket["quotes"]["market"]["events"].values() if item["event"]["status"] == "settled"]
+    close, _ = reported_close(settled["event"], datetime.fromisoformat(settled["reported_at"]))
+    offsets = fill_replay.expiry_offsets(datetime.fromisoformat(settled["event"]["expiryDate"]).date(),
+                                         datetime.fromisoformat(ticket["expiry"]).date())
+    offers = sorted(plan["legs"], key=lambda leg: Decimal(leg["strike"]))
+    fuel_cash = max(0, ticket["reserve"]["available_cents"] - ticket["reserve"]["road_cents"])
+    as_of = datetime.fromisoformat(ticket["quotes"]["checked_at"]).date()
+    _, later = fill_replay.fills(trip, Fraction(close), offers, fuel_cash, as_of, offsets)
+    return trip_cover.pump_price_check(later, offers, plan, trip, date.fromisoformat(ticket["fill_day"]), as_of)
+
+
 def score(ticket, funding_check, oil=None, diesel=None):
     trip = ticket["trip"]
     funds = trip["budget_cents"] + trip["pump_cash_cents"] + max(0, ticket["reserve"]["available_cents"] - ticket["reserve"]["road_cents"])
@@ -187,7 +204,7 @@ def score(ticket, funding_check, oil=None, diesel=None):
                       "backup_cents": funding_check["targets"][key],
                       "after_credit_cents": max(0, gap-capacity) if key == ticket["primary"] and gap is not None else None})
     return {"recorded_at": ticket["recorded_at"], "expiry": ticket["expiry"], "fill_day": ticket["fill_day"],
-            "credit": credit, "trip": trip, "baseline": ticket["baseline"], "event": ticket["event"], "primary": ticket["primary"], "reserve": ticket["reserve"],
+            "credit": credit, "trip": trip, "baseline": ticket["baseline"], "event": ticket["event"], "primary": ticket["primary"], "positions": ticket["plans"][ticket["primary"]], "reserve": ticket["reserve"],
             "edge": cash_edge(ticket["plans"][ticket["primary"]], funds, trip["gallons"]),
             "funds_cents": funds, "bill_cents": bill, "oil": oil, "diesel": diesel, "plans": plans}
 
@@ -210,7 +227,7 @@ def live(previous=None):
             diesel = observation
     except (OSError, ValueError, TypeError, KeyError):
         errors.append("EIA")
-    return {**score(ticket, funding(), oil, diesel), "errors": errors, "checked_at": datetime.now(timezone.utc).isoformat()}
+    return {**score(ticket, funding(), oil, diesel), "pump_value": published_value(), "errors": errors, "checked_at": datetime.now(timezone.utc).isoformat()}
 
 
 class ResultCheck:

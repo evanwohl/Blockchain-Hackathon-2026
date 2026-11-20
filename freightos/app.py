@@ -504,7 +504,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/forward-fill":
-            self.respond(200, forward.score(forward.saved(), forward.funding()))
+            self.respond(200, {**forward.score(forward.saved(), forward.funding()), "pump_value": forward.published_value()})
             return
         if self.path == "/api/forward-fill/check":
             try:
@@ -650,6 +650,7 @@ class Handler(BaseHTTPRequestHandler):
             "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
             "/fuel_credit.js": ("fuel_credit.js", "text/javascript"),
             "/forward-fill": ("forward.html", "text/html; charset=utf-8"),
+            "/pump_value.js": ("pump_value.js", "text/javascript"),
             "/forward.js": ("forward.js", "text/javascript"),
             "/trip-cover": ("trip_cover.html", "text/html; charset=utf-8"),
             "/trip_credit.js": ("trip_credit.js", "text/javascript"),
