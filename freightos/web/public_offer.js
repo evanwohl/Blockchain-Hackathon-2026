@@ -62,7 +62,9 @@ async function check(live) {
     status.textContent = live ? "Verified on Devnet. The vendor received " + tokenUnits(proof.received_raw)
       + " test USDC in slot " + proof.steps.settle.slot.toLocaleString("en-US") + "." : "Saved receipt. Verify it against the public network.";
   } catch {
-    status.textContent = "The receipt check is unavailable. Try again or open the signed transaction below.";
+    status.textContent = live && !el("settled-split").hidden
+      ? "Live verification is unavailable. The previously loaded receipt is still shown. You can retry the check."
+      : "The receipt check is unavailable. Try again or open the signed transaction below.";
   } finally {
     verify.disabled = false;
   }
