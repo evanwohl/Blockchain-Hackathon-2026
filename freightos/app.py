@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cover, fuel_swap, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
+from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cover, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -639,6 +639,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/credit-exits":
             self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
             return
+        if self.path == "/evidence/sol-payday":
+            self.reply(200, "application/json", gzip.decompress(payday_policy.HISTORY.read_bytes()), static=True)
+            return
         if self.path == "/evidence/fuel-swap":
             self.reply(200, "application/json", gzip.decompress(fuel_swap.SAMPLE.read_bytes()), static=True)
             return
@@ -727,6 +730,7 @@ class Handler(BaseHTTPRequestHandler):
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
             "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
+            "/payday_policy.js": ("payday_policy.js", "text/javascript"),
             "/fuel_swap.js": ("fuel_swap.js", "text/javascript"),
             "/customer_credit.js": ("customer_credit.js", "text/javascript"),
             "/fuel_credit.js": ("fuel_credit.js", "text/javascript"),
@@ -942,6 +946,22 @@ class Handler(BaseHTTPRequestHandler):
                         data, calendar, self.server.settlement.load_reserve(data.get("reserve_mode")))
                 self.respond(200, calendar)
                 return
+            if self.path == "/api/payday-policy":
+                args = [data.get("menu"), data.get("fee_cents"), 0, data.get("extra_cents"), data.get("floor_cents"), data.get("stress_cents")]
+                budget = integer(data.get("budget_cents"), "wallet budget", 100000000)
+                keep = data.get("keep_profile", False)
+                if type(keep) is not bool:
+                    raise ValueError("Choose whether to leave loan setup money tied up")
+                payday_policy.inputs(*args)
+                source = data.get("source")
+                if source not in ("live", "recorded"):
+                    raise ValueError("Choose recorded or live funding checks")
+                try:
+                    checked = self.server.policy_checks[args[0]].read() if source == "live" else payday_policy.quotes(args[0])
+                    self.respond(200, {**payday_policy.decide(checked, *args, budget_cents=budget, keep_profile=keep), "source": source})
+                except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):
+                    self.respond(503, {"error": "The funding routes could not all be verified on the same wallet and market window."})
+                return
             if self.path == "/api/fuel-swap":
                 customer = integer(data.get("customer_cents"), "customer contribution", 9900)
                 menu, fee, funds, extra = (data.get(k) for k in ("menu", "fee_cents", "wallet_lamports", "extra_cents"))
@@ -1045,6 +1065,7 @@ def main():
                            for drop, days in server.credit_checks for protect in (False, True)}
     server.reserve_credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: reserve_credit.live(d, t))
                                   for drop, days in server.credit_checks}
+    server.policy_checks = {menu: PublicCheck(lambda m=menu: payday_policy.quotes(m, True)) for menu in customer_credit.MENUS}
     server.swap_checks = {net: PublicCheck(lambda n=net: fuel_swap.capture(n)[0]) for net in customer_credit.ADVANCES}
     server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
     server.settled_credit = PublicCheck(lambda: load_credit.settled(devnet.request))

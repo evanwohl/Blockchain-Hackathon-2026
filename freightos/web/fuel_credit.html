@@ -16,15 +16,19 @@
       <h1>Cover the <em>$190 bill.</em></h1>
       <p id="credit-intro">The sample customer offers to pay a $200 invoice early for $10. If you own SOL, you can pledge it for a fuel loan and collect the full invoice later.</p>
       <form id="credit-form"><div class="trip-fields">
-        <label>How will you cover the bill?<select id="credit-route"><option value="sale">Compare selling SOL with a loan</option><option value="customer">Use a customer contribution</option><option value="combined">Pay once from reserve and loan</option><option value="loan">Borrow the full $190</option><option value="reserve">Compare separate payments</option></select></label>
+        <label>How will you cover the bill?<select id="credit-route"><option value="policy">Find a plan for this bill</option><option value="sale">Compare selling SOL with a loan</option><option value="customer">Use a customer contribution</option><option value="combined">Pay once from reserve and loan</option><option value="loan">Borrow the full $190</option><option value="reserve">Compare separate payments</option></select></label>
       </div><div id="customer-settings" hidden>
         <div class="trip-fields">
           <label>Customer can send before fuel is due<select id="customer-menu"><option value="both">$49.50 or $99</option><option value="half">Only $49.50</option><option value="full">Only $99.00</option><option value="none">Nothing early</option></select></label>
+          <label class="policy-field" hidden>SOL I can use today (dollar value)<input id="policy-budget" type="number" min="0" max="1000000" step=".01" value="80.00" required disabled></label>
+          <label class="policy-field" hidden>Cash I need left from the invoice on payday ($)<input id="policy-floor" type="number" min="0" max="1000000" step=".01" value="0.00" required disabled></label>
           <label>Test SOL available for this payment<input id="customer-wallet" type="number" min="0" max="1000" step="0.000000001" value="0.060" required></label>
         </div>
         <details><summary>Adjust fees and see timing</summary><div class="trip-fields">
           <label>Fee for $99 of early cash ($)<input id="customer-fee" type="number" min="0" max="100" step=".01" value="1.00" required></label>
           <label>Other loan expenses due by payday ($)<input id="customer-extra" type="number" min="0" max="1000000" step=".01" value="0.00" required></label>
+          <label class="policy-field" hidden>One more payday SOL price to test ($)<input id="policy-stress" type="number" min="0" max="100000" step=".01" placeholder="Optional" disabled></label>
+          <label class="policy-field payday-switch" hidden><input type="checkbox" id="policy-profile" disabled><span>I can leave loan setup money tied up after payday</span></label>
         </div><p>The $49.50 offer costs half the fee, rounded up to a cent. The unpaid invoice is due in 23 days. Each loan allows for seven extra days, twice its quoted borrowing rate and a 40% SOL price drop.</p></details>
         <button class="secondary" type="submit">Refresh loan checks on public Solana</button>
       </div><div id="combined-settings" hidden>
@@ -43,8 +47,18 @@
       <p id="credit-status" role="status" aria-live="polite">Opening the recorded loan preview…</p>
       <p class="credit-scope">Payment preview · test funds only.</p>
     </section>
-    <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label">Fuel funding · Kamino</p>
+    <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label" id="credit-provider">Fuel funding · Kamino</p>
       <h2 id="credit-heading" tabindex="-1">What borrowing would cost</h2>
+      <div id="policy-result" hidden>
+        <div class="trip-outcome"><small id="policy-label"></small><strong id="policy-total"></strong><p id="policy-action"></p></div>
+        <div id="policy-strip" aria-hidden="true" hidden><i></i><i></i><i></i><i></i></div>
+        <dl class="facts" id="policy-sources"></dl>
+        <button type="button" class="secondary" id="policy-draft" hidden>Download customer request</button>
+        <section class="spending-result"><h3>Cash for the next trip</h3><p id="policy-payday"></p><p id="policy-wait"></p><button id="policy-try-wait" type="button" class="secondary" hidden></button></section>
+        <details><summary>Compare the customer offers</summary><dl class="facts" id="policy-offers"></dl><p id="policy-rule"></p></details>
+        <details><summary>How the price checks work</summary><p id="policy-evidence"></p><dl class="facts" id="policy-moves"></dl><p id="policy-assumptions"></p>
+          <a href="/evidence/sol-payday" download="FreightOS-SOL-settlements.json">Download Gemini settlements</a> · <a href="/evidence/fuel-swap" download="FreightOS-fuel-routes.json">Download recorded Solana checks</a></details>
+      </div>
       <div id="sale-primary" hidden></div>
       <div id="customer-result" hidden>
         <div class="trip-outcome"><small id="customer-label"></small><strong id="customer-amount"></strong><p id="customer-action"></p></div>

@@ -205,3 +205,12 @@
 #sale-primary #fuel-sale > summary, #sale-primary #sale-heading, #sale-primary #sale-live, #sale-primary #fuel-sale > p:first-of-type { display: none; }
 #sale-primary #fuel-sale[open] { display: flex; flex-direction: column; }
 #sale-primary #sale-result { order: -1; }
+
+#policy-strip { display: flex; height: .55rem; margin: 1rem 0 .5rem; border: 1px solid #44513e; }
+#policy-strip[hidden] { display: none; }
+#policy-strip i:nth-child(1) { background: repeating-linear-gradient(120deg,#d5cde2 0 3px,#776987 3px 4px); }
+#policy-strip i:nth-child(2) { background: var(--paper); }
+#policy-strip i:nth-child(3) { background: #c5d65f; }
+#policy-strip i:nth-child(4) { background: #354637; }
+#policy-try-wait { margin-top: .7rem; }
+#policy-result details a { line-height: 1.8; }
