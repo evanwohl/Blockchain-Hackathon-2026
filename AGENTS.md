@@ -162,3 +162,9 @@ In the editable load, Fuel reserve compares a separately funded $600 sample or t
 The load page now opens on the reserve timing preview. Choose a Nov 5 or Nov 6 arrival and optionally enable a sample 2% bank line. The visual bill shows modeled coverage, each source, fees and any shortfall. Customer timing and the editable calendar expand below it.
 
 The sample load leads with the $245 gap and ranks the available funding combinations by whether they clear the bill and their total modeled fee. The reserve, bank, and customer controls reprice that comparison. If none fits, the closest option shows the remaining shortfall.
+
+On the load page, **Check my wallet on Solana Devnet** connects an injected Phantom wallet after browser approval. The read-only check displays the connected address and its test SOL and associated Circle USDC balances at one confirmed Devnet slot. It handles account changes, rejection and RPC retry. This panel does not sign payments or substitute real balances into the sample funding plan.
+
+After the load comparison, **Review sample payment** opens a distinct fixed Devnet example showing its vendor, 5.55 test USDC reserve transfer and $190 modeled outside portion. The receipt links to the saved public record. Check my own wallet is optional; opening the review does not create or fund a wallet.
+
+The load header switches between Funding plan, Sample receipt and Edit load. The first view diagrams cash sources into the vendor bill and reprices on timing or eligibility changes. The separate receipt view opens the fixed Devnet example directly. The existing browser-wallet deep link opens its wallet disclosure.

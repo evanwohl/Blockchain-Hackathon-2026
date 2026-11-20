@@ -4,30 +4,50 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Fuel cash calendar · FreightOS</title>
   <link rel="stylesheet" href="/style.css"><script type="module" src="/load.js"></script>
+  <script type="module" src="/browser_wallet.js"></script>
 </head>
 <body class="workspace load-workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><a href="/">← Overview</a></div></header>
 <main class="load-editor">
-  <header><p class="load-kicker">Sample load · November 5</p><h1>How should I cover the $245 gap?</h1></header>
-  <p class="gap-intro">Fuel costs <b>$745</b>. Set aside <b>$100</b> for the road and you have <b>$500</b> to spend.</p>
+  <nav class="load-views" aria-label="Load views"><a href="#reserve">Funding plan</a><a href="#receipt">Sample receipt</a><a href="#edit">Edit load</a></nav>
   <section class="reserve-board" id="reserve" aria-label="Practice funding preview">
+    <header class="flow-heading"><span class="load-kicker">Sample load · Nov 5</span><h1>Cover the fuel bill</h1></header>
     <article class="funding-ticket" aria-live="polite" aria-atomic="true">
-      <header><span>Lowest-cost plan · Due Nov 5</span><b>Practice forecast</b></header>
+      <header><span>Lowest-cost option</span><b>Practice forecast</b></header>
       <div class="ticket-outcome"><span id="ticket-icon" aria-hidden="true">…</span><h2 id="ticket-title">Checking funds…</h2></div>
       <div class="ticket-track" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <dl id="ticket-lines"></dl>
+      <div class="flow-path"><dl id="ticket-lines" aria-label="Funding sources"></dl><span class="flow-arrow" aria-hidden="true">→</span><div class="flow-sink"><small>Fuel vendor</small><strong id="flow-total">—</strong><span id="flow-state"></span></div></div>
       <p id="ticket-reason"></p><button id="ticket-retry" hidden>Retry preview</button>
     </article>
-    <section class="fee-choices"><h2>Compare the options</h2><ol id="fee-list"></ol></section>
-    <details class="load-custom" open><summary>Available funding</summary>
-    <fieldset class="story-choices" id="arrival"><legend>When can you use your reserve?</legend>
+    <fieldset class="story-choices" id="arrival"><legend>Reserve arrival</legend>
       <label><input type="radio" name="arrival" value="2026-11-05" checked>Nov 5 · On time</label>
       <label><input type="radio" name="arrival" value="2026-11-06">Nov 6 · One day late</label>
     </fieldset>
-    <label class="backup-switch"><input type="checkbox" id="backup-credit" checked> Approved bank line <small>2% fee</small></label>
-    <label class="backup-switch"><input type="checkbox" id="customer-offer" checked> Customer offers $175 early <small>$5 discount</small></label>
-    </details>
+    <label class="backup-switch"><input type="checkbox" id="backup-credit" checked> Bank line <small>2% fee</small></label>
+    <label class="backup-switch"><input type="checkbox" id="customer-offer" checked> Customer early pay <small>$175 after fee</small></label>
+    <details class="load-custom fee-choices"><summary>Compare all fees</summary><ol id="fee-list"></ol></details>
   </section>
+  <section class="wallet-walk" id="browser-wallet" aria-labelledby="walk-title">
+    <p class="load-kicker">Solana Devnet · Separate payment example</p>
+    <h2 id="walk-title">Completed reserve payment</h2>
+    <div id="walk-review">
+      <div class="receipt-route"><span>Carrier reserve</span><b aria-hidden="true">→</b><strong>5.55 test USDC</strong><b aria-hidden="true">→</b><span>Fuel vendor</span></div>
+      <dl><div><dt>Payee</dt><dd>Demo fuel company</dd></div>
+      <div><dt>From the Kamino reserve</dt><dd>5.55 test USDC</dd></div>
+      <div><dt>Outside this transfer</dt><dd>$190 of the modeled bill</dd></div></dl>
+      <p>Each test cent represents one modeled dollar. This saved transfer covers $555 of the $745 example.</p>
+      <a class="secondary" href="/public-payment">View the completed Devnet receipt →</a>
+      <details class="load-custom"><summary>Check my own wallet</summary>
+        <p>Connect Phantom to read your Devnet balances.</p>
+        <button type="button" class="secondary" id="wallet-connect">Connect Phantom</button>
+        <button type="button" class="secondary" id="wallet-refresh" hidden>Refresh balances</button>
+        <button type="button" class="secondary" id="wallet-disconnect" hidden>Disconnect</button>
+        <p id="wallet-address" style="overflow-wrap:anywhere"></p>
+        <p role="status" id="wallet-check"></p>
+      </details>
+    </div>
+  </section>
+  <section id="edit">
   <details class="load-custom"><summary>Compare a customer’s early payment</summary>
   <section class="fuel-story" aria-label="Sample fuel walkthrough">
     <fieldset class="story-choices" disabled>
@@ -44,7 +64,7 @@
     <button id="retry-story" hidden>Retry example</button>
   </section>
   </details>
-  <details class="load-custom"><summary>Edit my own numbers</summary>
+  <details class="load-custom" open><summary>Edit my own numbers</summary>
   <p class="load-kicker" id="source">Sample load</p>
   <section class="load-slip" aria-label="Fuel cash forecast">
     <div><span id="verdict">Calculating cash before funding</span><strong id="gap">—</strong><p id="summary"></p></div>
@@ -77,4 +97,6 @@
   <section class="load-ledger"><h2>Cash calendar</h2><p>Projected balance after each entry</p><ol id="entries"></ol></section>
   </div>
   </details>
+
+  </section>
 </main></body></html>

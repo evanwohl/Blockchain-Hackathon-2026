@@ -854,3 +854,34 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .fee-choices strong { white-space:nowrap; font-variant-numeric:tabular-nums; }
 .reserve-board > .load-custom .story-choices { margin-top:1rem; }
 .ticket-track i:nth-child(4) { background:#779fa8; }
+
+.wallet-walk { margin: 1.5rem 0; padding: clamp(1rem,3vw,2rem); border: 1px solid var(--rule); }
+.wallet-walk dl div { display:flex; justify-content:space-between; gap:1rem; padding:.55rem 0; border-bottom:1px solid var(--rule); }
+.wallet-walk dd { margin:0; text-align:right; font-weight:600; }
+.wallet-walk a.secondary { display:inline-block; }
+.load-workspace .load-editor { padding-top:.75rem; }
+.load-views { display:flex; gap:1rem; margin-bottom:.85rem; border-bottom:1px solid var(--rule); }
+.load-views a { color:var(--white); padding:.65rem .1rem; text-decoration:none; }
+.load-views a[aria-current] { color:var(--citron); border-bottom:2px solid; }
+.flow-heading h1 { font-size:clamp(2rem,4vw,3rem); margin:0; }
+.flow-path { display:grid; grid-template-columns:minmax(0,1.2fr) auto minmax(0,1fr); gap:.65rem; align-items:center; margin:.75rem 0; }
+.flow-path dl { margin:0; }
+.flow-path dl div,.flow-path dl div:last-child { border:0; border-left:3px solid #738465; background:#e8e9df; padding:.4rem .55rem; margin:.25rem 0; font-size:.87rem; font-weight:500; }
+.flow-path dl div:nth-child(2) { border-color:#93aa50; }
+.flow-arrow { font-size:1.5rem; }
+.flow-sink { border:1px solid #9ca68c; padding:.5rem; display:grid; justify-items:center; }
+.flow-sink strong { font:600 clamp(1.65rem,4vw,2.6rem)/1.15 var(--display); }
+.flow-sink span { font-size:.75rem; }
+.reserve-board .story-choices { margin:.75rem 0 .1rem; }
+.reserve-board .load-custom { margin:.25rem 0 0; }
+.reserve-board .backup-switch { display:inline-flex; margin-right:1rem; }
+.receipt-route { display:flex; align-items:center; justify-content:space-between; gap:.5rem; padding:1rem .6rem; margin:.8rem 0; background:var(--paper); color:var(--ink); text-align:center; }
+@media(max-width:550px) {
+ .reserve-board { padding:.75rem; }
+ .funding-ticket { padding:.75rem; }
+ .ticket-outcome { margin:.65rem 0 .4rem; }
+ .ticket-outcome h2 { font-size:1.85rem; }
+ .flow-path { gap:.3rem; }
+ .flow-path dl div { flex-wrap:wrap; gap:.1rem .35rem; }
+ .load-views { justify-content:space-between; gap:.35rem; }
+}

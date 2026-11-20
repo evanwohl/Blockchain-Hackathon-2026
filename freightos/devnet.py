@@ -39,6 +39,24 @@ def request(method, params):
     return payload["result"]
 
 
+def wallet_balances(address, rpc=request):
+    """Read the payer and the Circle USDC account used by PublicPayment in one slot."""
+    payer = Pubkey.from_string(address)
+    account = associated(payer, MINT)
+    snapshot = rpc("getMultipleAccounts", [[str(payer), str(account)],
+                   {"encoding": "jsonParsed", "commitment": "confirmed"}])
+    native, tokens = snapshot["value"]
+    amount = 0
+    if tokens is not None:
+        info = tokens["data"]["parsed"]["info"]
+        if (tokens["owner"] != str(TOKEN) or info["owner"] != address or
+                info["mint"] != str(MINT) or info["tokenAmount"]["decimals"] != 6):
+            raise ValueError("Unexpected Devnet token account")
+        amount = int(info["tokenAmount"]["amount"])
+    return {"address": address, "slot": snapshot["context"]["slot"],
+            "lamports": native["lamports"] if native else 0, "usdc_raw": str(amount)}
+
+
 def create_ata(payer, owner, mint):
     return Instruction(ATA, b"\x01", [
         AccountMeta(payer, True, True), AccountMeta(associated(owner, mint), False, True),

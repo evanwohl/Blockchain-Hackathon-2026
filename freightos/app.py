@@ -634,6 +634,7 @@ class Handler(BaseHTTPRequestHandler):
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
             "/load": ("load.html", "text/html; charset=utf-8"),
+            "/browser_wallet.js": ("browser_wallet.js", "text/javascript"),
             "/load.js": ("load.js", "text/javascript"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
             "/next_stop.js": ("next_stop.js", "text/javascript"),
@@ -681,6 +682,16 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/devnet-wallet":
+                address = data.get("address")
+                if not isinstance(address, str):
+                    raise ValueError("Enter a wallet address")
+                devnet.Pubkey.from_string(address)
+                try:
+                    self.respond(200, devnet.wallet_balances(address))
+                except (OSError, ValueError, KeyError, TypeError):
+                    self.respond(503, {"error": "Devnet balances are unavailable. Try again."})
+                return
             if self.path == "/api/load-calendar":
                 calendar = project_load(data)
                 if data.get("compare_funding") is True:

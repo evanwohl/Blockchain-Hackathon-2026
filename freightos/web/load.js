@@ -249,7 +249,8 @@ async function previewTicket() {
     const lines = [["Your cash", cash], ["Your reserve", amounts[1]], ["Bank line", amounts[2]], ["Customer early pay", amounts[3]]]
       .filter(([, amount]) => amount > 0);
     if (!covered) lines.push(["Still needed", plan.gap_cents]);
-    lines.push(["Fuel bill", forecast.fuel_cents]);
+    write("#flow-total", money(forecast.fuel_cents));
+    write("#flow-state", covered ? "Fully covered" : "Short " + money(plan.gap_cents));
     const comparisons = candidates.map(item => {
       const row = document.createElement("li");
       const cost = document.createElement("strong");
@@ -274,12 +275,14 @@ async function previewTicket() {
     write("#ticket-title", covered ? label + " · " + money(plan.cost_cents) + " fee" : money(plan.gap_cents) + " still needed");
     const next = candidates.slice(1).find(item => item.plan.status === "funded");
     const savings = next ? next.plan.cost_cents - plan.cost_cents : 0;
-    write("#ticket-reason", covered ? "Fuel is covered and $100 stays available for the road." +
+    write("#ticket-reason", covered ? "$100 kept for the road." +
       (savings > 0 ? " Saves " + money(savings) + " versus " + next.label.toLowerCase() + "." : "") :
       "Available funds fall short by the fuel deadline, even with the lowest-gap option.");
   } catch {
     if (request !== ticketRequest) return;
     document.querySelector("#fee-list").replaceChildren();
+    write("#flow-total", "—");
+    write("#flow-state", "");
     delete ticket.dataset.state;
     write("#ticket-title","Forecast unavailable");
     write("#ticket-icon","…");
