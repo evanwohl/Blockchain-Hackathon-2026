@@ -3,6 +3,7 @@ import {el, facts, money, request, saveFile} from "./common.js";
 const form = el("stop-inputs"), verify = el("verify"), note = el("check-status");
 let focusMainnet = false, focusOffer = false, keepRoadCash = false;
 let originalCounter;
+let focusWait = false;
 let preference = "keep-cash";
 let revision = 0, timer, pending, last, undo;
 
@@ -90,6 +91,39 @@ function paydayChange(delta) {
   return delta === 0 ? "the same cash" : money(Math.abs(delta)) + (delta > 0 ? " more" : " less");
 }
 
+function showPriceCase(wait, fee) {
+  const choice = el("wait-scenario");
+  if (!wait[choice.value]) choice.value = "starting_price";
+  for (const option of choice.options) option.disabled = !wait[option.value];
+  const c = wait[choice.value], limit = c.fee_limit_cents;
+  el("case-price").textContent = "Buy SOL back at " + money(c.price_cents) + " per SOL";
+  el("case-early").textContent = money(c.early_cents);
+  el("case-wait").textContent = money(c.wait_cents);
+  el("case-fee").textContent = limit === null ? "Even free early pay would miss your target or leave less cash than waiting at this price."
+    : "At this price, a flat fee up to " + money(limit) + " meets your target and leaves at least as much as waiting with this cash split.";
+  el("price-fee").hidden = limit === null || limit >= fee;
+  if (!el("price-fee").hidden) el("price-fee").textContent = "Reprice the offer at a " + money(limit) + " fee";
+}
+
+function showCrossover(wait) {
+  const cross = wait.crossover, title = el("cross-title"), range = el("cross-range");
+  if (cross.constant_difference_cents !== undefined) {
+    title.textContent = "The buyback price does not change the choice";
+    range.textContent = "Both plans replace the same amount of SOL. Early pay leaves " + paydayChange(cross.constant_difference_cents) + " on payday at every price.";
+    return;
+  }
+  const first = cross.first_match_cents, ahead = cross.always_ahead_cents;
+  if (first === ahead) {
+    title.textContent = "Early pay leaves more from " + money(ahead) + " per SOL";
+  } else if (cross.ties_only) {
+    title.textContent = "Same payday cash at " + money(first) + (first === ahead - 1 ? "" : "–" + money(ahead - 1)) + " per SOL";
+  } else {
+    title.textContent = "Rounding affects the choice between " + money(first) + " and " + money(ahead - 1) + " per SOL";
+  }
+  range.textContent = (first ? "Below " + money(first) + ", waiting leaves more. " : "")
+    + "From " + money(ahead) + " up, early pay leaves more with the same driver cash.";
+}
+
 function showCounter(q, c) {
   const row = c.plan;
   el("offer-switch").hidden = el("offer-tradeoff").hidden = el("offer-fuel-only").hidden = true;
@@ -118,6 +152,13 @@ function showCounter(q, c) {
     el("wait-result").textContent = "With the same " + money(row.cash_cents) + " from you, waiting needs a "
       + money(wait.budget_cents) + " SOL budget to cover fuel. " + (wait.fits ? "At the tested high of " + money(q.high_price_cents)
         + " per SOL, early pay leaves " + paydayChange(wait.stress_difference_cents) + " on payday." : "That exceeds the available SOL limit.");
+    el("wait-budget").hidden = !wait.preview_budget_cents;
+    if (wait.preview_budget_cents) el("wait-budget").textContent = "Compare with a " + money(wait.budget_cents) + " SOL limit";
+    el("wait-prices").hidden = !wait.fits;
+    if (wait.fits) {
+      showCrossover(wait);
+      showPriceCase(wait, c.flat_fee_cents);
+    }
     el("wait-history").hidden = !wait.windows;
     if (wait.windows) el("wait-history").textContent = "Across " + wait.windows + " recorded Gemini price moves, the least favorable result for early pay was "
       + paydayChange(wait.lowest[0]) + " at " + money(wait.lowest[1]) + " per SOL. The most favorable was "
@@ -239,8 +280,15 @@ function render(q) {
     + (q.payment_slot ? "The exact wallet transfer was simulated at slot " + q.payment_slot.toLocaleString("en-US") + "."
       : q.wallet_cents ? "This exact transfer is priced from the pool accounts." : "This split uses no wallet transfer.");
   repairs(q); showPriceRoom(q); showMainnet(q);
-  if (focusOffer && q.mainnet) revealOffer();
-  focusOffer = false;
+  if (focusOffer && q.mainnet) {
+    revealOffer();
+    if (focusWait && !el("compare-wait").hidden) {
+      el("compare-wait").open = true;
+      const summary = el("compare-wait").querySelector("summary");
+      summary.focus({preventScroll: true}); summary.scrollIntoView({block: "start"});
+    }
+  }
+  focusWait = focusOffer = false;
   if (focusMainnet) {
     el("mainnet-check").querySelector("summary").focus({preventScroll: true});
     focusMainnet = false;
@@ -315,6 +363,18 @@ function compareCounter(field, cents) {
   el(field).value = (cents / 100).toFixed(2);
   focusOffer = true; estimate();
 }
+el("wait-scenario").onchange = () => {
+  const c = last?.mainnet?.early_freight.counter;
+  if (c?.wait?.fits) showPriceCase(c.wait, c.flat_fee_cents);
+};
+el("price-fee").onclick = () => {
+  const limit = last?.mainnet?.early_freight.counter?.wait?.[el("wait-scenario").value]?.fee_limit_cents;
+  if (limit != null) { focusWait = true; compareCounter("flat_fee", limit); }
+};
+el("wait-budget").onclick = () => {
+  const budget = last?.mainnet?.early_freight.counter?.wait?.preview_budget_cents;
+  if (budget) { focusWait = focusOffer = true; tryAmount("budget", budget); }
+};
 el("try-counter-fee").onclick = () => compareCounter("flat_fee", last.mainnet.early_freight.counter.fee_ceiling_cents);
 el("try-counter-net").onclick = () => compareCounter("offer_amount", last.mainnet.early_freight.counter.nearest_net_cents);
 el("undo-counter").onclick = () => {
@@ -390,6 +450,9 @@ function openPreset() {
   el("mainnet-check").open = ["mainnet", "early-pay"].includes(preset.get("market"));
   focusOffer = preset.get("market") === "early-pay";
   el("offer-result").open = focusOffer;
+  focusWait = focusOffer && preset.get("view") === "buyback";
+  el("compare-wait").open = focusWait;
+  el("wait-scenario").value = "starting_price";
   estimate();
 }
 window.addEventListener("hashchange", openPreset);

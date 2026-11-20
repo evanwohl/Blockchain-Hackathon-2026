@@ -10,7 +10,7 @@ import numpy as np
 from solders.pubkey import Pubkey
 from hedging.quick_pay import integer
 
-from freightos import customer_credit, fuel_floor, fuel_swap, reserve, reserve_credit, stop_backup
+from freightos import customer_credit, fuel_floor, fuel_swap, payday_policy, reserve, reserve_credit, stop_backup
 
 EVIDENCE = Path(__file__).with_name("artifacts") / "mainnet_fuel" / "pools.json"
 DIGEST = "3de18210abdfd86e2a7e72cf91284099c623dadd28daf38f211c5466052c7134"
@@ -184,6 +184,39 @@ def counteroffer(bill, stable, received, target, cash, wallet_cap, price, net, f
             "fee_ceiling_cents": ceiling, "nearest_net_cents": nearest[1] if nearest else None}
 
 
+def price_crossover(wait_restore, early_restore, cash_cost, denominator=LAMPORTS):
+    slope = wait_restore - early_restore
+    if slope == 0:
+        return {"constant_difference_cents": -cash_cost}
+
+    def crossing(required, permanent):
+        if required == 0:
+            return 0
+        low = (required - 1) * denominator // slope + 1
+        high = fuel_floor.ceil_div(required * denominator, slope)
+        start, end = low, high
+        while start < end:
+            mid = (start + end) // 2
+            if permanent:
+                gap = -payday_policy.worst_rounding_gap(early_restore, wait_restore, denominator, mid, high)[0]
+            else:
+                gap = payday_policy.worst_rounding_gap(wait_restore, early_restore, denominator, low, mid)[0]
+            if gap >= required:
+                end = mid
+            else:
+                start = mid + 1
+        return start
+
+    first = crossing(cash_cost, False)
+    always = crossing(cash_cost + 1, True)
+    tie_only = False
+    if first < always:
+        minimum = -payday_policy.worst_rounding_gap(early_restore, wait_restore, denominator, first, always-1)[0]
+        maximum = payday_policy.worst_rounding_gap(wait_restore, early_restore, denominator, first, always-1)[0]
+        tie_only = minimum == maximum == cash_cost
+    return {"first_match_cents": first, "always_ahead_cents": always, "ties_only": tie_only}
+
+
 def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="partial", offer_fee=100, offer_amount=None, history_prices=()):
     data, pools = saved() if evidence is None else verify(evidence)
     bill, reference = plan["bill_cents"], plan["reference_cents"]
@@ -240,13 +273,31 @@ def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="pa
             if waiting is not None:
                 wait = {"budget_cents": fuel_floor.ceil_div(waiting[0] * reference, LAMPORTS),
                         "fits": waiting[0] <= wallet_cap}
+                if not wait["fits"] and waiting[0] <= native * scale_factor:
+                    wait["preview_budget_cents"] = wait["budget_cents"]
                 if wait["fits"]:
                     wait["stress_difference_cents"] = row["payday_cents"] - waiting[1]
                     accepted_outside = bill - row["wallet_cents"]
-                    differences = [(price(accepted_outside, level)[1] - offer_fee - price(own, level)[1], level)
-                                   for level in history_prices]
-                    if differences:
-                        wait.update(windows=len(differences), lowest=min(differences), highest=max(differences))
+                    wait_sale = max(0, bill - own - stable)
+                    early_sale = row["sale_cents"]
+                    wait_restore = costs[wait_sale] + (fee if own < bill else 0)
+                    early_restore = costs[early_sale] + (fee if accepted_outside < bill else 0)
+                    wait["crossover"] = price_crossover(wait_restore, early_restore, wait_sale - early_sale + offer_fee)
+
+                    def outcome(level):
+                        early_cash = price(accepted_outside, level)[1] - offer_fee
+                        waiting_cash = price(own, level)[1]
+                        maximum_fee = min(received - offer_amount, early_cash + offer_fee - max(target, waiting_cash))
+                        return {"price_cents": level, "early_cents": early_cash, "wait_cents": waiting_cash,
+                                "fee_limit_cents": maximum_fee if maximum_fee >= 0 else None}
+
+                    wait["starting_price"] = outcome(reference)
+                    wait["high_price"] = outcome(high)
+                    if history_prices:
+                        history = [outcome(level) for level in history_prices]
+                        differences = [(case["early_cents"] - case["wait_cents"], case["price_cents"]) for case in history]
+                        wait.update(windows=len(differences), lowest=min(differences), highest=max(differences),
+                                    historical_low=outcome(min(history_prices)), historical_high=outcome(max(history_prices)))
                 counter["wait"] = wait
         offer = {"menu": "counter", "counter": counter}
     else:

@@ -67,3 +67,11 @@
 .stop-offer button { margin-block: .25rem; }
 
 #counter-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+
+#wait-prices { margin-block: 1rem; border-block: 1px solid var(--line); padding-block: 1rem; }
+#wait-prices h3 { font: 600 1.6rem/1.05 var(--display); }
+#wait-prices label { display: block; font-size: .85rem; margin-bottom: .35rem; }
+#wait-scenario { width: 100%; border: 1px solid #89937d; padding: .65rem; background: #fbfaf5; color: var(--ink); font: inherit; }
+#wait-values dl { display: flex; gap: 1.3rem; margin: .55rem 0; }
+#wait-values dt, #case-price { font-size: .85rem; }
+#wait-values dd { margin: .2rem 0; font: 600 1.6rem/1.1 var(--display); font-variant-numeric: tabular-nums; }

@@ -157,7 +157,7 @@ def test_same_cash_comparison_requires_an_affordable_wait_and_reprices_each_gemi
     def offer(budget):
         return road_cash.evaluate(budget, 7500, 20000, 300, 15000, offer_menu="counter",
                                   offer_amount=9000, offer_fee=206)["mainnet"]["early_freight"]["counter"]
-    assert offer(8000)["wait"] == {"budget_cents": 9559, "fits": False}
+    assert offer(8000)["wait"] == {"budget_cents": 9559, "fits": False, "preview_budget_cents": 9559}
     richer = offer(15000)
     assert richer["plan"]["cash_cents"] == 7500
     wait = richer["wait"]
@@ -171,3 +171,42 @@ def test_same_cash_comparison_requires_an_affordable_wait_and_reprices_each_gemi
     assert wait["stress_difference_cents"] == change(15000) == 9510
     assert wait["lowest"] == (change(4984), 4984) == (-2987, 4984)
     assert wait["highest"] == (change(10735), 10735) == (4188, 10735)
+
+
+def test_price_crossover_handles_rounding_reversals_and_skipped_ties():
+    seen = set()
+    for denominator in (3, 11, 25):
+        for early in range(0, 34, 2):
+            for wait in range(early, 49, 3):
+                for cost in (0, 1, 5, 13):
+                    got = mainnet_stop.price_crossover(wait, early, cost, denominator)
+                    if wait == early:
+                        assert got == {"constant_difference_cents": -cost}
+                        continue
+                    end = fuel_floor.ceil_div((cost + 2) * denominator, wait - early)
+                    gaps = [fuel_floor.ceil_div(wait*p, denominator) - fuel_floor.ceil_div(early*p, denominator) - cost
+                            for p in range(end + 1)]
+                    first = next(p for p, gap in enumerate(gaps) if gap >= 0)
+                    always = 1 + max(p for p, gap in enumerate(gaps) if gap <= 0)
+                    band = gaps[first:always]
+                    assert got == {"first_match_cents": first, "always_ahead_cents": always,
+                                   "ties_only": bool(band) and all(gap == 0 for gap in band)}
+                    seen.add("mixed" if any(band) else "tie" if band else "jump")
+    assert seen == {"mixed", "tie", "jump"}
+
+
+def test_fixed_cash_quote_distinguishes_affordability_from_matching_waiting():
+    def compare(net, fee):
+        return road_cash.evaluate(15000, 7500, 20000, 300, 15000, offer_menu="counter",
+                                  offer_amount=net, offer_fee=fee)["mainnet"]["early_freight"]["counter"]
+    counter = compare(9000, 206)
+    wait = counter["wait"]
+    assert wait["crossover"] == {"first_match_cents": 7378, "always_ahead_cents": 7379, "ties_only": True}
+    assert wait["starting_price"] == {"price_cents": 7282, "early_cents": 789, "wait_cents": 909, "fee_limit_cents": 86}
+    assert wait["high_price"]["fee_limit_cents"] == counter["fee_ceiling_cents"] == 206
+    assert wait["historical_low"]["fee_limit_cents"] is None and wait["historical_high"]["fee_limit_cents"] == 476
+    assert compare(9000, 86)["plan"]["cash_cents"] < counter["plan"]["cash_cents"]
+    costs = mainnet_stop.sale_table(19000)[0]
+    def cash(sale, fee, price):
+        return 1000 + sale - fee - fuel_floor.ceil_div((costs[sale] + 5000) * price, 10**9)
+    assert [cash(457, 206, p) - cash(9457, 0, p) for p in (7377, 7378, 7379)] == [-2, 0, 1]

@@ -55,7 +55,21 @@
           <p id="offer-explain"></p><p id="offer-fuel-only"></p><dl id="offer-ledger"></dl><p id="offer-tradeoff"></p>
           <button type="button" id="offer-switch" hidden></button>
           <button type="button" id="offer-draft" hidden>Download customer request</button>
-          <details id="compare-wait" hidden><summary>What if I use the same cash and wait for freight pay?</summary><p id="wait-result"></p><p id="wait-history"></p></details>
+          <details id="compare-wait" hidden>
+            <summary>What if I use the same cash and wait for freight pay?</summary>
+            <p id="wait-result"></p><button id="wait-budget" type="button" hidden></button>
+            <section id="wait-prices" aria-label="Early pay compared with waiting" hidden>
+              <h3 id="cross-title"></h3><p id="cross-range"></p>
+              <label for="wait-scenario">Compare payday cash at</label>
+              <select id="wait-scenario"><option value="starting_price">Starting SOL price</option><option value="historical_low">Lowest Gemini scenario</option><option value="historical_high">Highest Gemini scenario</option><option value="high_price">Highest tested price</option></select>
+              <div id="wait-values" aria-live="polite"><p id="case-price"></p><dl>
+                <div><dt>Take early pay</dt><dd id="case-early"></dd></div>
+                <div><dt>Wait for freight pay</dt><dd id="case-wait"></dd></div>
+              </dl><p id="case-fee"></p></div>
+              <button id="price-fee" type="button" hidden></button>
+            </section>
+            <p id="wait-history"></p>
+          </details>
           <div id="counter-actions" hidden><button type="button" id="try-counter-fee" hidden></button>
             <button type="button" id="try-counter-net" hidden></button><button type="button" id="undo-counter" hidden>Return to customer’s offer</button></div>
           <button type="button" id="open-counter" hidden>Check customer’s reply</button>
