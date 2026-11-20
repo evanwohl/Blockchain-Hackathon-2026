@@ -173,3 +173,105 @@ async function checkCover(live) {
 timing.onchange = renderCover;
 el("refresh-cover").onclick = () => checkCover(true);
 checkCover(false);
+
+const pocket = el("funding-pocket");
+const cash = el("funding-cash");
+const access = el("funding-access");
+const fundingResult = el("funding-result");
+const fundingStatus = el("funding-status");
+const coverCash = el("funding-cover");
+let comparisonRequest;
+let cashToReplaceDraw;
+
+function fundingInputs() {
+  comparisonRequest?.abort();
+  const split = pocket.value === "split";
+  el("funding-custom").hidden = cash.disabled = !split;
+  fundingResult.hidden = true;
+  fundingStatus.textContent = "Compare costs to price this choice.";
+  el("funding-run").disabled = false;
+}
+
+function renderFunding(quote) {
+  const early = quote.choice === "early";
+  const plan = quote[quote.choice];
+  const other = quote[early ? "wait" : "early"];
+  el("funding-choice").textContent = early ? "Take the customer’s early payment." : "Wait for the full customer payment.";
+  facts(el("funding-costs"), [["Fee if you take it", money(quote.early.cost_cents)], ["Fee if you wait", money(quote.wait.cost_cents)]]);
+  const difference = other.cost_cents - plan.cost_cents;
+  el("funding-verdict").textContent = difference > 0 ? "This costs " + money(difference) + " less on the " + money(quote.bill_cents) + " bill."
+    : difference === 0 ? "Both choices cost the same on this bill." : "Waiting costs " + money(-difference) + " more on this bill. Early pay does not cut fees in every tested budget.";
+  const sources = [["Customer’s fuel payment", plan.customer_cents], ["Early freight invoice", plan.freight_cents],
+    ["Your available cash", plan.cash_cents], ["Your Kamino reserve", plan.reserve_cents]];
+  const ledger = el("funding-sources");
+  const active = sources.map(([label, value], index) => ({label, value, index})).filter(row => row.value > 0);
+  facts(ledger, active.map(row => [row.label, money(row.value)]));
+  const bar = el("funding-bar");
+  bar.replaceChildren(...active.map((row, index) => {
+    ledger.children[index].dataset.source = row.index;
+    const segment = document.createElement("span");
+    segment.dataset.source = row.index;
+    segment.style.flexGrow = row.value;
+    return segment;
+  }));
+  el("funding-foot").textContent = plan.early_freight_cents > plan.freight_cents
+    ? "Collect " + money(plan.early_freight_cents) + " in early freight pay. Only " + money(plan.freight_cents) + " goes to this bill."
+    : "The engine checked the same invoice terms across " + quote.budgets + " fuel budgets using recorded Gemini oil data.";
+  const remaining = quote.reserve_limit_cents - plan.reserve_cents;
+  el("funding-stress").textContent = remaining > 0 ? "This leaves " + money(remaining) + " of the available reserve untouched. "
+    + (plan.peak_draw_cents > plan.reserve_cents ? "At the " + money(plan.peak_bill_cents) + " fuel estimate, the draw rises to " + money(plan.peak_draw_cents) + "."
+      : "The same amount can stay there in every tested budget.") : "";
+  cashToReplaceDraw = plan.cash_cents + plan.reserve_cents;
+  coverCash.hidden = !plan.reserve_cents;
+  coverCash.textContent = "Try covering the withdrawal with " + money(cashToReplaceDraw) + " in cash";
+  fundingResult.hidden = false;
+}
+
+async function compareFunding(event, focusResult = false) {
+  event?.preventDefault();
+  comparisonRequest?.abort();
+  const controller = new AbortController();
+  comparisonRequest = controller;
+  const timer = setTimeout(() => controller.abort("timeout"), 60000);
+  const split = pocket.value === "split";
+  const cents = pocket.value === "cash" ? Math.round(Number(cash.max) * 100) : split ? Math.round(cash.valueAsNumber * 100) : 0;
+  el("funding-run").disabled = true;
+  fundingResult.hidden = true;
+  fundingStatus.textContent = "Checking fuel costs and payment dates…";
+  try {
+    const quote = await request("/api/public-offer/funding", {cash_cents: cents, reserve_available: pocket.value !== "none" && (!split || access.checked)},
+      controller.signal);
+    if (comparisonRequest !== controller || controller.signal.aborted) return;
+    renderFunding(quote);
+    fundingStatus.textContent = "Compared " + money(quote.cash_limit_cents) + " in cash and " + money(quote.reserve_limit_cents) + " in the reserve.";
+    if (event || focusResult) el("funding-choice").focus();
+  } catch {
+    if (!controller.signal.aborted || controller.signal.reason === "timeout") fundingStatus.textContent = "Funding estimate unavailable. Use Compare costs to retry. The signed receipt is available separately.";
+  } finally {
+    clearTimeout(timer);
+    if (comparisonRequest === controller) el("funding-run").disabled = false;
+  }
+}
+
+el("funding-form").onsubmit = compareFunding;
+pocket.onchange = () => {
+  fundingInputs();
+  if (el("funding-form").checkValidity()) compareFunding();
+};
+cash.oninput = fundingInputs;
+access.onchange = fundingInputs;
+coverCash.onclick = () => {
+  pocket.value = "split";
+  cash.value = (cashToReplaceDraw / 100).toFixed(2);
+  access.checked = true;
+  fundingInputs();
+  compareFunding(null, true);
+};
+const fundingSection = el("funding-check");
+const observer = new IntersectionObserver(entries => {
+  if (entries.some(entry => entry.isIntersecting)) {
+    observer.disconnect();
+    if (!comparisonRequest && pocket.value === "reserve") compareFunding();
+  }
+});
+observer.observe(fundingSection);

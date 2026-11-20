@@ -240,3 +240,36 @@
 .desk-entry span { font-weight: 650; }
 .desk-entry small { color: #e0e9d1; font-size: .8rem; }
 .overview-copy .desk-entry:hover { background: #36563b; }
+
+.offer-navigation, .offer-navigation nav { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem 1.25rem; }
+.offer-navigation { justify-content: space-between; padding-block: .35rem; }
+.offer-navigation nav a { padding-block: .75rem; font-size: .88rem; text-underline-offset: .25em; }
+.offer-slip .offer-audit .ledger-back { display: block; }
+#funding-check { scroll-margin-top: .75rem; }
+.funding-check form { display: grid; gap: .5rem; margin-block: 1.4rem 1rem; }
+.funding-check form > label, #funding-custom > label:first-child { font-weight: 650; }
+.funding-check select, #funding-cash { width: 100%; padding: .65rem; min-height: 44px; font: inherit; color: var(--ink); background: var(--sheet); border: 1px solid #69735e; }
+#funding-custom { margin-top: .55rem; }
+#funding-cash { margin-top: .35rem; font-variant-numeric: tabular-nums; }
+.funding-access { display: flex; align-items: center; gap: .6rem; min-height: 44px; }
+.funding-access input { width: 1.1rem; height: 1.1rem; }
+#funding-run { justify-self: start; background: #293927; color: white; min-height: 44px; margin-top: .4rem; border: 0; }
+.funding-assumptions, #funding-foot { font-size: .87rem; line-height: 1.5; color: #495143; }
+.funding-answer .panel-label { margin-bottom: .8rem; }
+#funding-costs { display: flex; flex-wrap: wrap; gap: .65rem 2rem; border-block: 1px solid var(--paper-edge); padding-block: .75rem; margin-block: .8rem; }
+#funding-costs dt { font-size: .87rem; }
+#funding-costs dd { margin: .2rem 0 0; font: 600 2.3rem/1 var(--display); font-variant-numeric: tabular-nums; }
+#funding-choice { margin: .5rem 0; }
+.funding-answer h4 { margin: 1.15rem 0 .25rem; }
+#funding-cover { margin-top: .65rem; }
+#funding-stress:not(:empty) { border-left: 3px solid #8a9a68; padding-left: .75rem; margin-block: .9rem; font-size: .94rem; }
+#funding-bar { display: flex; height: .55rem; margin-block: .65rem .35rem; }
+.funding-answer [data-source="0"] { --source-ink: #856c98; }
+.funding-answer [data-source="1"] { --source-ink: repeating-linear-gradient(120deg,#665573 0 2px,#d5c7dd 2px 5px); }
+.funding-answer [data-source="2"] { --source-ink: #365b4d; }
+.funding-answer [data-source="3"] { --source-ink: #829640; }
+#funding-bar span, #funding-sources dt::before { background: var(--source-ink); }
+#funding-bar span + span { border-left: 1px solid var(--sheet); }
+#funding-sources dt::before { content: ""; display: inline-block; width: .5rem; height: .5rem; margin-right: .5rem; }
+#funding-choice { scroll-margin-block: 1.5rem; }
+.funding-access input { accent-color: #365b4d; }

@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
+from freightos import offer_funding
 from freightos import atomic_fuel, flash_exit, bill, pledge_yield, collateral_path, credit_exit, customer_credit, devnet, driver_desk, diesel_model, load_credit, mainnet_loan, mainnet_stop, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, partial_payment, payday_policy, public_offer, regional_diesel, repeat_credit, split_payment, replay_prices, reserve_credit, reserve_return, road_cash, stop_backup, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
@@ -877,6 +878,9 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/public-offer/funding":
+                self.respond(200, offer_funding.compare(data.get("cash_cents"), data.get("reserve_available")))
+                return
             if self.path == "/api/trip-credit/exit":
                 collateral = integer(data.get("collateral_lamports"), "loan pledge", 10**10)
                 advance = integer(data.get("advance_raw"), "loan proceeds", 10**10)
