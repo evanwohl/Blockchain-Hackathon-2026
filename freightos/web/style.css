@@ -784,6 +784,7 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .trip-reserve-choice { display: flex; align-items: center; gap: .6rem; min-height: 44px; margin: -.7rem 0 .55rem; cursor: pointer; }
 .trip-reserve-choice input { width: 1.1rem; height: 1.1rem; accent-color: #627941; }
 #trip-road-fields { margin: 0 0 1rem; }
-#trip-road-fields input, #trip-limit { display: block; max-width: 10rem; margin-top: .35rem; padding: .45rem .65rem; font: 600 1.5rem var(--display); background: #f7f6ec; color: #252b21; border: 1px solid #88907e; }
+#trip-road-fields input, #trip-limit, #pump-cash { display: block; max-width: 10rem; margin-top: .35rem; padding: .45rem .65rem; font: 600 1.5rem var(--display); background: #f7f6ec; color: #252b21; border: 1px solid #88907e; }
 #protection-limit { margin: .5rem 0 1rem; }
-#trip-road-fields p, #limit-help, #reserve-observation { font-size: .85rem; }
+#protection-limit #pump-cash-help { margin-bottom: 1rem; }
+#trip-road-fields p, #pump-cash-help, #limit-help, #reserve-observation { font-size: .85rem; }

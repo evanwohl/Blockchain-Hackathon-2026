@@ -675,7 +675,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise TypeError("Expected a JSON object")
             if self.path == "/api/trip-cover":
                 trip = {key: data.get(key) for key in trip_cover.EXAMPLE}
-                trip.update({key: data[key] for key in ("region", "spend_limit_cents") if key in data})
+                trip.update({key: data[key] for key in ("region", "spend_limit_cents", "pump_cash_cents") if key in data})
                 trip_cover.validate(trip)
                 road = data.get("road_cents")
                 if road is not None:

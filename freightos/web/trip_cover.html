@@ -31,7 +31,10 @@
           <label>Keep for tolls and repairs ($)<input id="trip-road" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="25.00" required disabled></label>
           <p>Only the remainder can cover extra fuel. Enter a fuel budget that excludes this reserve.</p>
         </div>
-        <details class="public-fuel" id="protection-limit"><summary>Set a limit for oil protection</summary>
+        <details class="public-fuel" id="protection-limit"><summary>Set my cash limits</summary>
+          <label for="pump-cash">Extra cash I can bring to the pump ($)</label>
+          <input id="pump-cash" type="number" inputmode="decimal" min="0" max="1000000" step=".01" aria-describedby="pump-cash-help">
+          <p id="pump-cash-help">Above your fuel budget, separate from your reserve. Enter an amount to find the least protection you need.</p>
           <label for="trip-limit">Most I can spend on Gemini, including fees ($)</label>
           <input id="trip-limit" type="number" inputmode="decimal" min="0" max="1000000" step=".01" aria-describedby="limit-help">
           <p id="limit-help">Enter zero for a cash-only trip. An empty limit compares all available offers.</p>

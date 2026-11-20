@@ -157,3 +157,36 @@ def test_spend_limit_one_cent_either_side_of_minimum_premium(limit, fits):
 def test_spending_limit_requires_whole_nonnegative_cents(limit):
     with pytest.raises(ValueError):
         tc.validate({**tc.EXAMPLE, "spend_limit_cents": limit})
+
+
+@pytest.mark.parametrize(("pump", "cap"), [(0, 0), (2, 2), (6, 3), (7, 12), (24, 0), (0, None)])
+def test_pump_target_matches_all_positions_with_independent_cash_limits(pump, cap):
+    offers = [{"price": 37, "depth": 12}, {"price": 9, "depth": 19}]
+    reserve = 3
+    result = tc.pump_target(offers, [2, 11, 24], pump, reserve, cap)
+    outcomes = [(sum(tc.cost(a, offers[0])) + sum(tc.cost(b, offers[1])), max(2, 11 - a, 24 - a - b), a, b)
+                for a, b in product(range(13), range(20))]
+    fitting = [o for o in outcomes if o[1] <= pump + reserve]
+    assert result["minimum_spend_cents"] == min((o[0] for o in fitting), default=None)
+    assert result["single_spend_cents"] == min((o[0] for o in fitting if not o[2] or not o[3]), default=None)
+    allowed = [o for o in outcomes if cap is None or o[0] <= cap]
+    best = min((max(0, residual - pump - reserve), upfront) for upfront, residual, _, _ in allowed)
+    assert (result["after"]["short_cents"], result["plan"]["upfront_cents"]) == best
+    assert result["after"]["reserve_cents"] + result["after"]["outside_cents"] == result["plan"]["residual_cents"]
+
+
+def test_recorded_midwest_minimum_for_five_more_dollars_at_the_stop():
+    trip = {**tc.EXAMPLE, "region": "midwest", "pump_cash_cents": 500}
+    reserve = {"available_cents": 3002, "road_cents": 2500}
+    q = tc.analyze(tc.recorded(), trip, reserve=reserve)["pump_target"]
+    assert q["minimum_spend_cents"] == q["plan"]["upfront_cents"] == 555
+    assert q["after"] == {"reserve_cents": 502, "outside_cents": 500, "short_cents": 0}
+    assert q["before"]["short_cents"] == 2430
+    lower = tc.analyze(tc.recorded(), {**trip, "spend_limit_cents": 554}, reserve=reserve)["pump_target"]
+    assert lower["after"]["short_cents"] > 0
+
+
+@pytest.mark.parametrize("amount", [-1, None, True, 0.5, 100_000_001])
+def test_pump_money_requires_whole_nonnegative_cents(amount):
+    with pytest.raises(ValueError):
+        tc.validate({**tc.EXAMPLE, "pump_cash_cents": amount})
