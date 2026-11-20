@@ -70,8 +70,13 @@
             <table class="reference-prices" id="backup-results"><caption id="backup-period"></caption>
               <thead><tr><th scope="col">Buffer</th><th scope="col">Fills short</th><th scope="col">Average set aside</th></tr></thead>
               <tbody><tr><th scope="row">Updated weekly</th><td id="backup-recent-misses"></td><td id="backup-recent-mean"></td></tr>
+              <tr id="backup-scaled-row" hidden><th scope="row">Price-adjusted</th><td id="backup-scaled-misses"></td><td id="backup-scaled-mean"></td></tr>
               <tr><th scope="row">Kept fixed</th><td id="backup-fixed-misses"></td><td id="backup-fixed-mean"></td></tr></tbody></table>
             <p id="backup-limit"></p><button type="button" id="backup-loan" class="secondary"></button>
+            <details id="swing-backup" hidden><summary>Check the price-adjusted backup</summary>
+              <p id="swing-target"></p>
+              <p id="swing-tail"></p><button type="button" class="secondary" id="swing-loan"></button>
+            </details>
             <details><summary>How was each week checked?</summary><p id="backup-method"></p>
               <button type="button" class="secondary" id="backup-download">Download weekly figures</button></details>
           </details>
@@ -114,7 +119,7 @@
             <label>Fee on another offer ($, optional)<input id="gap-offer" type="number" min="0" max="1000000" step=".01" aria-describedby="gap-offer-help"></label>
           </div><p id="gap-offer-help">Compare a fee quoted for the same fuel amount and repayment date.</p><button id="gap-check" class="secondary">Check loan on Devnet</button>
           <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>
-          <p id="gap-status" role="status"></p><p id="gap-coverage" hidden></p><div id="gap-answer" hidden>
+          <p id="gap-status" role="status"></p><p id="gap-coverage" hidden></p><p id="gap-cash-backup" hidden></p><div id="gap-answer" hidden>
             <h3 id="gap-verdict"></h3><button type="button" id="gap-full-cap" class="secondary" hidden></button><dl class="facts" id="gap-facts"></dl>
             <p id="gap-payout" hidden></p><p id="gap-comparison"></p><p id="gap-protection" hidden></p><p id="gap-risk"></p>
             <details><summary>What if I sold some SOL instead?</summary><p id="gap-sale"></p></details>

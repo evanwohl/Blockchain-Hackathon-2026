@@ -167,21 +167,37 @@ function showBackup(check, plan, trip) {
   el("backup-budget").hidden = !check;
   if (!check) return;
   const amount = check.target_cents;
-  const weeks = check.records.length;
+  const swing = check.volatility;
+  const weeks = swing?.weeks || check.records.length;
   el("backup-heading").textContent = amount === null ? "How did weekly backup cash perform?" : "Plan for " + money(amount) + " in backup cash";
   el("backup-explanation").textContent = (amount === null ? "The price history is too old to size this week’s backup." :
     "The latest " + check.window + " observed weeks point to " + money(amount) + " beyond your fuel money and usable reserve, aiming to cover 9 in 10 stops.")
     + (plan?.legs.length ? " This assumes the hedge payout is spendable at the pump." : " This uses cash alone at the pump.");
   el("backup-period").textContent = "What would have happened over " + weeks + " later fills";
-  for (const key of ["recent", "fixed"]) {
-    el("backup-" + key + "-misses").textContent = check[key].misses + " of " + weeks;
-    el("backup-" + key + "-mean").textContent = money(check[key].mean_cents);
+  el("backup-scaled-row").hidden = !swing;
+  const comparison = swing || check;
+  for (const key of swing ? ["recent", "scaled", "fixed"] : ["recent", "fixed"]) {
+    el("backup-" + key + "-misses").textContent = comparison[key].misses + " of " + weeks;
+    el("backup-" + key + "-mean").textContent = money(comparison[key].mean_cents);
   }
   el("backup-limit").textContent = "The biggest remaining shortfall with weekly updates was "
-    + money(check.recent.worst_uncovered_cents) + ". This is money to have available. The loan check simulates a vendor payment on Devnet.";
+    + money(comparison.recent.worst_uncovered_cents) + ". This is money to have available. The loan check simulates a vendor payment on Devnet.";
   el("backup-method").textContent = "The fixed buffer used " + check.fixed_weeks + " weeks through " + check.fixed_through
     + ". Each updated buffer used the latest " + check.window + " observations ending at least a week before the start of that fill week. "
     + "Both use the same trip and recorded quotes. The last observed week ended " + check.through + ". Fuel prices can move together across weeks.";
+  el("swing-backup").hidden = !swing;
+  if (swing) {
+    const target = swing.target_cents;
+    el("swing-target").textContent = target == null ? "A current price-adjusted estimate is unavailable."
+      : "Allow " + money(target) + " in backup if oil and diesel keep moving at their recent pace. The usual estimate is " + money(amount) + ".";
+    el("swing-tail").textContent = "The largest remaining shortfall was " + money(swing.scaled.worst_uncovered_cents)
+      + " with the adjustment" + (swing.worst_week ? " in the week ending " + swing.worst_week : "")
+      + ". The largest with the usual buffer was " + money(swing.recent.worst_uncovered_cents) + ".";
+    el("swing-loan").hidden = !target || target > 100000000;
+    el("swing-loan").textContent = "Check borrowing capacity for " + money(target || 0);
+    el("swing-loan").onclick = () => openLoan(target, {backup: check, adjusted: true});
+    el("backup-method").textContent += " For the price-adjusted buffer we resize each prior oil and diesel move using the average size of moves over 8 and 26 observations. We reprice the fuel and oil payout together, then take the same budget percentile.";
+  }
   const button = el("backup-loan");
   button.hidden = !amount || amount > 100000000;
   button.textContent = "Check borrowing capacity for " + money(amount || 0);

@@ -45,6 +45,25 @@ function show(data) {
   });
   el("forward-plans").replaceChildren(...rows);
   const loan = data.credit?.loan;
+  const swing = data.volatility;
+  const record = data.backup_forecast;
+  el("forward-swing").hidden = swing?.target_cents == null || !loan;
+  if (!el("forward-swing").hidden) {
+    el("forward-swing").textContent = "Allowing for recent price swings gives a separate backup estimate of " + money(record.adjusted_cents) + ", leaving "
+      + money(Math.max(0, record.adjusted_cents - loan.advance_cents)) + " to cover with your own cash at the simulated loan amount. Across "
+      + swing.weeks + " historical fills it ran short " + swing.scaled.misses + " times versus " + swing.recent.misses
+      + " for the usual buffer. It set aside " + money(swing.scaled.mean_cents) + " on average versus " + money(swing.recent.mean_cents) + ". The paper trial is scored on its original terms.";
+  }
+  const outcome = data.backup_outcome;
+  let verdict = "Awaiting the published fill. The check counts each cent short nine times as heavily as a cent set aside but unused.";
+  if (outcome) {
+    const describe = row => row.short_cents ? money(row.short_cents) + " short" : money(row.spare_cents) + " left over";
+    const a = outcome.adjusted.score, b = outcome.usual.score;
+    verdict = "For this fill, the usual backup had " + describe(outcome.usual) + " and the adjusted backup had " + describe(outcome.adjusted)
+      + ". " + (a === b ? "Both scored equally." : (a < b ? "The adjusted" : "The usual") + " backup scored better.")
+      + " The rule weights a cent short nine times as heavily as a cent left over.";
+  }
+  el("backup-score").textContent = "Forecast registered " + stamp(record.recorded_at) + ". " + verdict;
   el("forward-credit").textContent = "The frozen backup target was " + amount(selected.backup_cents) + ". "
     + (loan ? "At a 1 SOL pledge limit, an unsigned Devnet simulation covered " + money(loan.advance_cents) + " in modeled trip dollars."
       : "The trial recorded no funded advance.")

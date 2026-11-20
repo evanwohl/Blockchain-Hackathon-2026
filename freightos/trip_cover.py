@@ -13,7 +13,7 @@ from math import ceil
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, pump_value, regional_diesel
+from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, fuel_volatility, pump_value, regional_diesel
 from hedging.quick_pay import integer
 
 SNAPSHOT = fuel_cover.SNAPSHOT.with_name("trip_cover.json.gz")
@@ -403,7 +403,15 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
     cash = fill_replay.summary(later, offers, {"legs": [], "upfront_cents": 0})
 
     checks = {}
-    cash_check = backup.estimate(later, [row[1] for row in later], as_of)
+    fill_day = expiry + timedelta(days=offsets[1]) if offsets else as_of + timedelta(days=(-as_of.weekday()) % 7)
+
+    def backup_check(plan, gaps):
+        check = backup.estimate(later, gaps, as_of)
+        if check:
+            check["volatility"] = fuel_volatility.compare(check, later, trip, offers, plan, anchor, fuel_cash, offsets, fill_day)
+        return check
+
+    cash_check = backup_check({"legs": []}, [row[1] for row in later])
     if cash_check:
         checks["cash_mix"] = cash_check
         target["backup_checks"] = checks
@@ -417,7 +425,7 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
             if offsets:
                 after["pump_value"] = pump_price_check(later, offers, plan, trip, expiry + timedelta(days=offsets[1]), as_of)
             if cash_check:
-                checks[name] = backup.estimate(later, ready, as_of)
+                checks[name] = backup_check(plan, ready)
             after["delays"] = fill_replay.delay_threshold(ready, [row[1] for row in later], plan["upfront_cents"])
         return {"before": cash, "after": after, "oil_window": window}
 

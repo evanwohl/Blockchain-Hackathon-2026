@@ -504,7 +504,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/api/forward-fill":
-            self.respond(200, {**forward.score(forward.saved(), forward.funding()), "pump_value": forward.published_value()})
+            self.respond(200, forward.published_score())
             return
         if self.path == "/api/forward-fill/check":
             try:
@@ -513,7 +513,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(503, {"error": "The outcome check is unavailable. Try again shortly."})
             return
         if self.path == "/evidence/forward-fill":
-            self.respond(200, {"ticket": forward.saved(), "funding": forward.funding(), "ticket_sha256": forward.TICKET_HASH})
+            self.respond(200, {"ticket": forward.saved(), "funding": forward.funding(), "backup_forecast": forward.registered_backup(), "ticket_sha256": forward.TICKET_HASH})
             return
         if self.path == "/api/trial/stress":
             self.respond(200, stressed_trial())

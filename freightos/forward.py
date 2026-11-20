@@ -13,7 +13,7 @@ from html import unescape
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from freightos import devnet, diesel_model, fill_replay, freight_credit, fuel_update, next_stop, public_offer, trip_cover
+from freightos import backup, devnet, diesel_model, fill_replay, freight_credit, fuel_update, fuel_volatility, next_stop, public_offer, replay_prices, trip_cover
 from freightos.fuel_markets import reported_close
 
 TICKET = trip_cover.SNAPSHOT.with_name("forward_fill.json.gz")
@@ -167,7 +167,7 @@ def cash_edge(plan, funds, gallons):
 
 
 @cache
-def published_value():
+def published_analysis():
     ticket = saved()
     trip = ticket["trip"]
     plan = ticket["plans"][ticket["primary"]]
@@ -179,7 +179,15 @@ def published_value():
     fuel_cash = max(0, ticket["reserve"]["available_cents"] - ticket["reserve"]["road_cents"])
     as_of = datetime.fromisoformat(ticket["quotes"]["checked_at"]).date()
     _, later = fill_replay.fills(trip, Fraction(close), offers, fuel_cash, as_of, offsets)
-    return trip_cover.pump_price_check(later, offers, plan, trip, date.fromisoformat(ticket["fill_day"]), as_of)
+    fill_day = date.fromisoformat(ticket["fill_day"])
+    gaps, _ = fill_replay.pump_gaps(later, offers, plan)
+    check = backup.estimate(later, gaps, as_of)
+    return {"pump_value": trip_cover.pump_price_check(later, offers, plan, trip, fill_day, as_of),
+            "volatility": fuel_volatility.compare(check, later, trip, offers, plan, Fraction(close), fuel_cash, offsets, fill_day)}
+
+
+def published_value():
+    return published_analysis()["pump_value"]
 
 
 def score(ticket, funding_check, oil=None, diesel=None):
@@ -209,6 +217,63 @@ def score(ticket, funding_check, oil=None, diesel=None):
             "funds_cents": funds, "bill_cents": bill, "oil": oil, "diesel": diesel, "plans": plans}
 
 
+def record_backup(path):
+    ticket = saved()
+    event = fuel_update.fetch_event(ticket["event"])
+    raw = diesel_page()
+    now = datetime.now(timezone.utc)
+    fill_day = date.fromisoformat(ticket["fill_day"])
+    if (not datetime.fromisoformat(ticket["recorded_at"]) <= now < datetime.fromisoformat(ticket["expiry"])
+            or abs((now - datetime.fromisoformat(event["reported_at"])).total_seconds()) > 120
+            or settlement(ticket, event, now) is not None or event["event"]["status"] != "active"
+            or diesel_observation(raw, fill_day, now.date()) is not None):
+        raise ValueError("Both fill outcomes must still be pending to register a backup forecast")
+    baseline = diesel_observation(raw, fill_day - timedelta(days=7), now.date())
+    if not baseline or baseline["mills"] != ticket["baseline"]["mills"]:
+        raise ValueError("The starting diesel observation has changed")
+    primary = ticket["primary"]
+    volatility = published_analysis()["volatility"]
+    if not volatility or volatility["target_cents"] is None:
+        raise ValueError("No current price-adjusted forecast")
+    record = {"version": 1, "recorded_at": now.isoformat(), "ticket_sha256": TICKET_HASH, "plan": primary,
+              "gemini_checked": event["reported_at"], "event": ticket["event"], "expiry": ticket["expiry"],
+              "fill_day": ticket["fill_day"], "last_diesel": baseline,
+              "prices_sha256": hashlib.sha256(replay_prices.SNAPSHOT.read_bytes()).hexdigest(),
+              "usual_cents": funding()["targets"][primary], "adjusted_cents": volatility["target_cents"],
+              "short_weight": 9, "surplus_weight": 1}
+    with path.open("x") as output:
+        json.dump(record, output, indent=2)
+        output.write("\n")
+
+
+@cache
+def registered_backup():
+    raw = TICKET.with_name("forward_backup.json").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != "932ff8d993939a09c5534d06e26e1f332f39892d78ef0fdd34b526c138f90135":
+        raise ValueError("The published backup forecast changed")
+    return json.loads(raw)
+
+
+def compare_buffers(record, gap):
+    if gap is None:
+        return None
+    rows = {}
+    for name in ("usual", "adjusted"):
+        difference = gap - record[name + "_cents"]
+        short, spare = max(0, difference), max(0, -difference)
+        rows[name] = {"short_cents": short, "spare_cents": spare,
+                      "score": short * record["short_weight"] + spare * record["surplus_weight"]}
+    return rows
+
+
+def published_score(oil=None, diesel=None):
+    result = score(saved(), funding(), oil, diesel)
+    record = registered_backup()
+    selected, = [row for row in result["plans"] if row["key"] == record["plan"]]
+    return {**result, **published_analysis(), "backup_forecast": record,
+            "backup_outcome": compare_buffers(record, selected["short_cents"])}
+
+
 def live(previous=None):
     ticket = saved()
     now = datetime.now(timezone.utc)
@@ -227,7 +292,7 @@ def live(previous=None):
             diesel = observation
     except (OSError, ValueError, TypeError, KeyError):
         errors.append("EIA")
-    return {**score(ticket, funding(), oil, diesel), "pump_value": published_value(), "errors": errors, "checked_at": datetime.now(timezone.utc).isoformat()}
+    return {**published_score(oil, diesel), "errors": errors, "checked_at": datetime.now(timezone.utc).isoformat()}
 
 
 class ResultCheck:
@@ -243,9 +308,13 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--freeze", type=Path)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--freeze", type=Path)
+    group.add_argument("--record-backup", type=Path)
     args = parser.parse_args()
     if args.freeze:
         write_ticket(args.freeze)
+    elif args.record_backup:
+        record_backup(args.record_backup)
     else:
         print(json.dumps(live(), indent=2))

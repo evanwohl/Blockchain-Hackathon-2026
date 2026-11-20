@@ -6,27 +6,29 @@ let protection;
 let replayWeek;
 let laterPayout;
 let backupCheck;
+let priceAdjusted;
 
 function clear() {
   revision++;
   el("gap-answer").hidden = el("gap-saved").hidden = true;
   el("gap-status").textContent = "";
-  el("gap-coverage").hidden = true;
+  el("gap-coverage").hidden = el("gap-cash-backup").hidden = true;
   el("gap-check").disabled = false;
 }
 
-export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null} = {}) {
-  if (gap !== cents || week !== replayWeek || payout !== laterPayout || backup !== backupCheck) el("gap-offer").value = "";
+export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null, adjusted = false} = {}) {
+  if (gap !== cents || week !== replayWeek || payout !== laterPayout || backup !== backupCheck || adjusted !== priceAdjusted) el("gap-offer").value = "";
   replayWeek = week;
   laterPayout = payout;
   backupCheck = backup;
+  priceAdjusted = adjusted;
   el("usual-gap").hidden = !(week || backup);
   protection = alternative;
   clear();
   gap = cents;
   el("gap-credit").hidden = !gap;
   if (!gap) el("gap-credit").open = false;
-  const label = backup ? " weekly backup" : week ? (payout === null ? " gap" : " late-payout gap") + " from the week ending " + week : " fuel gap";
+  const label = adjusted ? " price-adjusted backup" : backup ? " weekly backup" : week ? (payout === null ? " gap" : " late-payout gap") + " from the week ending " + week : " fuel gap";
   el("gap-title").textContent = "Could a loan cover the " + money(gap) + label + "?";
 }
 
@@ -40,6 +42,19 @@ function show(data) {
       + gaps.filter(value => value <= amount).length + " of the " + gaps.length + " later fills that actually needed backup in the replay. The largest gap left would be "
       + money(Math.max(0, Math.max(...gaps) - amount)) + ". This assumes the same credit was available each time."
       : "Every later replayed fill was already covered with the selected plan.";
+    const field = priceAdjusted ? "scaled_cents" : "recent_cents";
+    const weeks = backupCheck.records.filter(row => row[field] != null);
+    if (weeks.length) {
+      const cash = weeks.map(row => Math.max(0, row[field] - amount));
+      const avg = Math.ceil(cash.reduce((a, b) => a + b, 0) / weeks.length);
+      const draws = weeks.filter((row, i) => row.gap_cents > cash[i] && Math.min(row[field], amount) > 0).length;
+      const late = weeks.filter((row, i) => row.gap_cents > cash[i]).length;
+      el("gap-cash-backup").hidden = false;
+      el("gap-cash-backup").textContent = "For this stop, the backup would need " + money(Math.max(0, gap - amount)) + " of your own cash alongside the simulated advance. Over "
+        + weeks.length + " replayed stops, keeping only the weekly target above that credit limit in cash would have set aside "
+        + money(avg) + " of your money on average. Spending that cash first would have needed a loan on " + draws
+        + " stops. If credit was unavailable, " + late + " stops would have run short. Each stop assumes a fresh limit. Setup cash and repayments are separate.";
+    }
   }
   if (!q) {
     el("gap-status").textContent = "This pledge limit cannot cover a cent of the fuel gap. You still need " + money(gap) + ".";
