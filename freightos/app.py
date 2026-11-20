@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, diesel_model, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_return, trip_cover
+from freightos import bill, devnet, diesel_model, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -503,6 +503,18 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(status, "application/json", json.dumps(obj, separators=(",", ":")).encode())
 
     def do_GET(self):
+        if self.path == "/api/forward-fill":
+            self.respond(200, forward.score(forward.saved(), forward.funding()))
+            return
+        if self.path == "/api/forward-fill/check":
+            try:
+                self.respond(200, self.server.forward_check.read())
+            except (ValueError, OSError):
+                self.respond(503, {"error": "The outcome check is unavailable. Try again shortly."})
+            return
+        if self.path == "/evidence/forward-fill":
+            self.respond(200, {"ticket": forward.saved(), "funding": forward.funding(), "ticket_sha256": forward.TICKET_HASH})
+            return
         if self.path == "/api/trial/stress":
             self.respond(200, stressed_trial())
             return
@@ -637,6 +649,8 @@ class Handler(BaseHTTPRequestHandler):
             "/": ("overview.html", "text/html; charset=utf-8"),
             "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
             "/fuel_credit.js": ("fuel_credit.js", "text/javascript"),
+            "/forward-fill": ("forward.html", "text/html; charset=utf-8"),
+            "/forward.js": ("forward.js", "text/javascript"),
             "/trip-cover": ("trip_cover.html", "text/html; charset=utf-8"),
             "/trip_credit.js": ("trip_credit.js", "text/javascript"),
             "/trip_cover.js": ("trip_cover.js", "text/javascript"),
@@ -808,6 +822,7 @@ def main():
     server.trip_credit_lock = Lock()
     server.credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: freight_credit.capture(d, t))
                             for drop in (20, 40, 60) for days in (23, 30)}
+    server.forward_check = PublicCheck(forward.ResultCheck().read)
     server.trip_books = PublicCheck(trip_cover.capture)
     server.fuel_cover = PublicCheck(fuel_cover.live)
     server.offer_fuel = PublicCheck(fuel_update.live)

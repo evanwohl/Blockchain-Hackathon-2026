@@ -1,0 +1,43 @@
+{
+  "ticket_sha256": "8c259e98125d87e5a4087a7db002b7bc72f862653ad0210825b12a5b6583c4c0",
+  "recorded_at": "2026-11-20T01:53:51.570549+00:00",
+  "targets": {
+    "cash": 3298,
+    "delay_mix": 3298,
+    "history_mix": 3298,
+    "original": 3298
+  },
+  "credit": {
+    "gap_cents": 3298,
+    "remaining_cents": 486,
+    "loan": {
+      "slot": 524193193,
+      "checked_at": "2026-11-20T01:53:51.569885+00:00",
+      "days": 23,
+      "drop": 40,
+      "advance_raw": 281200,
+      "collateral_lamports": 10000000,
+      "minimum_lamports": 9997178,
+      "current_ltv_bps": 3880,
+      "stress_ltv_bps": 6499,
+      "liquidation_pct": 75,
+      "remaining_liquidity_raw": 5359403,
+      "rate_bps": 790,
+      "repay_cents": 2827,
+      "cost_cents": 15,
+      "advance_cents": 2812,
+      "liquidation_price_cents": 3768,
+      "entry_cash_cents": 171,
+      "fee_lamports": 5000,
+      "setup_lamports": 23530560,
+      "sol_price": "72.47",
+      "pledge_millis": 1000,
+      "model_ratio": 100,
+      "buyback_break_even_cents": 7727
+    },
+    "estimated_full_pledge_millis": 1173
+  },
+  "pledge_limit_millis": 1000,
+  "stress_drop_pct": 40,
+  "days": 23
+}
