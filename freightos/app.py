@@ -653,6 +653,7 @@ class Handler(BaseHTTPRequestHandler):
             "/pump_value.js": ("pump_value.js", "text/javascript"),
             "/forward.js": ("forward.js", "text/javascript"),
             "/trip-cover": ("trip_cover.html", "text/html; charset=utf-8"),
+            "/payday.js": ("payday.js", "text/javascript"),
             "/trip_credit.js": ("trip_credit.js", "text/javascript"),
             "/trip_cover.js": ("trip_cover.js", "text/javascript"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
@@ -712,17 +713,20 @@ class Handler(BaseHTTPRequestHandler):
                 source = data.get("source", "live")
                 if source not in ("live", "recorded"):
                     raise ValueError("Unknown loan source")
+                destination = data.get("destination", "vendor")
+                if destination not in ("vendor", "wallet"):
+                    raise ValueError("Unknown loan destination")
                 if gap == 0:
                     raise ValueError("The trip has no fuel shortfall")
                 if not self.server.trip_credit_lock.acquire(blocking=False):
                     self.respond(503, {"error": "Another loan check is running. Try again shortly."})
                     return
                 try:
-                    quote = freight_credit.trip_draw(gap, cap, drop, days, recorded=source == "recorded")
+                    quote = freight_credit.trip_draw(gap, cap, drop, days, recorded=source == "recorded", destination=destination)
                     self.respond(200, {**quote, "comparison": freight_credit.compare_fee(quote, offer), "source": source})
                 except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError, RuntimeError):
                     reason = ("No saved check matches these terms." if source == "recorded" else
-                              "Devnet could not verify this loan and vendor payment. Your fuel gap is still open.")
+                              "Devnet could not verify this loan. Your fuel gap is still open.")
                     self.respond(503, {"error": reason})
                 finally:
                     self.server.trip_credit_lock.release()

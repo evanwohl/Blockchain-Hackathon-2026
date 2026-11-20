@@ -1,3 +1,4 @@
+import { runEvidence, showSchedule } from "./payday.js";
 import { showPumpValue } from "./pump_value.js";
 import { el, facts, money, request } from "./common.js";
 
@@ -45,6 +46,16 @@ function show(data) {
   });
   el("forward-plans").replaceChildren(...rows);
   const loan = data.credit?.loan;
+  const run = data.payday;
+  el("forward-payday").hidden = run?.target_cents == null || !loan;
+  if (!el("forward-payday").hidden) {
+    el("forward-payday-terms").textContent = "Suppose you repeat this " + run.gallons + "-gallon fill weekly until day " + run.days
+      + ", with " + money(run.weekly_cash_cents) + " available each week. Across " + run.stops + " stops the estimated backup is "
+      + money(run.target_cents) + " after one shared reserve and one oil position. If the " + money(loan.advance_cents)
+      + " simulated vendor advance were available as fuel cash on day one, you could supply the rest in two ways.";
+    showSchedule(el("forward-payday-cash"), run, loan.advance_cents);
+    el("forward-payday-check").textContent = runEvidence(run) + " This separate historical scenario assumes credit is ready before fuel is due and excludes setup, premium and repayment.";
+  }
   const swing = data.volatility;
   const record = data.backup_forecast;
   el("forward-swing").hidden = swing?.target_cents == null || !loan;

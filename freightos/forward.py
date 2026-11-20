@@ -13,7 +13,7 @@ from html import unescape
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from freightos import backup, devnet, diesel_model, fill_replay, freight_credit, fuel_update, fuel_volatility, next_stop, public_offer, replay_prices, trip_cover
+from freightos import backup, devnet, diesel_model, fill_replay, freight_credit, fuel_update, fuel_volatility, next_stop, payday, public_offer, replay_prices, trip_cover
 from freightos.fuel_markets import reported_close
 
 TICKET = trip_cover.SNAPSHOT.with_name("forward_fill.json.gz")
@@ -182,7 +182,8 @@ def published_analysis():
     fill_day = date.fromisoformat(ticket["fill_day"])
     gaps, _ = fill_replay.pump_gaps(later, offers, plan)
     check = backup.estimate(later, gaps, as_of)
-    return {"pump_value": trip_cover.pump_price_check(later, offers, plan, trip, fill_day, as_of),
+    return {"payday": payday.estimate(later, trip, fuel_cash, offers, plan, as_of, funding()["days"]),
+            "pump_value": trip_cover.pump_price_check(later, offers, plan, trip, fill_day, as_of),
             "volatility": fuel_volatility.compare(check, later, trip, offers, plan, Fraction(close), fuel_cash, offsets, fill_day)}
 
 

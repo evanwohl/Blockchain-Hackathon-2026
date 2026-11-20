@@ -13,7 +13,7 @@ from math import ceil
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, fuel_volatility, pump_value, regional_diesel
+from freightos import backup, diesel_model, fill_replay, fuel_cover, fuel_update, fuel_volatility, payday, pump_value, regional_diesel
 from hedging.quick_pay import integer
 
 SNAPSHOT = fuel_cover.SNAPSHOT.with_name("trip_cover.json.gz")
@@ -408,6 +408,7 @@ def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fue
     def backup_check(plan, gaps):
         check = backup.estimate(later, gaps, as_of)
         if check:
+            check["payday"] = {days: payday.estimate(later, trip, fuel_cash, offers, plan, as_of, days) for days in (23, 30)}
             check["volatility"] = fuel_volatility.compare(check, later, trip, offers, plan, anchor, fuel_cash, offsets, fill_day)
         return check
 

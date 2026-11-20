@@ -1,6 +1,7 @@
 import { showPumpValue } from "./pump_value.js";
 import { el, facts, money, request, saveFile } from "./common.js";
 
+import { runEvidence, showSchedule } from "./payday.js";
 import { setFuelGap } from "./trip_credit.js";
 
 const form = el("trip-cover-form");
@@ -209,14 +210,38 @@ function showBackup(check, plan, trip) {
   }, null, 2), "application/json");
 }
 
+function showPayday(check, plan) {
+  const days = el("payday-days").value;
+  const run = check?.payday?.[days];
+  el("payday-run").hidden = !run;
+  if (!run) return;
+  const available = run.target_cents != null;
+  const credit = el("payday-credit");
+  el("payday-cash").hidden = !available;
+  credit.hidden = !run.target_cents || run.target_cents > 100000000;
+  el("payday-terms").textContent = "Each week you buy " + run.gallons + " gallons with " + money(run.weekly_cash_cents)
+    + " of fuel money. All " + run.stops + " stops share one " + money(run.reserve_cents) + " reserve. "
+    + (available ? "These are two ways to cover the estimated backup with cash." : "The latest complete run is too old to size the next one.");
+  if (available) showSchedule(el("payday-cash"), run, 0);
+  credit.onclick = () => openLoan(run.target_cents, {payday: run});
+  el("payday-method").textContent = "Unused fuel cash carries to the next stop. "
+    + (plan?.legs.length ? "Only the first fill can receive the selected oil payout. Its premium of " + money(run.premium_cents) + " is paid separately. " : "These stops use cash alone. ")
+    + "We reprice consecutive weekly diesel changes from your starting price. Each estimate covers at least 25 of the last 26 complete historical runs. Training runs overlap. The later checks use separate stretches. New price shocks can exceed the estimate.";
+  el("payday-evidence").textContent = runEvidence(run);
+  el("payday-download").onclick = () => saveFile("FreightOS-fuel-until-payday.json", JSON.stringify({trip: current.trip,
+    quoted_at: current.checked_at, plan: plan || {legs: [], upfront_cents: 0}, ...run}, null, 2), "application/json");
+}
+
 function showPastFills(target, selected, later) {
   const history = selected?.fill_replay;
   el("fill-history").hidden = !history;
-  if (!history) return;
+  if (!history) { el("payday-run").hidden = true; return; }
   const sample = later ? history.after : history.before;
   const peak = sample.peak;
   const plan = later ? selected.plan : null;
-  showBackup(target.backup_checks?.[plan?.legs.length ? mix || "original" : "cash_mix"], plan, current.trip);
+  const fundingCheck = target.backup_checks?.[plan?.legs.length ? mix || "original" : "cash_mix"];
+  showBackup(fundingCheck, plan, current.trip);
+  showPayday(fundingCheck, plan);
   el("fill-history-answer").textContent = "Your fuel money ran short in " + sample.short_weeks + " of "
     + sample.weeks + " weekly scenarios. " + (peak.short_cents ? "The largest gap was " + money(peak.short_cents)
     + " using the price moves from the week ending " + peak.week + "." : "Your budget covered every replayed fill.");
@@ -485,9 +510,12 @@ el("floor-try").onclick = () => tryLimit(current?.pump_target?.floor_option?.pre
 form.onsubmit = event => { event.preventDefault(); compare("live", true); };
 el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded", true); };
 document.querySelector(".trip-timing").onchange = () => { if (current) { mix = null; render(); } };
+el("payday-days").onchange = () => { if (current) render(); };
 function openExample() {
   form.reset();
   const example = new URLSearchParams(location.hash.slice(1));
+  el("payday-run").open = example.has("payday");
+  el("payday-days").value = example.get("payday") === "30" ? "30" : "23";
   el("backup-budget").open = example.has("backup");
   el("fill-history").open = example.has("replay") || example.has("backup");
   const region = example.get("region");

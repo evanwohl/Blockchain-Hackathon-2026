@@ -75,11 +75,13 @@ def test_unfunded_missing_and_mismatched_trip_proofs():
 def test_trip_draw_rechecks_liquidity_and_stress_after_resizing(monkeypatch):
     observations = []
 
-    def simulate(collateral, rpc, min_slot=0, advance=None):
+    def simulate(collateral, rpc, min_slot=0, advance=None, *, destination):
+        assert destination == "vendor"
         observations.append((collateral, min_slot, advance))
         return {"collateral": collateral, "slot": len(observations), "advance": advance}
 
-    def evaluate(observation, drop, days, advance, *, step):
+    def evaluate(observation, drop, days, advance, *, step, destination):
+        assert destination == "vendor"
         assert advance == observation["advance"] and (drop, days, step) == (40, 23, 1)
         cents = advance // 100
         required = cents * (1000 if cents == 100 else 1200)

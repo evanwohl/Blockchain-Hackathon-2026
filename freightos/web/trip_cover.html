@@ -55,6 +55,15 @@
           <label><input type="radio" name="timing" value="before" checked> Before I can spend a payout</label>
           <label><input type="radio" name="timing" value="after"> After I can spend a payout</label>
         </fieldset>
+        <details id="payday-run" hidden><summary>Will my fuel money last until payday?</summary>
+          <div class="trip-fields"><label>First invoice pays after<select id="payday-days">
+            <option value="23">23 days · 4 weekly fills</option><option value="30">30 days · 5 weekly fills</option>
+          </select></label></div>
+          <p id="payday-terms"></p><dl class="facts" id="payday-cash"></dl>
+          <button type="button" id="payday-credit" class="secondary">Check how much a loan could cover</button>
+          <details><summary>How was this checked?</summary><p id="payday-method"></p><p id="payday-evidence"></p>
+            <button type="button" class="secondary" id="payday-download">Download the cash schedule evidence</button></details>
+        </details>
         <details id="fill-history" hidden><summary>Would my fuel money have lasted in past weeks?</summary>
           <div id="history-choice" class="trip-fields" hidden><label>Plan to preview<select id="history-plan">
             <option value="">Original trip hedge</option><option value="history_mix">Fit for on-time payouts</option>
@@ -119,7 +128,9 @@
             <label>Fee on another offer ($, optional)<input id="gap-offer" type="number" min="0" max="1000000" step=".01" aria-describedby="gap-offer-help"></label>
           </div><p id="gap-offer-help">Compare a fee quoted for the same fuel amount and repayment date.</p><button id="gap-check" class="secondary">Check loan on Devnet</button>
           <button type="button" id="gap-saved" class="secondary" hidden>Use saved check</button></form>
-          <p id="gap-status" role="status"></p><p id="gap-coverage" hidden></p><p id="gap-cash-backup" hidden></p><div id="gap-answer" hidden>
+          <p id="gap-status" role="status"></p><p id="gap-coverage" hidden></p><p id="gap-cash-backup" hidden></p><section id="gap-payday" class="spending-result" hidden><h3>Your cash until payday</h3><dl id="gap-payday-cash"></dl><p id="gap-payday-note"></p>
+            <details id="gap-payday-use" hidden><summary>How often would I have needed the loan?</summary><p id="gap-payday-history"></p></details>
+          </section><div id="gap-answer" hidden>
             <h3 id="gap-verdict"></h3><button type="button" id="gap-full-cap" class="secondary" hidden></button><dl class="facts" id="gap-facts"></dl>
             <p id="gap-payout" hidden></p><p id="gap-comparison"></p><p id="gap-protection" hidden></p><p id="gap-risk"></p>
             <details><summary>What if I sold some SOL instead?</summary><p id="gap-sale"></p></details>

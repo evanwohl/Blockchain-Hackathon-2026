@@ -1,4 +1,4 @@
-"""Simulate a secured KLend draw paid directly to the sample fuel vendor."""
+"""Simulate a secured KLend draw for a vendor payment or a multi-stop fuel budget."""
 import base64
 import gzip
 import json
@@ -43,7 +43,7 @@ def terms(drop, days):
         raise ValueError("Choose one of the displayed collateral stresses and payment dates")
 
 
-def transaction(collateral, block, advance=ADVANCE):
+def transaction(collateral, block, advance=ADVANCE, *, destination="vendor"):
     proof = json.loads(devnet.SAMPLE.read_text())
     vendor = Pubkey.from_string(proof["decision"]["vendor"])
     instructions = []
@@ -61,9 +61,12 @@ def transaction(collateral, block, advance=ADVANCE):
             data = data[:8] + struct.pack("<Q", advance)
         accounts = [AccountMeta(Pubkey.from_string(address), role >= 2, role in (1, 3)) for address, role in row["a"]]
         instructions.append(Instruction(program, data, accounts))
-    transfer = [AccountMeta(associated(OWNER, devnet.MINT), False, True), AccountMeta(devnet.MINT, False, False),
-                AccountMeta(vendor, False, True), AccountMeta(OWNER, True, False)]
-    instructions.append(Instruction(TOKEN, struct.pack("<BQB", 12, advance, 6), transfer))
+    if destination == "vendor":
+        transfer = [AccountMeta(associated(OWNER, devnet.MINT), False, True), AccountMeta(devnet.MINT, False, False),
+                    AccountMeta(vendor, False, True), AccountMeta(OWNER, True, False)]
+        instructions.append(Instruction(TOKEN, struct.pack("<BQB", 12, advance, 6), transfer))
+    elif destination != "wallet":
+        raise ValueError("Unknown loan destination")
     message = MessageV0.try_compile(OWNER, instructions, [], Hash.from_string(block))
     return VersionedTransaction.populate(message, [Signature.default()])
 
@@ -91,20 +94,23 @@ def configured_rate(reserve):
     raise ValueError("Borrow utilization is outside the Kamino rate curve")
 
 
-def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP):
+def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor"):
     value = run["response"]["value"]
     if value["err"] is not None:
         raise ValueError("Kamino declined this collateralized payment")
     collateral = run["collateral"]
-    message = transaction(collateral, run["block"], advance).message
-    keys = list(message.account_keys)
+    tx = transaction(collateral, run["block"], advance, destination=destination)
+    if destination == "wallet" and base64.b64decode(run["wire"], validate=True) != bytes(tx):
+        raise ValueError("Wallet draw differs from the simulated transaction")
+    keys = list(tx.message.account_keys)
     proof = json.loads(devnet.SAMPLE.read_text())
     vendor = Pubkey.from_string(proof["decision"]["vendor"])
     owner_cash = associated(OWNER, devnet.MINT)
     def change(account, owner):
         before, after = devnet.token_balances(value, keys, account, devnet.MINT, owner)
         return after - before
-    if change(vendor, Pubkey.from_string(proof["vendor_owner"])) != advance or change(owner_cash, OWNER) != 0:
+    retained = advance if destination == "wallet" else 0
+    if change(owner_cash, OWNER) != retained or (destination == "vendor" and change(vendor, Pubkey.from_string(proof["vendor_owner"])) != advance):
         raise ValueError("Borrow proceeds and fuel payment do not reconcile")
     obligation, debt, backing = [read_program_account(a, disc, size) for a, disc, size in zip(value["accounts"],
                                  ("a8ce8d6a584caca7", "2bf2ccca1af73b7f", "2bf2ccca1af73b7f"), (3344, 8624, 8624))]
@@ -115,6 +121,12 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP):
             or debt[128:160] != bytes(devnet.MINT) or backing[128:160] != bytes(SOL)
             or value["preBalances"][keys.index(Pubkey.from_string(route()["obligation"]))] != 0):
         raise ValueError("Loan market, obligation, or assets differ from the sample")
+    if destination == "wallet":
+        authority, _ = Pubkey.find_program_address([b"lma", market], KLEND)
+        supplied = -change(Pubkey.from_bytes(debt[160:192]), authority)
+        fee_gain = change(Pubkey.from_bytes(debt[192:224]), authority)
+        if vendor in keys or fee_gain < 0 or supplied != retained + fee_gain:
+            raise ValueError("Lending reserve and wallet proceeds do not reconcile")
     price = Decimal(uint(backing, 248)) / UNIT
     stable_price = Decimal(uint(debt, 248)) / UNIT
     pledged = Decimal(uint(obligation, 1192)) / UNIT
@@ -138,7 +150,7 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP):
     setup = value["preBalances"][keys.index(OWNER)] - value["postBalances"][keys.index(OWNER)] - collateral - fee
     if fee < 0 or setup < 0:
         raise ValueError("Unexpected loan setup balance change")
-    return {"slot": run["response"]["context"]["slot"], "checked_at": run["checked_at"], "days": days, "drop": drop,
+    return {"destination": destination, "wallet_gain_raw": retained, "slot": run["response"]["context"]["slot"], "checked_at": run["checked_at"], "days": days, "drop": drop,
             "advance_raw": advance, "collateral_lamports": collateral, "minimum_lamports": minimum,
             "current_ltv_bps": ceiling(10000 * principal / 10**6 * stable_price * factor / pledged),
             "stress_ltv_bps": ceiling(10000 * adjusted_debt / stressed), "liquidation_pct": liquidation,
@@ -150,14 +162,14 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP):
             "fee_lamports": fee, "setup_lamports": setup, "sol_price": str(price.quantize(Decimal(".01")))}
 
 
-def simulate(collateral, rpc, min_slot=0, advance=ADVANCE):
+def simulate(collateral, rpc, min_slot=0, advance=ADVANCE, *, destination="vendor"):
     block = rpc("getLatestBlockhash", [{"commitment": "confirmed", "minContextSlot": min_slot}])["value"]["blockhash"]
-    tx = transaction(collateral, block, advance)
+    wire = base64.b64encode(bytes(transaction(collateral, block, advance, destination=destination))).decode()
     addresses = [route()[key] for key in ("obligation", "usd", "sol")]
-    response = rpc("simulateTransaction", [base64.b64encode(bytes(tx)).decode(),
+    response = rpc("simulateTransaction", [wire,
                    {"encoding": "base64", "sigVerify": False, "replaceRecentBlockhash": True, "commitment": "confirmed",
                     "minContextSlot": min_slot, "accounts": {"encoding": "base64", "addresses": addresses}}])
-    return {"response": response, "collateral": collateral, "block": block, "checked_at": datetime.now(timezone.utc).isoformat()}
+    return {"response": response, "collateral": collateral, "block": block, "wire": wire, "checked_at": datetime.now(timezone.utc).isoformat()}
 
 
 def capture(drop, days, rpc=devnet.request):
@@ -178,8 +190,10 @@ def saved(drop, days):
     return json.loads(gzip.decompress((DATA / "credit_examples.json.gz").read_bytes()))[f"{drop}-{days}"]
 
 
-def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recorded=False):
+def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recorded=False, destination="vendor"):
     terms(drop, days)
+    if destination not in ("wallet", "vendor"):
+        raise ValueError("Unknown loan destination")
     if type(gap_cents) is not int or not 0 < gap_cents <= 100_000_000:
         raise ValueError("Enter a positive fuel shortfall")
     if type(pledge_millis) is not int or not 0 <= pledge_millis <= 1_000_000:
@@ -212,17 +226,23 @@ def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recor
         return response
 
     if recorded:
-        samples = json.loads(gzip.decompress((DATA / "trip_credit.json.gz").read_bytes()))
-        if (drop, days) != (40, 23) or f"{gap_cents}-{pledge_millis}" not in samples:
+        if destination == "wallet":
+            filename, key = "payday_credit.json.gz", f"{gap_cents}-{pledge_millis}-{drop}-{days}"
+        else:
+            filename, key = "trip_credit.json.gz", f"{gap_cents}-{pledge_millis}"
+            if (drop, days) != (40, 23):
+                raise ValueError("No saved check for these terms")
+        samples = json.loads(gzip.decompress((DATA / filename).read_bytes()))
+        if key not in samples:
             raise ValueError("No saved check for these terms")
-        sample = samples[f"{gap_cents}-{pledge_millis}"]
-        return funded(evaluate(sample["run"], drop, days, sample["cents"] * scale, step=1))
+        sample = samples[key]
+        return funded(evaluate(sample["run"], drop, days, sample["cents"] * scale, step=1, destination=destination))
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("This preview requires public Solana Devnet")
     cents = 100
-    observation = simulate(STEP, rpc, advance=cents * scale)
+    observation = simulate(STEP, rpc, advance=cents * scale, destination=destination)
     for attempt in range(5):
-        quote = evaluate(observation, drop, days, cents * scale, step=1)
+        quote = evaluate(observation, drop, days, cents * scale, step=1, destination=destination)
         required = quote["minimum_lamports"]
         projected = min(gap_cents, cap * cents // required)
         projected = min(projected, cents + quote["remaining_liquidity_raw"] // scale)
@@ -233,7 +253,7 @@ def trip_draw(gap_cents, pledge_millis, drop, days, rpc=devnet.request, *, recor
         pledge = min(cap, ((required * projected + cents * step - 1) // (cents * step)) * step)
         if cents == projected and pledge == observation["collateral"] and pledge >= required:
             return funded(quote)
-        observation = simulate(pledge, rpc, quote["slot"], projected * scale)
+        observation = simulate(pledge, rpc, quote["slot"], projected * scale, destination=destination)
         cents = projected
     raise ValueError("The market moved while checking the pledge limit")
 

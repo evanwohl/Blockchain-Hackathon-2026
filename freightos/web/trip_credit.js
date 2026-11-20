@@ -1,4 +1,5 @@
 import { el, facts, money, request, tokenUnits } from "./common.js";
+import { creditUse, showSchedule } from "./payday.js";
 
 let gap = 0;
 let revision = 0;
@@ -7,33 +8,48 @@ let replayWeek;
 let laterPayout;
 let backupCheck;
 let priceAdjusted;
+let paydayRun;
 
 function clear() {
   revision++;
   el("gap-answer").hidden = el("gap-saved").hidden = true;
   el("gap-status").textContent = "";
-  el("gap-coverage").hidden = el("gap-cash-backup").hidden = true;
+  el("gap-coverage").hidden = el("gap-cash-backup").hidden = el("gap-payday").hidden = true;
   el("gap-check").disabled = false;
 }
 
-export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null, adjusted = false} = {}) {
-  if (gap !== cents || week !== replayWeek || payout !== laterPayout || backup !== backupCheck || adjusted !== priceAdjusted) el("gap-offer").value = "";
+export function setFuelGap(cents, alternative = null, {week = null, payout = null, backup = null, adjusted = false, payday = null} = {}) {
+  if (gap !== cents || week !== replayWeek || payout !== laterPayout || backup !== backupCheck || adjusted !== priceAdjusted || payday !== paydayRun) el("gap-offer").value = "";
   replayWeek = week;
   laterPayout = payout;
   backupCheck = backup;
   priceAdjusted = adjusted;
-  el("usual-gap").hidden = !(week || backup);
+  paydayRun = payday;
+  el("gap-days").disabled = !!payday;
+  if (payday) el("gap-days").value = String(payday.days);
+  el("usual-gap").hidden = !(week || backup || payday);
   protection = alternative;
   clear();
   gap = cents;
   el("gap-credit").hidden = !gap;
   if (!gap) el("gap-credit").open = false;
-  const label = adjusted ? " price-adjusted backup" : backup ? " weekly backup" : week ? (payout === null ? " gap" : " late-payout gap") + " from the week ending " + week : " fuel gap";
+  const label = payday ? " backup through payday" : adjusted ? " price-adjusted backup" : backup ? " weekly backup" : week ? (payout === null ? " gap" : " late-payout gap") + " from the week ending " + week : " fuel gap";
   el("gap-title").textContent = "Could a loan cover the " + money(gap) + label + "?";
 }
 
 function show(data) {
   const q = data.loan;
+  if (paydayRun) {
+    if (q && (q.destination !== "wallet" || q.wallet_gain_raw !== q.advance_raw)) throw new Error("Could not verify the loan proceeds in the fuel wallet.");
+    const capacity = q?.advance_cents || 0;
+    showSchedule(el("gap-payday-cash"), paydayRun, capacity, q?.entry_cash_cents || 0);
+    el("gap-payday").hidden = false;
+    el("gap-payday-use").hidden = !capacity || !paydayRun.records.length;
+    if (!el("gap-payday-use").hidden) el("gap-payday-history").textContent = creditUse(paydayRun, capacity);
+    el("gap-payday-note").textContent = "This counts " + money(capacity)
+      + " in loan proceeds once. The setup totals include " + money(q?.entry_cash_cents || 0) + " for loan setup and network fees plus "
+      + money(paydayRun.premium_cents) + " for the selected oil protection. Repayment is separate.";
+  }
   if (backupCheck) {
     const amount = q?.advance_cents || 0;
     const gaps = backupCheck.records.map(row => row.gap_cents).filter(value => value > 0);
@@ -112,7 +128,7 @@ function show(data) {
   el("gap-sale").textContent = "At the observed SOL price of $" + q.sol_price + ", selling enough for " + money(q.advance_cents)
     + " and buying that SOL back on payday would use less cash if the buyback price is below about " + money(q.buyback_break_even_cents)
     + ". Above that price, borrowing could cost less. This assumes the loan stays open, setup uses separate cash, and swaps, taxes and exit costs are zero. The sale price is a reference estimate.";
-  el("gap-proof").textContent = "Simulated at Devnet slot " + q.slot.toLocaleString("en-US") + ". The demo vendor received "
+  el("gap-proof").textContent = "Simulated at Devnet slot " + q.slot.toLocaleString("en-US") + ". " + (q.destination === "wallet" ? "The driver’s wallet retained " : "The demo vendor received ")
     + tokenUnits(q.advance_raw) + " test USDC against " + tokenUnits(q.collateral_lamports / 1000) + " test SOL in the simulation. "
     + "Trip amounts use " + q.model_ratio + "× the test loan and collateral. Entry uses the observed test SOL outlay at $" + q.sol_price
     + " per SOL, without scaling fixed costs. Repayment assumes $1 per USDC and a steady " + (q.rate_bps / 100).toFixed(2) + "% annual rate.";
@@ -126,16 +142,19 @@ async function check(source) {
   const attempt = revision;
   const body = { gap_cents: gap, pledge_millis: Math.round(el("gap-cap").valueAsNumber * 1000),
     days: Number(el("gap-days").value), drop: Number(el("gap-drop").value), source };
+  if (paydayRun) body.destination = "wallet";
   if (el("gap-offer").value !== "") body.offer_cents = Math.round(el("gap-offer").valueAsNumber * 100);
   el("gap-check").disabled = true;
-  el("gap-status").textContent = source === "live" ? "Checking the loan and fuel payment on Solana…" : "Opening the saved loan check…";
+  el("gap-status").textContent = source === "live" ? (paydayRun ? "Checking the loan into your demo fuel wallet…" : "Checking the loan and fuel payment on Solana…") : "Opening the saved loan check…";
   try {
     const data = await request("/api/trip-credit", body, AbortSignal.timeout(45000));
     if (attempt === revision) show(data);
   } catch (error) {
     if (attempt !== revision) return;
     el("gap-status").textContent = error.name === "TimeoutError" ? "The network took too long. Try again." : error.message;
-    el("gap-saved").hidden = !(source === "live" && [2430, 292].includes(gap) && [100, 1000].includes(body.pledge_millis) && body.days === 23 && body.drop === 40);
+    const saved = paydayRun ? ([21508, 26908][body.days === 23 ? 0 : 1] === gap && body.pledge_millis === 1000)
+      : [2430, 292].includes(gap) && [100, 1000].includes(body.pledge_millis) && body.days === 23;
+    el("gap-saved").hidden = !(source === "live" && saved && body.drop === 40);
   } finally {
     if (attempt === revision) el("gap-check").disabled = false;
   }
