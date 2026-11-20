@@ -144,8 +144,6 @@ button { border: 0; border-radius: 0; min-height: 45px; font-size: .88rem; font-
 #direct-part summary::before { background: var(--outside-lines), var(--lilac); }
 #payment-log strong { font-variant-numeric: tabular-nums; font-weight: 610; }
 #payment-log p { padding-left: 1.5rem; color: #c9cdc1; max-width: 52ch; }
-.bill-work { display: grid; grid-template-areas: "fund schedule"; grid-template-columns: minmax(0,1.12fr) minmax(0,.88fr); align-items: start; gap: clamp(1.75rem,4vw,4rem); margin: clamp(1.7rem,3.4vw,3.4rem) var(--inset) 0; }
-.funding-panel { grid-area: fund; }
 .panel-label { font: .72rem/1.4 var(--serial); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: .38rem; }
 .funding-panel h2, .ledger summary span { font: 600 clamp(1.95rem,2.7vw,2.65rem)/1.08 var(--display); letter-spacing: -.023em; }
 #edge-reason { max-width: 62ch; margin: .6rem 0 1.1rem; color: var(--muted); font-size: .95rem; }
@@ -356,7 +354,6 @@ dialog .primary:hover:enabled { background: #46553b; }
   .due-dates { gap: .1rem .8rem; font-size: .81rem; margin-bottom: .85rem; }
   #payment-scope { margin-bottom: .8rem; }
   #slips { height: clamp(9rem,35vw,13rem); }
-  .bill-work { grid-template: "fund" auto "schedule" auto / minmax(0,1fr); gap: 1.3rem; }
   .trial-workspace > * { width: 100%; }
 }
 @media (min-width: 761px) and (max-width: 940px), (max-width: 500px) {
@@ -533,11 +530,7 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .schedule-column .ledger { margin-block: .65rem 1rem; }
 .sheet .no-reserve { display: flex; align-items: center; gap: .6rem; min-height: 44px; margin: .45rem 0 0; }
 .no-reserve input { width: 1rem; height: 1rem; accent-color: var(--accent); }
-.bill-tabs { display: flex; gap: 1.5rem; margin: .45rem var(--page-gutter) 0; border-bottom: 1px solid var(--line); }
-.bill-tabs button { min-height: 48px; border: 0; border-bottom: 3px solid transparent; padding: .4rem .1rem; background: transparent; color: var(--muted); font: 560 .95rem Inter,sans-serif; }
-.bill-tabs button[aria-selected="true"] { border-color: #465735; color: var(--ink); }
 @media (max-width: 760px) {
-  .bill-tabs + .bill-work { display: block; margin-top: 1rem; }
   .schedule-column .deadline { border-top: 0; padding-top: 0; }
 }
 
@@ -552,10 +545,6 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 #timeline small { grid-column: 1/-1; font-size: .76rem; color: var(--muted); }
 .planning-stack .fuel-window { margin-top: 1rem; }
 @media (min-width: 761px) {
-  .bill-work { grid-template-areas: "fund planning" "schedule schedule"; row-gap: 1.6rem; }
-  .schedule-column { display: contents; }
-  .planning-stack { grid-area: planning; min-width: 0; border-left: 1px solid var(--line); padding-left: clamp(1.5rem,3vw,3rem); }
-  .schedule-column .ledger { border-top: 1px solid #a5ad97; padding-top: .8rem; margin-block: 0; }
   .calendar-export { max-width: 34rem; }
 }
 @media (max-width: 760px) {
@@ -564,7 +553,6 @@ main.overview { width: 100%; max-width: none; padding: 0; }
   #timeline ul li:first-child { padding-top: 0; }
 }
 @media (max-width: 760px) {
-  .bill-tabs { position: sticky; top: 0; z-index: 2; margin-inline: 0; padding-inline: var(--page-gutter); background: var(--paper); }
   #plan-head, #schedule > summary, #dates-panel { scroll-margin-top: 3.5rem; }
 }
 #budget-help { margin: .45rem 0; font-size: .86rem; }

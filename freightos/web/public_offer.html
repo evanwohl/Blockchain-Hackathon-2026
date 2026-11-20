@@ -32,7 +32,7 @@
   </div>
   <div class="offer-paper">
   <p class="offer-footnote">FreightOS funded both demo wallets with test tokens. The payment and customer fee settled on devnet. Trip dates, dollar amounts and estimated savings use sample contract terms.</p>
-  <section class="offer-terms" aria-label="Customer offer and next steps">
+  <section class="offer-terms" aria-label="Cost of the customer offer">
       <div class="receipt-cost"><h2>Why take the offer?</h2>
         <p>The customer offered to pay a $180 fuel surcharge on day 5 for a $5 fee. That puts $175 toward fuel when it’s due. The driver keeps both freight invoices on regular terms.</p>
         <dl id="offer-costs" hidden></dl><p id="offer-savings"></p>
@@ -42,18 +42,8 @@
             <tbody id="cost-proof-rows"></tbody>
           </table>
           <p id="cost-proof-draw"></p><p id="cost-proof-limits"></p>
-          <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer&amp;surcharge_cents=50000&amp;offer_fee_cents=1500&amp;reserve_limit_cents=58500&amp;partial=1">Try taking only part of a $500 surcharge early →</a>
-          <a class="ledger-back" href="/fuel-credit#choose-funding">Find the smallest early payment that covers the next fuel stop →</a>
-          <a class="ledger-back" href="/fuel-credit#pay-without-loan">Check whether this driver can pay without borrowing →</a>
-          <a class="ledger-back" href="/fuel-credit#customer-contribution">See how a $99 customer payment changes the fuel loan →</a>
-          <a class="ledger-back" href="/fuel-credit#partial-advance">Compare taking only part of a freight invoice early →</a>
-          <a id="try-reserve-limit" class="ledger-back" href="/bill">Try an $8 offer with the planned reserve →</a>
         </details>
       </div>
-      <a class="ledger-back" href="#fuel-update">Check the budget against the next oil close ↓</a><br>
-      <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer">Try a different fee or payment date →</a>
-      <details class="public-fuel"><summary>Plan the next stop</summary><a class="ledger-back next-stop-link" href="/next-stop">Check what’s left for the next stop →</a>
-      <a class="ledger-back" href="/load#credit">Follow a fuel loan through repayment →</a><a class="ledger-back" href="/fuel-credit#one-payment">Preview a combined reserve and loan payment →</a></details>
   </section>
   <section id="funding-check" class="reserve-proof funding-check" aria-labelledby="funding-title">
     <div class="reserve-balance">
@@ -129,7 +119,22 @@
       <p id="cover-status" role="status">Opening the recorded order book…</p>
     </div>
   </section>
-  <a class="ledger-back" href="/public-payment">Explore the original reserve payment and remaining vault shares →</a>
+  <section class="offer-examples" aria-labelledby="practice-examples">
+    <h2 id="practice-examples">Try another payment plan</h2>
+    <details class="public-fuel"><summary>Change the customer’s offer</summary><div class="flow-links">
+      <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer">Try a different fee or payment date →</a>
+          <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer&amp;surcharge_cents=50000&amp;offer_fee_cents=1500&amp;reserve_limit_cents=58500&amp;partial=1">Try taking only part of a $500 surcharge early →</a>
+          <a class="ledger-back" href="/fuel-credit#choose-funding">Find the smallest early payment that covers the next fuel stop →</a>
+          <a class="ledger-back" href="/fuel-credit#pay-without-loan">Check whether this driver can pay without borrowing →</a>
+          <a class="ledger-back" href="/fuel-credit#customer-contribution">See how a $99 customer payment changes the fuel loan →</a>
+          <a class="ledger-back" href="/fuel-credit#partial-advance">Compare taking only part of a freight invoice early →</a>
+          <a id="try-reserve-limit" class="ledger-back" href="/bill">Try an $8 offer with the planned reserve →</a>
+    </div></details>
+    <details class="public-fuel"><summary>Plan the next stop</summary>
+      <a class="ledger-back" href="/public-payment">Explore the original reserve payment and remaining vault shares →</a>
+      <a class="ledger-back next-stop-link" href="/next-stop">Check what’s left for the next stop →</a>
+      <a class="ledger-back" href="/load#credit">Follow a fuel loan through repayment →</a><a class="ledger-back" href="/fuel-credit#one-payment">Preview a combined reserve and loan payment →</a></details>
+  </section>
   </div>
 </main>
 </body>

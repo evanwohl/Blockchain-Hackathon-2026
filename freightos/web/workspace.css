@@ -6,45 +6,12 @@
   --sheet-gap: clamp(1.25rem, 3vw, 2.75rem);
 }
 
-.money-story { margin: clamp(2.5rem,5vw,5rem) var(--inset) 0; padding-bottom: clamp(2rem,4vw,4rem); }
-.paper-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding-bottom: 1.15rem; }
-.paper-heading h2 { font: 600 clamp(3rem,5.3vw,5rem)/.98 var(--display); letter-spacing: -.035em; }
-.paper-heading h2 em { font: italic 400 1.03em/.98 "Instrument Serif", Georgia, serif; }
 .folio { color: #535d4a; font: .78rem/1.4 var(--serial); letter-spacing: .055em; }
-.flow-board { border-block: 2px solid var(--ink); background: var(--sheet); }
-.flow-nav { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--ink); }
-.flow-nav button { position: relative; display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; min-height: 54px; padding: .85rem 1.05rem; background: transparent; color: #3a4136; text-align: left; font-weight: 600; }
-.flow-nav button + button { border-left: 1px solid var(--paper-edge); }
-.flow-nav small { font: .78rem var(--serial); }
-.flow-nav button[aria-selected="true"] { background: #283023; color: #f7f7ea; }
-.flow-nav button[aria-selected="true"] small { color: var(--citron); }
-.flow-nav button:focus-visible { outline-offset: -4px; }
-.flow-page { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,.95fr); }
-.flow-page[hidden] { display: none; }
-.flow-reading, .flow-figure { padding: var(--sheet-gap); }
-.flow-reading { align-self: center; }
-.flow-reading h3, .receipt-reading h3 { margin: 0; font: 600 clamp(2.15rem,3.4vw,3.75rem)/1.02 var(--display); letter-spacing: -.025em; max-width: 23ch; }
-.flow-reading > p, .evidence-spread div > p:not(.folio) { margin: .75rem 0 1.15rem; line-height: 1.55; max-width: 48ch; }
-.money-story a:not(.paper-action), .receipt-links a { color: var(--olive-ink); text-decoration-thickness: 1px; text-underline-offset: .23em; }
 .paper-action { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: .65rem 1.05rem; background: #283023; color: #fff; border: 1px solid #283023; font: 600 .94rem/1.3 Inter,sans-serif; text-decoration: none; }
 .paper-action:hover { background: #404d34; color: white; }
-.flow-reading details { margin-top: 1rem; }
 .flow-links, .receipt-links { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem 1.25rem; }
 .flow-links { flex-direction: column; align-items: flex-start; padding-bottom: .9rem; }
-.flow-figure { border-left: 1px dashed #a1aa91; background: var(--sheet); display: flex; flex-direction: column; align-items: stretch; }
-
-.flow-figure > strong { margin: .35rem 0 1.15rem; font: 600 clamp(4rem,6.8vw,7.4rem)/.95 var(--display); letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
-.flow-figure dl { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #9fa78e; padding-top: .8rem; margin: 0; }
-.flow-figure dt { font-size: .9rem; color: #46503e; }
-.flow-figure dd { text-align: start; margin: .25rem 0 0; font: 600 1.55rem/1.12 var(--display); }
-.flow-figure > a { align-self: start; margin-top: 1.1rem; font-size: .92rem; }
-.evidence-spread { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sheet-gap); margin-top: clamp(2rem,4vw,3.75rem); }
-.evidence-spread > div { display: flex; flex-direction: column; align-items: flex-start; border-top: 1px solid var(--ink); padding-top: 1.15rem; }
-.evidence-spread h3 { margin: .7rem 0 0; }
-.evidence-spread .receipt-actions, .evidence-spread .trial-reading > a { margin-top: auto; }
-.trial-reading h3 { font: italic 400 clamp(2.2rem,3.8vw,4.2rem)/1.04 "Instrument Serif",Georgia,serif; letter-spacing: -.025em; }
-.receipt-reading h3 { font-size: clamp(2rem,2.7vw,3rem); }
-.receipt-actions, .check-bar { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem 1.2rem; }
+.check-bar { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem 1.2rem; }
 #sample-result:empty { display: none; }
 
 .bill-work .funding-panel h2, .trial-workspace h2 { font: 600 clamp(2.1rem,3.4vw,3.5rem)/1.02 var(--display); letter-spacing: -.03em; }
@@ -103,19 +70,8 @@
 .spending-result dd { text-align: start; font: 600 1.85rem/1.2 var(--display); }
 .trip-cover #trip-reserve { margin: 1.1rem 0; }
 
-@media (min-width: 761px) {
-  .bill-work #open-next-trip { display: none; }
-}
 
 @media (max-width: 760px) {
-  .paper-heading { align-items: flex-end; }
-  .paper-heading .folio { max-width: 13ch; text-align: end; font-size: .75rem; }
-  .flow-nav button { flex-direction: column; align-items: flex-start; justify-content: center; padding: .65rem .5rem; gap: .23rem; font-size: .9rem; }
-  .flow-nav small { font-size: .75rem; }
-  .flow-page { grid-template-columns: 1fr; }
-  .flow-figure { border-left: 0; border-top: 1px dashed #a1aa91; }
-  .flow-figure > strong { font-size: 3.8rem; }
-  .evidence-spread { grid-template-columns: 1fr; gap: 1.7rem; }
   .public-ledger .reserve-proof { grid-template-columns: 1fr; }
   .reserve-proof .reserve-balance { border-right: 0; border-bottom: 1px solid var(--paper-edge); }
   .trip-outcome { padding: .9rem 1rem; }
@@ -280,7 +236,7 @@
 .trip-preview .balance-amount { display: block; }
 #window-gap { font: .76rem var(--serial); color: #d6dacb; }
 #driver-story { margin: .55rem 0 1.2rem; max-width: 47ch; line-height: 1.5; color: #c9cdc1; }
-.preview-actions, .proof-entry .paper-action { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; }
+.preview-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; }
 .preview-primary { display: inline-flex; gap: 1.3rem; align-items: center; min-height: 46px; padding: .6rem 1.05rem; background: var(--citron); color: #20281b; font-size: .92rem; font-weight: 650; text-decoration: none; }
 .preview-primary::after { content: "→"; font-size: 1.2rem; }
 .preview-primary:hover { background: #efffb5; }
@@ -290,18 +246,6 @@
 .preview-sources dt::before { content: ""; display: inline-block; width: .68rem; height: .68rem; margin-right: .6rem; background: var(--citron); }
 .preview-sources > div + div dt::before { background: var(--outside-lines),var(--lilac); }
 .preview-sources dd { font-weight: 640; font-variant-numeric: tabular-nums; }
-.quote-ledger { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.8rem,5vw,4.5rem); padding: clamp(2rem,3.3vw,3.75rem) var(--inset); border-bottom: 1px solid var(--paper-edge); }
-.quote-ledger > section { min-width: 0; }
-.quote-ledger h2 { font: 600 clamp(2.1rem,3vw,3.4rem)/1.03 var(--display); letter-spacing: -.025em; }
-.quote-terms { display: flex; flex-wrap: wrap; gap: .5rem 2rem; margin: 1rem 0 .6rem; }
-.quote-terms > div + div { padding-inline-start: 1.3rem; border-inline-start: 1px solid var(--paper-edge); }
-.quote-terms dt { font-size: .83rem; color: var(--muted); }
-.quote-terms dd { text-align: left; font: 600 clamp(1.8rem,3vw,2.65rem)/1.18 var(--display); }
-.quote-ledger #quote-compare { font-size: .9rem; }
-.quote-ledger .quote-settings { margin: 1.05rem 0 0; }
-.proof-entry { border-inline-start: 1px solid var(--paper-edge); padding-inline-start: clamp(1.5rem,4vw,3.5rem); }
-.proof-entry p:not(.panel-label) { margin: .85rem 0 1.15rem; max-width: 44ch; }
-.proof-compare { display: inline-flex; align-items: center; min-height: 44px; padding-inline: .6rem; font-size: .86rem; }
 .bill-work .planning-stack { margin-top: .8rem; padding: 0; border: 0; border-block: 1px solid var(--paper-edge); }
 .planning-stack > summary { min-height: 48px; font-size: .95rem; }
 .bill-work .ledger > summary { min-height: 44px; }
@@ -315,14 +259,7 @@
 #timeline ul li { padding-block: .5rem; }
 #timeline ul li:last-child { border: 0; }
 #timeline li span { font-weight: 560; }
-@media (min-width: 761px) {
-  .bill-work { grid-template-areas: "fund schedule"; }
-  .bill-work .schedule-column { grid-area: schedule; display: block; min-width: 0; padding-inline-start: clamp(1.55rem,3.2vw,3rem); border-inline-start: 1px solid var(--paper-edge); }
-  .schedule-column .ledger { border: 0; padding: 0; }
-}
 @media (max-width: 760px) {
-  .quote-ledger { grid-template-columns: 1fr; gap: 1.5rem; }
-  .proof-entry { border: 0; border-top: 1px solid var(--paper-edge); padding: 1.45rem 0 0; }
   .trip-preview .bill-summary { padding-block: 1.35rem; }
   .trip-preview #slips { height: clamp(8rem,32vw,13rem); }
   .preview-actions .task-link { margin: 0; }
@@ -357,4 +294,75 @@ main.offer-ledger { width: 100%; max-width: none; padding: 0; }
   .offer-navigation nav a { padding: .4rem 0; }
 }
 
-.bill-work + .wallet-strip { margin-top: 1.5rem; }
+.bill-statement + .wallet-strip { margin-top: 1.5rem; }
+
+.statement { width: min(100% - 2 * var(--page-gutter), 56rem); margin-inline: auto; padding-block: clamp(1.75rem,3.4vw,3rem); }
+.statement-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.statement-head h2 { font: 600 clamp(2.2rem,3.6vw,3.5rem)/1 var(--display); letter-spacing: -.03em; }
+.statement-tabs { position: static; display: flex; align-items: stretch; gap: clamp(1rem,3vw,2rem); margin: .6rem 0 0; padding: 0; background: none; border-bottom: 1px solid #a2aa97; }
+.statement-tabs button { min-height: 48px; padding: .65rem 0; margin-bottom: -1px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: #525a4c; font: 560 .94rem/1.2 Inter,sans-serif; }
+.statement-tabs button[aria-selected="true"] { color: #253820; border-bottom-color: #405a35; }
+.statement-page { min-width: 0; padding-block: clamp(1.25rem,2.7vw,2.2rem) .25rem; }
+.statement-page > p { max-width: 66ch; margin-block: .65rem 1.15rem; line-height: 1.55; }
+.amount-line { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; }
+.amount-line h3, .example-row h3 { margin: 0; font: 600 clamp(1.6rem,2.6vw,2.25rem)/1.05 var(--display); letter-spacing: -.022em; }
+.amount-line strong { font: 600 clamp(2.7rem,4.8vw,4.3rem)/1 var(--display); letter-spacing: -.04em; color: #384b2c; font-variant-numeric: tabular-nums; }
+.statement-lines { margin-block: 1rem; border-top: 1px solid var(--paper-edge); }
+.statement-lines > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .6rem 0; border-bottom: 1px solid var(--paper-hairline); }
+.statement-lines dd { font: 600 1.45rem/1.25 var(--display); }
+#quote-difference { background: #e9eddd; padding-inline: .75rem; }
+.statement .quote-settings { border-bottom: 0; margin: 1rem 0 0; }
+.statement-page details > summary, .example-register summary { min-height: 48px; }
+.statement .flow-links { padding-left: .85rem; border-left: 2px solid #c0c8b2; margin-bottom: .8rem; gap: .25rem; }
+.flow-links a, .statement-link { display: inline-flex; align-items: center; padding-block: .4rem; color: #394d33; font-size: .9rem; text-underline-offset: .22em; }
+.statement-link { min-height: 44px; }
+#flow-pay .statement-link { margin-inline-start: .65rem; }
+.example-register { border-top: 1px solid var(--paper-edge); background: #efefe6; }
+.example-register .statement-head { padding-bottom: 1rem; border-bottom: 1px solid #8c9780; }
+.example-row { display: flex; align-items: center; justify-content: space-between; gap: 1.2rem 3rem; padding-block: 1.25rem; }
+.example-row > div { min-width: 0; }
+.example-row p:not(.folio) { margin-top: .45rem; max-width: 56ch; line-height: 1.5; color: #495044; }
+.example-row .folio { margin-bottom: .45rem; }
+.example-row h3 a { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: .14em; }
+.example-row > .statement-link { flex: none; }
+.example-row + .example-row { border-top: 1px solid var(--paper-hairline); }
+.bill-statement .bill-work { display: block; margin: 0; }
+.bill-statement .schedule-column { display: block; border: 0; }
+.bill-statement .ledger { padding: 0; border-top: 0; margin: 0; }
+.bill-statement .planning-stack { padding: 0; }
+.bill-statement .cost-lines { margin-top: 1.1rem; }
+.bill-statement .difference { margin: .65rem 0 1rem; }
+.plan-checks { margin-top: 1.1rem; }
+.plan-checks h3 { margin-bottom: .45rem; font-size: 1rem; }
+.plan-checks:not(:has(button:not([hidden]))) { display: none; }
+@media (max-width: 760px) {
+  .statement-page > p { font-size: .92rem; }
+  .statement-tabs { gap: 1.15rem; }
+  .statement-tabs button { font-size: .88rem; }
+  .example-row { flex-wrap: wrap; gap: .3rem; }
+  .statement-head .folio { text-align: right; max-width: 13ch; }
+  .amount-line strong { font-size: 2.9rem; }
+}
+
+.offer-ledger .offer-paper { width: min(100% - 2 * var(--page-gutter), 56rem); margin-inline: auto; padding: 0 0 2.5rem; }
+.offer-paper .offer-footnote { max-width: 75ch; color: var(--muted); }
+.offer-paper .offer-terms { margin-block: 2rem; }
+.offer-paper .reserve-proof { display: block; margin: 0; border: 0; border-top: 1px solid var(--paper-edge); padding-block: clamp(1.6rem,3vw,2.8rem); background: transparent; }
+.offer-paper .reserve-proof .reserve-balance, .offer-paper .reserve-proof .reserve-quote { border: 0; padding: 0; background: transparent; }
+.offer-paper .reserve-balance > p:not(.panel-label), .offer-paper .reserve-quote > p { max-width: 68ch; }
+.offer-paper .reserve-proof .reserve-quote { margin-top: 1.25rem; }
+.offer-paper .reserve-balance h2, .offer-examples h2 { font: 600 clamp(2rem,3.6vw,3.25rem)/1.02 var(--display); letter-spacing: -.025em; }
+.offer-paper .funding-check form { max-width: 34rem; }
+.offer-paper .funding-answer { border-top: 1px solid var(--paper-hairline); padding-top: 1.1rem; }
+.offer-examples { border-top: 1px solid var(--paper-edge); padding-top: 1.75rem; }
+.offer-examples h2 { margin-bottom: 1rem; }
+.offer-examples .ledger-back { display: block; width: fit-content; }
+
+.statement-page > p.panel-label { margin: 0 0 .4rem; }
+.fee-items { margin-bottom: -.05rem; }
+.fee-items > div dt::before { content: ""; display: inline-block; width: .6rem; height: .6rem; margin-right: .55rem; background: var(--outside-lines),var(--lilac); border: 1px solid #a49bc0; }
+.fee-items[data-reserve="true"] > div:first-child dt::before { background: var(--citron); border-color: #9ba95d; }
+.fee-items + .statement-lines { border-top: 0; margin-top: 0; }
+.example-row h3 a { text-decoration: none; }
+.example-row h3 a:hover { text-decoration: underline; }
+.example-row h3 a span { display: inline-block; margin-left: .25rem; color: #526344; font: .6em Inter,sans-serif; }

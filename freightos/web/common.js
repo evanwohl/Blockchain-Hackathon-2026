@@ -99,3 +99,27 @@ export async function verifySample(load, button, result, signal) {
     if (!signal?.aborted) button.disabled = false;
   }
 }
+
+export function bindTabs(list) {
+  const tabs = [...list.querySelectorAll('[role="tab"]')];
+  function select(id) {
+    for (const tab of tabs) {
+      const active = tab.id === id;
+      tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
+      el(tab.getAttribute("aria-controls")).hidden = !active;
+    }
+  }
+  for (const [index, tab] of tabs.entries()) {
+    tab.onclick = () => select(tab.id);
+    tab.onkeydown = event => {
+      const next = {ArrowLeft: (index + tabs.length - 1) % tabs.length, ArrowRight: (index + 1) % tabs.length,
+        Home: 0, End: tabs.length - 1}[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      select(tabs[next].id);
+      tabs[next].focus();
+    };
+  }
+  return select;
+}
