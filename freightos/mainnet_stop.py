@@ -50,6 +50,17 @@ def split_costs(pools, total):
     limit = min(total, len(first) + len(second) - 2)
     dtype = np.int64 if first[-1] + second[-1] <= np.iinfo(np.int64).max else object
     a, b = np.asarray(first, dtype=dtype), np.asarray(second, dtype=dtype)
+    if len(a) == 1:
+        return second, list(range(limit + 1))
+    if len(b) == 1:
+        return first, [0] * (limit + 1)
+    # Exchanging a cent into the more expensive pool cannot improve the split when marginal costs are disjoint.
+    da, db = np.diff(a), np.diff(b)
+    first_cheaper = da.max() < db.min()
+    if first_cheaper or db.max() < da.min():
+        volumes = np.arange(limit + 1)
+        second = np.maximum(0, volumes - len(a) + 1) if first_cheaper else np.minimum(volumes, len(b) - 1)
+        return (a[volumes - second] + b[second]).tolist(), second.tolist()
     costs, second_legs = [], []
     for volume in range(limit + 1):
         low, high = max(0, volume - len(first) + 1), min(volume, len(second) - 1)
@@ -83,11 +94,11 @@ def sale_table(bill):
     return split_costs(saved()[1], bill)
 
 
-def validate_offer(menu, fee, amount=None):
+def validate_offer(menu, fee, amount=None, invoice=reserve_credit.INVOICE_CENTS):
     if menu == "counter":
-        if not integer(amount, "net amount the customer offers", reserve_credit.INVOICE_CENTS):
+        if not integer(amount, "net amount the customer offers", invoice):
             raise ValueError("Enter a positive early payment")
-        integer(fee, "flat early-payment discount", reserve_credit.INVOICE_CENTS)
+        integer(fee, "flat early-payment discount", invoice)
         return
     if menu not in ("partial", "both", "none"):
         raise ValueError("Choose the amounts the customer offers")

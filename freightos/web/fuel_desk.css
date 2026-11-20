@@ -66,3 +66,14 @@
   .desk-side summary { display: grid; grid-template-columns: 1fr auto auto; gap: .55rem; }
   .desk-side summary strong { margin: 0; font-size: .76rem; }
 }
+
+#desk-form small:not([hidden]) { display: block; margin: -.35rem 0 .8rem; color: var(--muted); font-size: .76rem; line-height: 1.45; }
+#desk-form .desk-reset { border-color: transparent; text-decoration: underline; text-underline-offset: .2em; }
+.desk-dates dd { overflow-wrap: anywhere; }
+
+.desk-stress { border-block: 1px solid var(--line); padding-block: .65rem; }
+.desk-stress summary { cursor: pointer; font-weight: 600; }
+.desk-stress[open] label { margin-top: .75rem; }
+.driver-desk #payday-choices { display: flex; flex-wrap: wrap; min-inline-size: 0; }
+.driver-desk #payday-choices label { flex: 1 1 7.5rem; }
+.driver-desk #payday-prices { overflow-x: auto; }

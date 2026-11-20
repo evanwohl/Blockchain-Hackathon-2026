@@ -49,6 +49,13 @@ function showPaydayPrices(options, show) {
     }
     return tr;
   }));
+  const limits = options.switch_prices, note = el("payday-switch");
+  note.hidden = !limits;
+  if (limits) {
+    note.textContent = "If the loan stays open until payday, borrowing leaves more at " + money(limits.borrowing_from) + "/SOL or higher."
+      + (limits.debt_free_through === null ? "" : " The same debt-free plan leaves more at " + money(limits.debt_free_through) + "/SOL or lower.")
+      + (limits.debt_free_through === null ? "" : " Cent rounding matters between the two prices.");
+  }
   const h = options.history;
   el("payday-history").textContent = "Both plans keep their original funding split. Across " + h.windows
     + " overlapping Gemini 30-day moves, borrowing left more in " + h.ahead + " cases and tied in " + h.ties + ".";
@@ -121,20 +128,20 @@ export function showMix(q) {
   el("mix-risk").textContent = (r.draw_cents ? (r.pledge_lamports / 1e9).toFixed(4) + " SOL stays locked until repayment. Kamino can sell it if its value falls too far. " : "")
     + (r.advance_cents ? "Confirm the amount and date with the customer before relying on it. " : "");
   el("mix-risk").hidden = !r.draw_cents && !r.advance_cents;
-  el("mix-assumptions").textContent = "We use the available cash first, then price the remaining fuel at recorded Orca and Kamino terms. Gemini’s historical SOL moves and your extra price set the range for payday."
+  el("mix-assumptions").textContent = "We use your available cash first. Orca pool prices tell us what a sale would cost. Kamino supplies the borrowing terms. Settled Gemini prediction markets and the extra SOL price set the payday range."
     + (r.draw_cents ? " The 30-day payoff assumes an existing lending account and twice the recorded variable rate. We include borrowing and repayment fee allowances." : "")
     + (payday ? " We maximize the smallest payday balance across tested prices. Ties favor less debt, then a smaller advance." : "")
     + " This is a mainnet estimate. Reviewing it moves no funds.";
 }
 
-export function downloadOffer(row) {
+export function downloadOffer(row, reference = "FreightOS sample load FOS-2048") {
   if (!row?.advance_cents || row.fee_cents === null) return;
   const draft = [
-    "Draft early-payment request · FreightOS sample load FOS-2048", "",
+    "Draft early-payment request" + (reference ? " · " + reference : ""), "",
     "Could you send " + money(row.advance_cents) + " before the fuel stop on this load?",
     "With an early-payment discount of " + money(row.fee_cents) + ", that would settle "
       + money(row.advance_cents + row.fee_cents) + " of freight charges and leave " + money(row.invoice_balance_cents) + " on regular terms.",
     "Please confirm the amount, discount and arrival time before we rely on the payment.", ""
   ];
-  saveFile("FOS-2048-early-payment-request.txt", draft.join("\n"), "text/plain;charset=utf-8");
+  saveFile(reference === "FreightOS sample load FOS-2048" ? "FOS-2048-early-payment-request.txt" : "FreightOS-early-payment-request.txt", draft.join("\n"), "text/plain;charset=utf-8");
 }

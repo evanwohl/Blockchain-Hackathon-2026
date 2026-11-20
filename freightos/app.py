@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, bill, collateral_path, credit_exit, customer_credit, devnet, diesel_model, load_credit, mainnet_loan, mainnet_stop, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, road_cash, stop_backup, trip_cover
+from freightos import atomic_fuel, bill, collateral_path, credit_exit, customer_credit, devnet, driver_desk, diesel_model, load_credit, mainnet_loan, mainnet_stop, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, road_cash, stop_backup, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -976,6 +976,14 @@ class Handler(BaseHTTPRequestHandler):
                     calendar["decision"] = funding_options(
                         data, calendar, self.server.settlement.load_reserve(data.get("reserve_mode")))
                 self.respond(200, calendar)
+                return
+            if self.path == "/api/fuel-desk":
+                try:
+                    result = driver_desk.quote(data)
+                except RuntimeError:
+                    self.respond(503, {"error": "Recorded funding terms could not be verified."})
+                    return
+                self.respond(200, result)
                 return
             if self.path == "/api/fuel-stop":
                 args = [data.get(k) for k in ("budget", "cash", "received", "target", "stress")]

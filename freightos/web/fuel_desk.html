@@ -11,20 +11,26 @@
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" width="38" height="38" alt="">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/fuel-desk" aria-current="page">Funding desk</a><a href="/bill">Fuel bill</a></nav></div></header>
 <main>
   <header class="desk-banner"><div class="desk-wrap">
-    <div><p class="desk-kicker">FOS-2048 · Sample fuel stop</p><h1>Fuel funding <em>desk.</em></h1><p>Cover today’s diesel bill and see what you keep when freight pays.</p></div>
-    <dl class="desk-dates"><div><dt>Fuel due today</dt><dd>$190<span>.00</span></dd></div><div><dt>Freight invoice · Day 30</dt><dd>$200<span>.00</span></dd></div></dl>
+    <div><p class="desk-kicker">Single fuel stop · 30-day terms</p><h1>Fuel funding <em>desk.</em></h1><p>Cover today’s diesel bill and see what you keep when freight pays.</p></div>
+    <dl class="desk-dates"><div><dt>Fuel due today</dt><dd id="desk-bill">$190.00</dd></div><div><dt>Freight invoice · Day 30</dt><dd id="desk-invoice">$200.00</dd></div></dl>
   </div></header>
   <div class="desk-wrap desk-grid">
     <aside class="desk-side">
       <details id="desk-terms"><summary><span>Your funding terms</span><strong id="desk-offer-line">$90 early · $3 fee</strong></summary>
         <form id="desk-form">
+          <label>Load or invoice reference (optional)<input id="trip-ref" type="text" maxlength="64" placeholder="e.g. Load 2048"></label>
+          <div class="desk-pair"><label>Fuel bill due today ($)<input id="bill" type="number" min=".01" max="2500" step=".01" inputmode="decimal" value="190.00" aria-describedby="desk-bill-help" required></label><label>Freight due on day 30 ($)<input id="invoice" type="number" min="0" max="1000000" step=".01" inputmode="decimal" value="200.00" required></label></div>
+          <small id="desk-bill-help">One stop, up to $2,500 in fuel.</small>
           <label for="terms">What will the customer pay early?</label>
           <select id="terms"><option value="counter">A specific amount</option><option value="partial">Any amount up to $99</option><option value="none">Nothing before the stop</option></select>
-          <div class="desk-pair" id="fixed-offer"><label>Cash they send ($)<input id="advance" type="number" inputmode="decimal" min=".01" max="200" step=".01" value="90.00" required></label><label>Fee they keep ($)<input id="discount" type="number" inputmode="decimal" min="0" max="200" step=".01" value="3.00" required></label></div>
+          <div class="desk-pair" id="fixed-offer"><label>Cash they send ($)<input id="advance" type="number" inputmode="decimal" min=".01" max="1000000" step=".01" value="90.00" required></label><label>Fee they keep ($)<input id="discount" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="3.00" required></label></div>
           <label id="scaled-offer" hidden>Customer fee per $99 ($)<input id="fee" type="number" inputmode="decimal" min="0" max="100" step=".01" value="1.00" required disabled></label>
           <div class="desk-pair"><label>Cash I can bring ($)<input id="cash" type="number" min="0" max="1000000" step=".01" value="75.00" inputmode="decimal" required></label><label>SOL I can use ($)<input id="budget" type="number" min="0" max="1000000" step=".01" value="80.00" inputmode="decimal" required></label></div>
+          <label>Spendable wallet dollars and fuel reserve ($)<input id="stable" type="number" min="0" max="1000000" step=".01" value="20.43" inputmode="decimal" aria-describedby="stable-help" required></label>
+          <small id="stable-help">Include only dollars ready for fuel and reserve money you can withdraw. Exclude the SOL entered above.</small>
           <label>Cash I need left on payday ($)<input id="target" type="number" min="0" max="1000000" step=".01" value="3.00" inputmode="decimal" required></label>
-          <button type="submit" class="desk-secondary">Review my plan</button>
+          <details class="desk-stress"><summary>Test a different SOL price</summary><label>Extra payday price per SOL ($)<input id="stress" type="number" min=".01" max="100000" step=".01" value="150.00" inputmode="decimal" required></label><small>The plan also checks nine recorded 30-day price moves from Gemini.</small><small id="desk-stress-range" hidden></small></details>
+          <button type="submit" class="desk-secondary">Review my plan</button> <button type="reset" class="desk-reset">Restore sample</button>
         </form>
       </details>
       <a class="desk-receipt-jump" href="#signed-loan">Inspect a settled loan on Devnet</a>

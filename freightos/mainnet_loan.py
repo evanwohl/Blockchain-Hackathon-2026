@@ -101,7 +101,9 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
     gap = max(0, vendor - stable)
     rate = lending["apr"]
     marks = collateral_path.barriers(path, lending["sol_price"], rate * 2) if path else []
-    schedule = list(loan_schedule(gap, low, lending, marks))
+    max_draw = int(Decimal(native_available) * lending["sol_price"] * lending["initial"]
+                   / (LAMPORTS * lending["usd_price"]) * 100 / lending["factor"])
+    schedule = list(loan_schedule(min(gap, max_draw), low, lending, marks))
     target = plan["floor_cents"]
     baseline = chosen = minimum = best = None
     for draw, terms in enumerate(schedule):
@@ -142,6 +144,15 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
                     restore = row["restore_lamports"]
                     return row["payday_cents"] + ceil_div(restore * high, LAMPORTS) - ceil_div(restore * price, LAMPORTS)
                 return dict(price_cents=price, allowed_cents=balance(payday_plan), debt_free_cents=balance(debt_free))
+            saved_sol = debt_free["restore_lamports"] - payday_plan["restore_lamports"]
+            if payday_plan["draw_cents"] and saved_sol > 0:
+                opening = balances(0)
+                carry = opening["debt_free_cents"] - opening["allowed_cents"]
+                # The difference of two rounded-up buybacks is between floor and ceil of the raw difference.
+                combined["switch_prices"] = dict(
+                    borrowing_from=max(0, ceil_div((carry + 1) * LAMPORTS, saved_sol)),
+                    debt_free_through=(carry - 1) * LAMPORTS // saved_sol if carry >= 1 else None,
+                )
             observations = [balances(price) for price in history]
             combined["prices"] = [balances(price) for price in dict.fromkeys((low, reference, high))]
             combined["history"] = dict(windows=len(observations),
@@ -164,7 +175,7 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
 def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offer_fee, amount):
     bill, received = plan["bill_cents"], plan["receipt_cents"]
     high = plan["high_price_cents"]
-    invoice = reserve_credit.INVOICE_CENTS
+    invoice = plan.get("invoice_cents", reserve_credit.INVOICE_CENTS)
     if menu == "partial":
         amounts = range(min(received, invoice, customer_credit.ADVANCES[-1]) + 1)
     elif menu == "counter":

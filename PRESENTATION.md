@@ -1,7 +1,9 @@
 # FreightOS judge walkthrough
 
-**One-minute driver walkthrough.** Start on Overview and open **Compare funding for a $190 fuel stop**. The customer offers $90 now for a $3 fee. The driver brings $75 and needs $25 from the wallet. Toggle **No new loan** to see $2.06 left on payday, below the $3 target. Toggle **Borrowing allowed** to see how a $4.57 loan leaves $6.92 at the $150 SOL stress. Open the lower-price comparison to show the tradeoff, then save the driver's funding sheet. On the same screen, **Inspect a settled loan on Devnet** has both signed transactions from a separate $7 example. The $190 plan is a recorded mainnet estimate.
+**One-minute driver walkthrough.** Start on Overview and open **Price my fuel stop**. The customer offers $90 now for a $3 fee. The driver brings $75 and needs $25 from the wallet. Toggle **No new loan** to see $2.06 left on payday, below the $3 target. Toggle **Borrowing allowed** to see how a $4.57 loan leaves $6.92 at the $150 SOL stress. Open the lower-price comparison to show the tradeoff, then save the driver's funding sheet. On the same screen, **Inspect a settled loan on Devnet** has both signed transactions from a separate $7 example. The $190 plan is a recorded mainnet estimate.
 
+
+**Show when borrowing earns its keep.** Under **Your funding terms**, enter a $745 stop, $3,100 invoice, $250 early for $5, $250 cash, $600 of SOL, and $150 spendable wallet dollars. Open the payday price comparison. The last $95 can come from selling SOL or borrowing against it. Selling leaves 40¢ more at the recorded opening price. Borrowing leaves more from $72.79/SOL and adds $101.69 at $150/SOL if the pledge survives until payday. Point to the $95.83 payoff and the 2.8534 SOL locked. This is a conditional funding decision. The separate Devnet receipt shows execution.
 
 Allow two minutes. Use one narrator and one person at the keyboard. The other two teammates can cover the funding model and settlement questions after the demo.
 
