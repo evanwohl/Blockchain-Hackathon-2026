@@ -13,7 +13,7 @@ from math import ceil
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from freightos import fuel_cover, fuel_update, regional_diesel
+from freightos import diesel_model, fuel_cover, fuel_update, regional_diesel
 from hedging.quick_pay import integer
 
 SNAPSHOT = fuel_cover.SNAPSHOT.with_name("trip_cover.json.gz")
@@ -28,6 +28,8 @@ def validate(trip):
         integer(trip["spend_limit_cents"], "oil protection limit", 100_000_000)
     if "pump_cash_cents" in trip:
         integer(trip["pump_cash_cents"], "extra cash at the pump", 100_000_000)
+    if "diesel_model" in trip and (trip["diesel_model"] != "recent" or "region" not in trip):
+        raise ValueError("Choose a diesel region to use its recent price pattern")
     if "region" in trip and (not isinstance(trip["region"], str) or trip["region"] not in regional_diesel.REGIONS):
         raise ValueError("Choose a supported diesel region")
 
@@ -282,6 +284,10 @@ def pump_target(offers, gaps, pump_cash, reserve_cash, spend_limit, gallon_cents
     capacity = reserve_cash + pump_cash
     floor = residual_floor(offers, gaps)
     plan = portfolio(offers, gaps, fuel_cash=max(capacity, floor))
+    floor_option = None
+    if floor > capacity and offers:
+        floor_option = {"short_cents": floor - capacity, "premium_cents": plan["upfront_cents"],
+                       "below_strike": offers[0].get("strike") if floor == gaps[0] else None}
     loan_free = plan if floor <= capacity else None
     minimum = loan_free["upfront_cents"] if loan_free else None
     if spend_limit is not None and plan["upfront_cents"] > spend_limit:
@@ -331,7 +337,7 @@ def pump_target(offers, gaps, pump_cash, reserve_cash, spend_limit, gallon_cents
     change = None
     if loan_free and plan["residual_cents"] > capacity and all("strike" in o for o in offers):
         change = protection_change(offers, gaps, capacity, plan, loan_free)
-    return {"funding_risk": risk, "protection_change": change, "before": at_stop(gaps[-1]), "after": at_stop(plan["residual_cents"]), "single_spend_cents": single,
+    return {"floor_option": floor_option, "funding_risk": risk, "protection_change": change, "before": at_stop(gaps[-1]), "after": at_stop(plan["residual_cents"]), "single_spend_cents": single,
             "plan": plan, "minimum_spend_cents": minimum}
 
 
@@ -348,7 +354,17 @@ def analyze(snapshot, trip, *, reserve=None):
     regional = regional_diesel.history(trip["region"], per_gallon) if "region" in trip else None
     allowance = regional["cents_per_gallon"] * trip["gallons"] if regional else 0
 
+    fitted = None
+    if regional:
+        fitted = diesel_model.lookup(trip["region"], datetime.fromisoformat(snapshot["checked_at"]).date())
+    recent = trip.get("diesel_model") == "recent"
+    if recent and fitted is None:
+        raise diesel_model.CalibrationUnavailable("The weekly diesel model has no calibration for this market date. Use the standard estimate or open the recorded comparison.")
+
     def gap(oil):
+        if recent:
+            move = diesel_model.change(fitted["curve"], oil - anchor)
+            return max(0, ceil(base + trip["gallons"] * move) - trip["budget_cents"])
         return max(0, ceil(base + allowance + (oil - anchor)*slope) - trip["budget_cents"])
 
     offers = top_offers(snapshot, fuel, rows)
@@ -363,7 +379,19 @@ def analyze(snapshot, trip, *, reserve=None):
             "offers": len(offers), "contracts_checked": len(rows), "combined": combined}
     if regional:
         result["regional"] = {**regional, "allowance_cents": allowance}
-        four = regional["four_fills"]
+        if fitted:
+            result["regional"]["comparison"] = {
+                "weeks": fitted["weeks"], "through": fitted["through"], "standard": fitted["fixed"], "recent": fitted["recent"],
+                "gain": fitted["gain"],
+                "standard_bill_cents": ceil(base + allowance + (ceiling - anchor)*slope),
+                "recent_bill_cents": ceil(base + trip["gallons"] * diesel_model.change(fitted["curve"], ceiling - anchor))}
+        if recent:
+            result["regional"].update(cents_per_gallon=fitted["curve"]["base_cents"], training_weeks=diesel_model.WINDOW,
+                                      allowance_cents=fitted["curve"]["base_cents"] * trip["gallons"],
+                                      test_weeks=fitted["weeks"], allowance_misses=fitted["recent"]["misses"],
+                                      worst_miss_cents=fitted["recent"]["worst_miss_cents"],
+                                      worst_week=fitted["recent"]["worst_week"], four_fills=fitted["recent"]["four_fills"])
+        four = result["regional"]["four_fills"]
         if four:
             tail = Fraction(four["tail_cents_per_weekly_gallon"]) * trip["gallons"]
             result["regional"]["four_fills"] = {**four, "tail_cents": ceil(tail)}

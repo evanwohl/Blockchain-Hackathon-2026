@@ -84,7 +84,7 @@ function targetBudget(d, later) {
   else if (!later && missing) why += " Oil payouts arrive after this stop.";
   else if (later && payment.short_cents && target.minimum_spend_cents !== null) {
     why += " Meeting your pump limit would require " + money(target.minimum_spend_cents) + " in Gemini.";
-  } else if (later && payment.short_cents) why += " This is the closest the available contracts can get to your pump limit.";
+  } else if (later && payment.short_cents) why += " Keep extra cash available for the part oil protection cannot cover.";
   el("trip-why").textContent = why;
   const rows = [["Extra pump cash you have", money(d.trip.pump_cash_cents)], ["Extra pump cash needed", money(payment.outside_cents)]];
   if (reserve) rows.push(["Reserve payment for fuel", money(payment.reserve_cents)], ["Money kept for the road", money(Math.min(reserve.road_cents, reserve.available_cents))]);
@@ -195,16 +195,45 @@ function render() {
     plan = d.reserve ? reserveBudget(d, later) : generalBudget(d, later);
     showSpendingLimit(d, later);
   }
+  const floor = later && d.pump_target?.floor_option;
+  el("fuel-floor").hidden = !floor;
+  if (floor) {
+    el("fuel-floor-note").textContent = "Even with more oil protection, the smallest modeled fuel gap is " + money(floor.short_cents)
+      + (floor.below_strike ? ". The pump bill can run high before oil reaches the first payout at $" + floor.below_strike + "."
+        : ". Available payouts and contract quantities limit what the plan can cover.");
+    el("floor-try").hidden = d.pump_target.after.short_cents <= floor.short_cents;
+    el("floor-try").textContent = "Try " + money(floor.premium_cents) + " of protection for that gap";
+  }
   showProtectionChoice(d.pump_target, later);
   setFuelGap(d.pump_target ? (later ? d.pump_target.after : d.pump_target.before).short_cents : 0,
     later ? d.pump_target?.protection_change : null);
   const region = d.regional;
   el("regional-evidence").hidden = !region;
   if (region) {
-    el("regional-test").textContent = "We added " + region.cents_per_gallon + "¢ per gallon for the " + region.name
+    const recent = d.trip.diesel_model === "recent";
+    const comparison = region.comparison;
+    el("pattern-validation").hidden = el("pattern-try").hidden = el("pattern-bills").hidden = el("pattern-score").hidden = el("pattern-price").hidden = !comparison;
+    if (comparison) {
+      el("pattern-price").textContent = "Fuel bill before protection if oil reaches $" + d.ceiling + " on this trip.";
+      facts(el("pattern-bills"), [["Standard estimate", money(comparison.standard_bill_cents)],
+        ["Using recent weeks", money(comparison.recent_bill_cents)]]);
+      el("pattern-score").textContent = "On the same " + comparison.weeks + " historical weeks, the standard estimate was low "
+        + comparison.standard.misses + " times. The recent estimate was low " + comparison.recent.misses
+        + " times. Both use each week’s observed WTI spot move. The trip uses a Gemini oil index, and your station’s price can differ.";
+      const gain = comparison.gain;
+      el("pattern-performance").textContent = "The scoring rule penalizes budgeting one cent too little nine times as heavily as budgeting one cent too much. "
+        + "Lower is better. Standard scored " + comparison.standard.score.toFixed(2) + "¢/gal and recent scored " + comparison.recent.score.toFixed(2)
+        + "¢/gal. The approximate 90% interval for the score improvement is " + gain.low.toFixed(2) + " to " + gain.high.toFixed(2)
+        + "¢/gal, allowing for four weeks of dependence. The largest underestimate was " + comparison.standard.worst_miss_cents
+        + "¢/gal with standard and " + comparison.recent.worst_miss_cents + "¢/gal with recent.";
+      el("pattern-try").textContent = recent ? "Compare using the standard estimate" : "Compare using recent weeks";
+    }
+    el("regional-test").textContent = recent ? "At a flat oil price, this estimate adds " + region.cents_per_gallon
+      + "¢ per gallon. It blends the standard allowance with models trained on this region and all five regions. The fitted responses to rising and falling oil use 52 weekly changes through "
+      + comparison.through + "." : "We added " + region.cents_per_gallon + "¢ per gallon for the " + region.name
       + ". That allowance came from the 90th percentile of weekly diesel changes left unexplained by oil across "
       + region.training_weeks + " earlier weeks.";
-    el("regional-limit").textContent = "Using the oil move that actually happened, the regional pump price finished above the oil estimate in "
+    el("regional-limit").textContent = recent ? "The model was refitted before each historical test, leaving a week for data releases. Its largest underestimate was " + region.worst_miss_cents + "¢ per gallon. Individual stations and fill dates can differ." : "Using the oil move that actually happened, the regional pump price finished above the oil estimate in "
       + region.oil_only_misses + " of " + region.test_weeks + " later weeks. With the allowance, it exceeded the estimate in "
       + region.allowance_misses + ". The largest remaining gap was about " + region.worst_miss_cents + "¢ per gallon. "
       + "The check uses weekly EIA diesel and WTI spot prices through " + region.test_end + ". Your station price and the time until you fill up can differ.";
@@ -216,7 +245,7 @@ function render() {
   }
   const legs = plan?.legs || [];
   el("trip-method").textContent = "The model starts from your diesel price and Gemini’s $" + Number(d.anchor).toFixed(2)
-    + " oil close. It uses the sample trip’s diesel sensitivity and tests closes through $" + d.ceiling
+    + " oil close. It uses " + (d.trip.diesel_model ? "the region’s recent diesel response" : "the sample trip’s diesel sensitivity") + " and tests closes through $" + d.ceiling
     + " per barrel. " + d.offers + " of " + d.contracts_checked + " thresholds had matching offers and displayed quantity. They expire "
     + new Date(d.expiry).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" }) + " UTC.";
   facts(el("trip-legs"), legs.map(leg => ["Oil at $" + leg.strike + " or higher", (leg.lots / 100).toFixed(2) + " units at " + money(leg.price)]));
@@ -242,7 +271,10 @@ async function compare(source, submitted = false) {
   try {
     const body = source ? { source, gallons: el("trip-gallons").valueAsNumber, pump_mills: Math.round(el("trip-pump").valueAsNumber * 1000),
       budget_cents: Math.round(el("trip-budget").valueAsNumber * 100) } : undefined;
-    if (body && el("trip-region").value) body.region = el("trip-region").value;
+    if (body && el("trip-region").value) {
+      body.region = el("trip-region").value;
+      if (el("use-recent-pattern").checked) body.diesel_model = "recent";
+    }
     if (body && el("trip-limit").value !== "") body.spend_limit_cents = Math.round(el("trip-limit").valueAsNumber * 100);
     if (body && el("pump-cash").value !== "") body.pump_cash_cents = Math.round(el("pump-cash").valueAsNumber * 100);
     if (body && includeReserve) body.road_cents = Math.round(el("trip-road").valueAsNumber * 100);
@@ -257,16 +289,23 @@ async function compare(source, submitted = false) {
     if (submitted && matchMedia("(max-width: 720px)").matches && (form.contains(document.activeElement) || document.activeElement === document.body || document.activeElement === status)) {
       el("trip-heading").focus();
     }
-  } catch {
+  } catch (error) {
     if (attempt !== revision) return;
-    status.textContent = current ? "Refresh unavailable. The previous comparison is still shown." : "Comparison unavailable. Try again or use the recorded prices.";
+    status.textContent = error.message.startsWith("The weekly diesel model") ? error.message : current ? "Refresh unavailable. The previous comparison is still shown." : "Comparison unavailable. Try again or use the recorded prices.";
     el("trip-recorded").hidden = false;
   } finally {
     if (attempt === revision) el("trip-check").disabled = el("trip-recorded").disabled = false;
   }
 }
 
+function setPatternVisibility() {
+  const hidden = !el("trip-region").value;
+  el("recent-pattern").hidden = el("use-recent-pattern").disabled = hidden;
+  if (hidden) el("use-recent-pattern").checked = false;
+}
+
 form.oninput = () => {
+  setPatternVisibility();
   revision++;
   el("trip-road").disabled = el("trip-road-fields").hidden = !el("use-trip-reserve").checked;
   setFuelGap(0);
@@ -279,15 +318,24 @@ el("risk-switch").onclick = () => {
   useRiskMix = !useRiskMix;
   render();
 };
-el("protection-try").onclick = () => {
-  const change = current?.pump_target?.protection_change;
-  if (!change) return;
+el("pattern-try").onclick = () => {
+  if (!current?.regional?.comparison) return;
   const source = current.source;
-  el("trip-limit").value = (change.total_cents / 100).toFixed(2);
+  el("use-recent-pattern").checked = current.trip.diesel_model !== "recent";
   form.dispatchEvent(new Event("input"));
   el("trip-status").focus();
   compare(source, true);
 };
+function tryLimit(cents) {
+  if (cents == null) return;
+  const source = current.source;
+  el("trip-limit").value = (cents / 100).toFixed(2);
+  form.dispatchEvent(new Event("input"));
+  el("trip-status").focus();
+  compare(source, true);
+}
+el("protection-try").onclick = () => tryLimit(current?.pump_target?.protection_change?.total_cents);
+el("floor-try").onclick = () => tryLimit(current?.pump_target?.floor_option?.premium_cents);
 form.onsubmit = event => { event.preventDefault(); compare("live", true); };
 el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded", true); };
 document.querySelector(".trip-timing").onchange = () => { if (current) { useRiskMix = false; render(); } };
@@ -297,6 +345,8 @@ function openExample() {
   const region = example.get("region");
   const includeReserve = example.has("road-cash");
   if ([...el("trip-region").options].some(option => option.value === region)) el("trip-region").value = region;
+  setPatternVisibility();
+  el("use-recent-pattern").checked = !el("use-recent-pattern").disabled && example.get("diesel") === "recent";
   for (const [key, field] of [["limit", "trip-limit"], ["pump", "pump-cash"]]) {
     const amount = example.get(key);
     if (amount !== null && /^\d{1,7}(\.\d{1,2})?$/.test(amount) && Number(amount) <= 1000000) {

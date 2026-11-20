@@ -1,0 +1,328 @@
+{
+  "version": 2,
+  "source_sha256": "080261291e3f2cf66faf2e3cb0bc3ce4740af0a9dbc202582cd78c034876bd32",
+  "window": 52,
+  "regions": {
+    "east": {
+      "curve": {
+        "base_cents": 14,
+        "up_millis": 1232,
+        "down_millis": 762
+      },
+      "through": "2026-11-09",
+      "available_from": "2026-11-16",
+      "weeks": 78,
+      "weights": {
+        "fixed": 0.3698292583995555,
+        "regional_only": 0.35567986576059085,
+        "pooled": 0.27449087583985377
+      },
+      "gain": {
+        "mean": 0.098,
+        "low": -0.664,
+        "high": 0.86
+      },
+      "fixed": {
+        "misses": 14,
+        "score": 3.115,
+        "worst_week": "2026-03-23",
+        "worst_miss_cents": 36,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 29,
+          "tail_cents_per_weekly_gallon": "279283/5460"
+        }
+      },
+      "regional_only": {
+        "misses": 15,
+        "score": 3.127,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 73,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 27,
+          "tail_cents_per_weekly_gallon": "18672083/273000"
+        }
+      },
+      "pooled": {
+        "misses": 12,
+        "score": 3.068,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 65,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 22,
+          "tail_cents_per_weekly_gallon": "2394983/36400"
+        }
+      },
+      "recent": {
+        "misses": 12,
+        "score": 3.017,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 63,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 26,
+          "tail_cents_per_weekly_gallon": "6966571/109200"
+        }
+      }
+    },
+    "midwest": {
+      "curve": {
+        "base_cents": 21,
+        "up_millis": 1261,
+        "down_millis": 553
+      },
+      "through": "2026-11-09",
+      "available_from": "2026-11-16",
+      "weeks": 78,
+      "weights": {
+        "fixed": 0.028946434874511155,
+        "regional_only": 0.3950577396385703,
+        "pooled": 0.5759958254869185
+      },
+      "gain": {
+        "mean": 0.752,
+        "low": 0.087,
+        "high": 1.418
+      },
+      "fixed": {
+        "misses": 16,
+        "score": 4.287,
+        "worst_week": "2026-09-21",
+        "worst_miss_cents": 45,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 30,
+          "tail_cents_per_weekly_gallon": "9613/195"
+        }
+      },
+      "regional_only": {
+        "misses": 15,
+        "score": 3.123,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 30,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 28,
+          "tail_cents_per_weekly_gallon": "12746641/364000"
+        }
+      },
+      "pooled": {
+        "misses": 15,
+        "score": 3.515,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 57,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 28,
+          "tail_cents_per_weekly_gallon": "26104927/546000"
+        }
+      },
+      "recent": {
+        "misses": 15,
+        "score": 3.534,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 41,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 27,
+          "tail_cents_per_weekly_gallon": "6950111/156000"
+        }
+      }
+    },
+    "gulf": {
+      "curve": {
+        "base_cents": 19,
+        "up_millis": 1250,
+        "down_millis": 923
+      },
+      "through": "2026-11-09",
+      "available_from": "2026-11-16",
+      "weeks": 78,
+      "weights": {
+        "fixed": 0.34557064189874415,
+        "regional_only": 0.42563150546400685,
+        "pooled": 0.228797852637249
+      },
+      "gain": {
+        "mean": 0.065,
+        "low": -0.612,
+        "high": 0.742
+      },
+      "fixed": {
+        "misses": 13,
+        "score": 3.332,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 35,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 27,
+          "tail_cents_per_weekly_gallon": "65059/1365"
+        }
+      },
+      "regional_only": {
+        "misses": 15,
+        "score": 3.26,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 73,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 28,
+          "tail_cents_per_weekly_gallon": "38283/650"
+        }
+      },
+      "pooled": {
+        "misses": 16,
+        "score": 3.33,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 70,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 28,
+          "tail_cents_per_weekly_gallon": "119663/1950"
+        }
+      },
+      "recent": {
+        "misses": 11,
+        "score": 3.267,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 66,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 26,
+          "tail_cents_per_weekly_gallon": "10523347/182000"
+        }
+      }
+    },
+    "rockies": {
+      "curve": {
+        "base_cents": 19,
+        "up_millis": 1051,
+        "down_millis": 840
+      },
+      "through": "2026-11-09",
+      "available_from": "2026-11-16",
+      "weeks": 78,
+      "weights": {
+        "fixed": 0.22846744563931673,
+        "regional_only": 0.3236434084621039,
+        "pooled": 0.44788914589857937
+      },
+      "gain": {
+        "mean": 0.299,
+        "low": -0.106,
+        "high": 0.704
+      },
+      "fixed": {
+        "misses": 13,
+        "score": 3.297,
+        "worst_week": "2026-03-23",
+        "worst_miss_cents": 37,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 29,
+          "tail_cents_per_weekly_gallon": "4931/91"
+        }
+      },
+      "regional_only": {
+        "misses": 17,
+        "score": 2.903,
+        "worst_week": "2026-03-16",
+        "worst_miss_cents": 36,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 29,
+          "tail_cents_per_weekly_gallon": "1890613/34125"
+        }
+      },
+      "pooled": {
+        "misses": 18,
+        "score": 3.251,
+        "worst_week": "2026-03-16",
+        "worst_miss_cents": 34,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 29,
+          "tail_cents_per_weekly_gallon": "2930061/45500"
+        }
+      },
+      "recent": {
+        "misses": 14,
+        "score": 2.999,
+        "worst_week": "2026-03-23",
+        "worst_miss_cents": 35,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 24,
+          "tail_cents_per_weekly_gallon": "56366/975"
+        }
+      }
+    },
+    "west": {
+      "curve": {
+        "base_cents": 17,
+        "up_millis": 1167,
+        "down_millis": 887
+      },
+      "through": "2026-11-09",
+      "available_from": "2026-11-16",
+      "weeks": 78,
+      "weights": {
+        "fixed": 0.5137825227305156,
+        "regional_only": 0.18913216345891232,
+        "pooled": 0.297085313810572
+      },
+      "gain": {
+        "mean": -0.109,
+        "low": -0.917,
+        "high": 0.698
+      },
+      "fixed": {
+        "misses": 10,
+        "score": 3.315,
+        "worst_week": "2026-03-23",
+        "worst_miss_cents": 42,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 22,
+          "tail_cents_per_weekly_gallon": "332029/5460"
+        }
+      },
+      "regional_only": {
+        "misses": 17,
+        "score": 3.677,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 79,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 27,
+          "tail_cents_per_weekly_gallon": "2971919/36400"
+        }
+      },
+      "pooled": {
+        "misses": 15,
+        "score": 3.499,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 69,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 27,
+          "tail_cents_per_weekly_gallon": "2815263/36400"
+        }
+      },
+      "recent": {
+        "misses": 11,
+        "score": 3.424,
+        "worst_week": "2026-03-09",
+        "worst_miss_cents": 69,
+        "four_fills": {
+          "windows": 52,
+          "overruns": 20,
+          "tail_cents_per_weekly_gallon": "3956639/52000"
+        }
+      }
+    }
+  },
+  "audit_sha256": "ef8da5a8fe9b57d27d50bdc23755413ba289c4fc3ef4d77ed9dd40c62f7e8471"
+}

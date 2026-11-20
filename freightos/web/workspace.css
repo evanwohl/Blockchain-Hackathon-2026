@@ -149,3 +149,7 @@
 #protection-outcomes dd { position: relative; flex: 0 0 45%; padding-bottom: .4rem; }
 #protection-outcomes dd::after { content: ""; position: absolute; inset: auto auto 0 0; width: var(--payout); height: 3px; background: #637a49; }
 #protection-outcomes dd[data-loss="true"]::after { background: repeating-linear-gradient(115deg,#92542f 0 2px,transparent 2px 4px); }
+
+.fuel-floor { padding-block: .9rem; border-top: 1px solid var(--paper-hairline); }
+.fuel-floor p, #regional-evidence .secondary { margin-block: .4rem; }
+#trip-cover-form #recent-pattern { margin: 0 0 .7rem; }
