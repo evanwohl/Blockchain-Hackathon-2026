@@ -123,3 +123,46 @@ def test_sale_needs_an_eligible_pledge_that_meets_the_tested_cushion():
     for args in (dict(payoff_cash=500), dict(midtrip_price=4000), dict(midtrip_price=15000)):
         _, row = route(250_000_000, **args)
         assert "sale" not in row["cash_payoff"]["midtrip"].get("topup", {})
+
+
+@pytest.mark.parametrize("limit,strict_cap,price,stress,extra", [
+    (250_000_000, 84_598_004, 7932, 346, 411_940),
+    (10**9, 182_521_121, 7928, 746, 888_308),
+])
+def test_sale_cap_accounts_for_collateral_earnings_and_rejects_one_more_lamport(limit, strict_cap, price, stress, extra):
+    args, row = route(limit, sale_policy="historical")
+    topup = row["cash_payoff"]["midtrip"]["topup"]
+    sale = topup["sale"]
+    carry = sale["outcomes"]["carry"]
+    assert sale["max_lamports"] == strict_cap < sale["regular_cap_lamports"]
+    assert sale["min_net_price_cents"] == price
+    assert carry["extra_lamports"] == extra and carry["stress_difference_cents"] == stress
+    assert len(carry["histories"]) == 9
+    reduction = topup["payday_cents"] - sale["payday_cents"]
+    with_one_more = []
+    for history in carry["histories"]:
+        trace = dict(collateral_path.saved()["traces"][history["start"]])
+        mark = 5500 * trace[60] / trace[30]
+        sold_and_earnings = strict_cap + history["extra_lamports"]
+        assert history["difference_cents"] == floor(reduction - sold_and_earnings * mark / 10**9) >= 1
+        with_one_more.append(floor(reduction - (sold_and_earnings+1) * mark / 10**9))
+    assert min(with_one_more) == 0
+    request = dict(plan=args, opening_lamports=row["opening_lamports"], **sale["preview"])
+    proof = partial_payment.saved(*driver_desk.selected_topup(request))
+    assert 0 < proof["sold_lamports"] <= proof["sale_cap"] == strict_cap // 100
+    assert proof["vendor_raw"] == 950_000 and proof["remaining_raw"] == 585_100 and proof["rollback_slot"] >= proof["slot"]
+    with pytest.raises(ValueError, match="differs"):
+        driver_desk.selected_topup(dict(request, plan=dict(args, sale_policy="standard")))
+
+
+def test_missing_yield_evidence_preserves_basic_quote_and_withholds_strict_sale(monkeypatch):
+    def missing():
+        raise ValueError("Evidence unavailable")
+
+    monkeypatch.setattr(driver_desk.pledge_yield, "saved", missing)
+    _, row = route(250_000_000)
+    sale = row["cash_payoff"]["midtrip"]["topup"]["sale"]
+    assert sale["outcomes"]["carry"] is None and sale["preview"]["sale_cap"] == 1_226_100
+    _, row = route(250_000_000, sale_policy="historical")
+    sale = row["cash_payoff"]["midtrip"]["topup"]["sale"]
+    assert sale["max_lamports"] == 0 and "preview" not in sale

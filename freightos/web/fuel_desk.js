@@ -204,6 +204,7 @@ form.onreset = () => {
   el("midtrip-price").value = "55.00";
   el("midtrip-drop").value = "0";
   el("midtrip-topup").value = "0";
+  el("sale-policy").value = "standard";
   el("midtrip").open = false;
   sizeLoans = true;
   el("mix-priority").value = "most_cash"; el("payday-allow").checked = true; el("desk-setup").open = false;

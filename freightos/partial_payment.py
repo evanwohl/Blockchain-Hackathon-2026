@@ -156,6 +156,8 @@ RECORDS = {
     (0, 5_391_000): ("pledge-only", credit.DATA / "pledge_only.json.gz", "e0b06b134f2dd8f5dedcfc3c2b8a3b4fdbc8400e553541fd3e450913fdaee50f"),
 }
 SALES = {
+    (144_700, 67_100, 845_980): ("yield-sale-mixed", credit.DATA / "yield_sale_mix.json.gz", "5ba4604cff423063adf13f05152147d92ad8ea4c1a30561395cccefa61477ffd"),
+    (144_700, 144_700, 1_825_211): ("yield-sale-only", credit.DATA / "yield_sale_only.json.gz", "ce8d9d7c6ff0e8e471de698093d6e995b7ae579556d978630e5bd738a576de12"),
     (144_700, 67_100, 1_226_100): ("sell-and-pay", credit.DATA / "sale_and_cash.json.gz", "1bb393b7da13c7aa7e299a1c3c25d7a8a4affd0e2d81861964f335ae76224cef"),
     (144_700, 144_700, 2_644_063): ("sell-only", credit.DATA / "sale_only.json.gz", "dc2d46b430eeb9c93bc79937c99e3d54a548e5f17221e24305585e90132ff4e4"),
 }
