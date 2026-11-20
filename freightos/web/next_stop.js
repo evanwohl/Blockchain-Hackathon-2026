@@ -137,16 +137,23 @@ form.oninput = () => {
   status.textContent = "Check these amounts for an updated preview.";
 };
 form.onsubmit = event => { event.preventDefault(); check(true); };
-if (location.hash === "#two-stops") {
-  el("keep-fuel").checked = true;
-  el("stop-fuel").value = "15.00";
-  el("stop-road").value = "5.00";
+let buffer;
+function openBudget() {
+  buffer = /^#fuel-buffer=([1-9][0-9]{0,8})(?:&road=([0-9]{1,9}))?(&keep-shares)?$/.exec(location.hash);
+  form.reset();
+  if (buffer) {
+    el("keep-shares").checked = Boolean(buffer[3]);
+    el("stop-fuel").value = (Number(buffer[1]) / 100).toFixed(2);
+    el("stop-road").value = (Number(buffer[2] || 0) / 100).toFixed(2);
+  } else if (location.hash === "#two-stops") {
+    el("keep-fuel").checked = true;
+    el("stop-fuel").value = "15.00";
+    el("stop-road").value = "5.00";
+  }
+  result.hidden = true;
+  status.textContent = "Opening the saved preview…";
+  updateMode();
+  check(Boolean(buffer));
 }
-const buffer = /^#fuel-buffer=([1-9][0-9]{0,8})(?:&road=([0-9]{1,9}))?(&keep-shares)?$/.exec(location.hash);
-if (buffer) {
-  el("keep-shares").checked = Boolean(buffer[3]);
-  el("stop-fuel").value = (Number(buffer[1]) / 100).toFixed(2);
-  el("stop-road").value = (Number(buffer[2] || 0) / 100).toFixed(2);
-}
-updateMode();
-check(Boolean(buffer));
+window.addEventListener("hashchange", openBudget);
+openBudget();
