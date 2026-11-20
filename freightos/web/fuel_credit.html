@@ -11,7 +11,7 @@
 <main class="public-ledger trip-cover fuel-credit">
   <a class="ledger-back" href="/public-payment">← Fuel bill and receipt</a>
   <div class="public-spread">
-    <section class="public-cover">
+    <section class="public-cover"><div id="fuel-settings">
       <p class="panel-label">Working capital · FOS-2048</p>
       <h1>Cover the <em>$190 bill.</em></h1>
       <p id="credit-intro">The sample customer offers to pay a $200 invoice early for $10. If you own SOL, you can pledge it for a fuel loan and collect the full invoice later.</p>
@@ -45,7 +45,7 @@
       </div><button class="primary" id="credit-check">Refresh on public Solana</button></details></form>
       <button type="button" id="credit-jump" class="ledger-back" hidden></button>
       <p id="credit-status" role="status" aria-live="polite">Opening the recorded loan preview…</p>
-      <p class="credit-scope">Payment preview · test funds only.</p>
+      <p class="credit-scope">Payment preview · test funds only.</p></div>
     </section>
     <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label" id="credit-provider">Fuel funding · Kamino</p>
       <h2 id="credit-heading" tabindex="-1">What borrowing would cost</h2>
@@ -55,6 +55,21 @@
         <dl class="facts" id="policy-sources"></dl>
         <button type="button" class="secondary" id="policy-draft" hidden>Download customer request</button>
         <section class="spending-result"><h3>Cash for the next trip</h3><p id="policy-payday"></p><p id="policy-wait"></p><button id="policy-try-wait" type="button" class="secondary" hidden></button></section>
+        <details id="backup-panel"><summary>If customer money misses the stop</summary>
+          <p id="backup-status" role="status"></p>
+          <div id="backup-result" hidden>
+            <div class="backup-amount"><small>Bring separately for fuel</small><strong id="backup-gap"></strong></div>
+            <p id="backup-sources"></p>
+            <label for="backup-cash">Cash I can bring from outside this wallet ($)</label>
+            <input id="backup-cash" type="number" inputmode="decimal" min="0" max="1000000" step=".01" placeholder="Enter an amount">
+            <p id="backup-balance" aria-live="polite"></p>
+            <label for="backup-invoice">Freight money received by day 30</label>
+            <select id="backup-invoice"></select><p id="backup-payday" aria-live="polite"></p>
+          </div>
+          <button type="button" class="secondary" id="backup-refresh">Check my backup on public Solana</button>
+          <details id="backup-proof" hidden><summary>How this backup was checked</summary><p id="backup-terms"></p>
+            <a id="backup-download" href="/evidence/stop-backup" download="FreightOS-stop-backup.json">Download recorded payment checks</a></details>
+        </details>
         <details><summary>Compare the customer offers</summary><dl class="facts" id="policy-offers"></dl><p id="policy-rule"></p></details>
         <details><summary>How the price checks work</summary><p id="policy-evidence"></p><dl class="facts" id="policy-moves"></dl><p id="policy-assumptions"></p>
           <a href="/evidence/sol-payday" download="FreightOS-SOL-settlements.json">Download Gemini settlements</a> · <a href="/evidence/fuel-swap" download="FreightOS-fuel-routes.json">Download recorded Solana checks</a></details>

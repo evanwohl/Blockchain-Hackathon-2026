@@ -5,6 +5,8 @@ import base64
 import json
 import struct
 from pathlib import Path
+from time import monotonic, sleep
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from solders.compute_budget import set_compute_unit_limit
@@ -37,6 +39,24 @@ def request(method, params):
     if "error" in payload:
         raise ValueError(f"Devnet {method} failed: {payload['error']}")
     return payload["result"]
+
+
+def read_with_retry():
+    deadline = monotonic() + 80
+    def read(method, params):
+        for fallback in (1, 3, 6):
+            try:
+                return request(method, params)
+            except HTTPError as error:
+                if error.code != 429:
+                    raise
+                header = error.headers.get("Retry-After", "")
+                delay = max(fallback, int(header)) if header.isdigit() else fallback
+                if monotonic() + delay >= deadline:
+                    raise
+                sleep(delay)
+        return request(method, params)
+    return read
 
 
 def wallet_balances(address, rpc=request):

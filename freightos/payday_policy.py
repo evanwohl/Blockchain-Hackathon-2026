@@ -8,10 +8,8 @@ from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from fractions import Fraction
 from functools import cache
 from pathlib import Path
-from time import monotonic, sleep
-from urllib.error import HTTPError
 
-from freightos import customer_credit, devnet, fuel_swap, load_credit, reserve_credit
+from freightos import customer_credit, devnet, fuel_swap, load_credit, reserve_credit, stop_backup
 from hedging.quick_pay import integer
 
 HISTORY = Path(__file__).with_name("artifacts") / "gemini_ladder" / "sol_payday.json.gz"
@@ -89,20 +87,7 @@ def recorded_menu():
 def quotes(menu, live=False):
     if not live:
         return [recorded_menu()[net] for net in customer_credit.MENUS[menu]]
-    deadline = monotonic() + 80
-    def read(method, params):
-        for fallback in (1, 3, 6):
-            try:
-                return devnet.request(method, params)
-            except HTTPError as error:
-                if error.code != 429:
-                    raise
-                header = error.headers.get("Retry-After", "")
-                delay = max(fallback, int(header)) if header.isdigit() else fallback
-                if monotonic() + delay >= deadline:
-                    raise
-                sleep(delay)
-        return devnet.request(method, params)
+    read = devnet.read_with_retry()
     reserve = reserve_credit.reserve_leg(read)
     return [fuel_swap.price(reserve, net, read) for net in customer_credit.MENUS[menu]]
 
@@ -255,8 +240,8 @@ def decide(observations, menu, fee, funds, extra, floor=0, stress=None, *, budge
     eligible = [p for p in plans if not p["payday_gap"] and not p["entry_gap"] and not p["outside_stress"]]
     return {"winner": winner, "plans": plans, "minimum_early_cents": min((p["customer_cents"] for p in eligible), default=None),
             "wait_entry": min(wait, default=None), "available_lamports": cap, "actual_lamports": wallet["lamports"],
-            "floor_cents": floor, "keep_profile": keep_profile, "available_cents": int(cap * unit),
-            "budget_cents": budget_cents, "reference_cents": reference, "cases": cases, "excluded": excluded,
+            "invoice_cents": reserve_credit.INVOICE_CENTS, "floor_cents": floor, "keep_profile": keep_profile, "available_cents": int(cap * unit),
+            "stress_cents": stress, "recorded_backup": cap == stop_backup.DEFAULT_CAP, "budget_cents": budget_cents, "reference_cents": reference, "cases": cases, "excluded": excluded,
             "first_slot": min(slots), "last_slot": max(slots), "bill_cents": reserve_credit.BILL_CENTS}
 
 

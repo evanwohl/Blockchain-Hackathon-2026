@@ -1,4 +1,6 @@
-import { el, facts, money, saveFile } from "./common.js";
+import { el, facts, money, request, saveFile } from "./common.js";
+
+let openBackupLink = location.hash === "#fuel-backup";
 
 const title = net => net ? money(net) + " early" : "Wait for the full invoice";
 const method = plan => plan.kind === "loan" ? "secured loan" : plan.sold_lamports ? "exchange" : "wallet";
@@ -13,10 +15,98 @@ function offerSummary(rows) {
   return affordable.length ? "Payday target short by " + money(affordable[0].payday_gap) : "No checked route fits both limits";
 }
 
+function setupBackup(policy) {
+  const panel = el("backup-panel"), cash = el("backup-cash"), refresh = el("backup-refresh");
+  const result = el("backup-result"), status = el("backup-status"), receipts = el("backup-invoice");
+  const current = () => panel.ontoggle === toggle && !el("policy-result").hidden;
+  let displayed, busy = false, alignOnOpen = openBackupLink;
+  result.hidden = el("backup-proof").hidden = true;
+  refresh.disabled = false;
+  cash.value = "";
+  const invoice = policy.invoice_cents, plan = policy.winner;
+  receipts.replaceChildren(new Option("Full invoice · " + money(invoice), invoice));
+  if (plan?.customer_cents) {
+    if (plan.customer_fee_cents) receipts.add(new Option("Both payments, after the fee · " + money(invoice - plan.customer_fee_cents), invoice - plan.customer_fee_cents));
+    receipts.add(new Option("Only the regular installment · " + money(plan.invoice_cents), plan.invoice_cents));
+  }
+  receipts.add(new Option("Nothing received · " + money(0), 0));
+  function payday() {
+    if (!displayed) return;
+    const missing = invoice - Number(receipts.value);
+    const least = displayed.payday.least_cents - missing, most = displayed.payday.most_cents - missing;
+    el("backup-payday").textContent = least < 0
+      ? "In the weakest tested case, you would need another " + money(-least) + " to restore the money used for fuel."
+      : "After paying yourself back, " + money(least) + " to " + money(most) + " stays available across the tested SOL prices.";
+    if (cash.validity.valid && cash.value !== "" && Math.round(cash.valueAsNumber * 100) < displayed.outside_cents)
+      el("backup-payday").textContent = "This assumes you first cover the fuel shortfall. " + el("backup-payday").textContent;
+    if (policy.floor_cents > 0 && least < policy.floor_cents) el("backup-payday").textContent += " The payday target is short by " + money(policy.floor_cents - least) + " in the weakest case.";
+  }
+  function balance() {
+    if (!displayed) return;
+    const need = displayed.outside_cents;
+    const available = Math.round(cash.valueAsNumber * 100);
+    const short = Math.max(0, need - available);
+    el("backup-balance").textContent = !cash.validity.valid ? "Enter a cash amount in dollars and cents."
+      : cash.value === "" ? "" : short ? money(short) + " would still be due at the stop."
+      : "That covers the bill. " + money(available - need) + " of your separate cash stays with you.";
+  }
+  async function check(source) {
+    if (busy) return;
+    busy = refresh.disabled = true;
+    status.textContent = source === "live" ? "Checking both exchanges and the fuel reserve on public Solana…" : "Opening the recorded backup…";
+    try {
+      const q = await request("/api/stop-backup", {source, cap_lamports: policy.available_lamports,
+        reference_cents: policy.reference_cents, stress_cents: policy.stress_cents,
+        floor_cents: policy.floor_cents}, AbortSignal.timeout(95000));
+      if (!current()) return;
+      displayed = q;
+      const best = q.best;
+      result.hidden = el("backup-proof").hidden = false;
+      status.textContent = source === "live" ? "New Devnet simulation · no funds moved" : "Recorded Devnet simulation · no funds moved";
+      el("backup-gap").textContent = money(q.outside_cents);
+      el("backup-sources").textContent = best ? "The wallet could send " + money(q.covered_cents) + " to the fuel company without borrowing. "
+        + money(best.wallet_raw / q.scale) + " comes from wallet cash, " + money(best.reserve_raw / q.scale) + " from the reserve and "
+        + money(best.swap_raw / q.scale) + " from selling SOL. " + money(best.retained_raw / q.scale) + " stays for the next stop."
+        : "This wallet limit cannot cover the network fee. The full fuel bill needs another source.";
+      payday();
+      el("backup-terms").textContent = "This assumes the fuel company accepts split payment and the outside cash clears at the stop. "
+        + "The check sizes the wallet payment in whole cents, keeps the three-gallon reserve and leaves room for a 0.5% change in exchange cost. "
+        + "Payday restores the separate cash, wallet cash, reserve and SOL at the maximum allowed sale cost including the network fee. "
+        + "This independent Devnet check used slots " + q.first_slot.toLocaleString("en-US") + "–" + q.last_slot.toLocaleString("en-US") + ".";
+      if (q.unavailable_pools.length) el("backup-sources").textContent += " A pool declined the payment check. Another route might cover more.";
+      el("backup-download").hidden = source !== "recorded";
+      balance();
+      if (alignOnOpen && panel.open && document.activeElement === panel.querySelector("summary"))
+        panel.scrollIntoView({block: "start"});
+      alignOnOpen = false;
+    } catch (error) {
+      if (current()) status.textContent = error.message + (displayed ? " The previous backup is still shown (" + displayed.source + " Devnet check)." : " The fuel backup is unconfirmed.");
+    } finally {
+      busy = false;
+      if (current()) refresh.disabled = false;
+    }
+  }
+  function toggle() {
+    if (panel.open && policy.recorded_backup && !displayed) check("recorded");
+  }
+  status.textContent = "See how much you could pay without borrowing or collecting early. This uses the SOL limit above.";
+  cash.oninput = () => { balance(); payday(); };
+  receipts.onchange = payday;
+  refresh.onclick = () => check("live");
+  panel.ontoggle = toggle;
+  if (openBackupLink) {
+    openBackupLink = false;
+    panel.open = true;
+    panel.scrollIntoView({block: "start"});
+    panel.querySelector("summary").focus({preventScroll: true});
+  }
+  if (panel.open && policy.recorded_backup) check("recorded");
+}
+
 export function showPolicy(d) {
   const w = d.winner;
   el("credit-heading").textContent = !w ? "Both limits cannot be met" : w.customer_cents ? "Ask for " + money(w.customer_cents) + " early" : "Keep the full invoice";
-  el("policy-label").textContent = w ? "Fuel covered at the stop" : "Fuel still to arrange";
+  el("policy-label").textContent = w?.customer_cents ? "Fuel covered if customer cash clears" : w ? "Fuel covered at the stop" : "Fuel still to arrange";
   el("policy-total").textContent = money(d.bill_cents);
   el("policy-draft").hidden = !w?.customer_cents;
   el("policy-strip").hidden = !w;
@@ -67,4 +157,5 @@ export function showPolicy(d) {
   el("policy-assumptions").textContent = "Devnet slots " + d.first_slot.toLocaleString("en-US") + "–" + d.last_slot.toLocaleString("en-US") + ". Each plan keeps the Gemini oil-based fuel allowance. Sales include the SOL sold and network fee. Loans assume repayment and collateral release after 30 days at twice the observed rate, within the tested 40% SOL drop. "
     + (d.keep_profile ? "The driver can leave setup money in the loan profile." : "The plan replaces SOL still tied up in the loan profile.") + " Future replacement uses the tested prices. Intermediate liquidation paths, taxes and future yield are outside this comparison. Dollar amounts use the demo scale and exchange prices come from Solana’s test network.";
   el("policy-result").hidden = false;
+  setupBackup(d);
 }

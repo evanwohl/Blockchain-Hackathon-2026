@@ -4,6 +4,11 @@ import { showPolicy } from "./payday_policy.js";
 import { clearSale, setupSale } from "./fuel_swap.js";
 import { displayCustomer } from "./customer_credit.js";
 
+const settings = el("fuel-settings");
+new ResizeObserver(() => {
+  settings.style.setProperty("--settings-height", settings.offsetHeight + "px");
+}).observe(settings);
+
 let sequence = 0;
 const sol = lamports => (lamports / 1e9).toLocaleString("en-US", { maximumFractionDigits: 9 }) + " SOL";
 const pct = bps => (bps / 100).toFixed(2) + "%";
@@ -303,7 +308,7 @@ if (location.hash === "#partial-advance") {
   el("allow-partial").checked = el("protect-payday").checked = true;
   el("offer-fee").value = "3.00";
 }
-if (location.hash === "#choose-funding") el("credit-route").value = "policy";
+if (["#choose-funding", "#fuel-backup"].includes(location.hash)) el("credit-route").value = "policy";
 if (location.hash === "#pay-without-loan") {
   el("credit-route").value = "sale";
   el("customer-menu").value = "none";

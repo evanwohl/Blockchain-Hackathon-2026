@@ -214,3 +214,15 @@
 #policy-strip i:nth-child(4) { background: #354637; }
 #policy-try-wait { margin-top: .7rem; }
 #policy-result details a { line-height: 1.8; }
+
+#backup-panel .backup-amount { margin: 1rem 0 .5rem; padding-inline-start: .85rem; border-inline-start: 3px solid #596c44; }
+.backup-amount small, #backup-panel label { display: block; font-weight: 600; }
+.backup-amount strong { display: block; font: 600 clamp(2.4rem, 6vw, 3.8rem)/1.12 var(--display); font-variant-numeric: tabular-nums; }
+#backup-invoice, #backup-cash { box-sizing: border-box; width: min(100%, 12rem); min-height: 44px; margin-top: .4rem; padding: .45rem .65rem; font: inherit; }
+#backup-invoice { width: min(100%, 22rem); }
+#backup-balance:not(:empty) { border-inline-start: 2px solid #817188; padding-inline-start: .7rem; }
+
+@media (min-width: 761px) {
+  #fuel-settings { position: sticky; top: min(1rem, calc(100dvh - var(--settings-height, 100dvh) - 1rem)); }
+}
+#backup-panel { scroll-margin-block-start: 1rem; }
