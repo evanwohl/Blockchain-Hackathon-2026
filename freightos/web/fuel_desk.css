@@ -124,3 +124,16 @@
 #payoff-check { border-block: 1px solid var(--line); margin: .75rem 0; padding: .65rem 0; font-size: .91rem; line-height: 1.5; }
 #payoff-check summary { cursor: pointer; font-weight: 600; }
 #payoff-check details { border-top: 1px solid var(--line); padding: .65rem 0; }
+
+#cash-exit-form:not([hidden]) { display: flex; align-items: end; flex-wrap: wrap; gap: .6rem; margin: .75rem 0; }
+#cash-exit-form label { display: grid; gap: .35rem; flex: 1 1 13rem; }
+#cash-exit-budget { min-height: 44px; padding: .55rem; box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #849284; border-radius: 0; background: var(--paper); color: var(--ink); }
+#cash-exit-status:empty { display: none; }
+#exit-amounts[hidden] { display: none; }
+
+#exit-retained:not([hidden]) { display: grid; gap: .4rem; margin: -.8rem 0 .8rem; padding: .25rem 1rem .85rem; background: #e8eedb; color: #334b36; font-size: .8rem; }
+#exit-retained-bar { appearance: none; width: 100%; height: 5px; border: 0; background: #cbd5c2; color: #386046; }
+#exit-retained-bar::-webkit-progress-bar { background: #cbd5c2; }
+#exit-retained-bar::-webkit-progress-value { background: #386046; }
+#exit-retained-bar::-moz-progress-bar { background: #386046; }
+#cash-exit-quarter { margin-bottom: .8rem; }

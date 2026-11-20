@@ -1,4 +1,4 @@
-import {showExit, exitLines} from "./collateral-exit.js";
+import {clearExit, showExit, exitLines} from "./collateral-exit.js";
 import {el, facts, money, request, saveFile} from "./common.js";
 import {downloadOffer, mixKey, showMix} from "./funding_mix.js";
 import {showRun, saveRun} from "./repeat-run.js";
@@ -43,12 +43,12 @@ function paint() {
   el("series-panel").hidden = !quote.series;
   if (quote.series) {
     el("mix").hidden = el("desk-liquidity").hidden = true;
-    showRun(quote);
+    showRun(quote, inputs);
     return;
   }
   showMix(quote);
   const row = selected();
-  showExit(row && row.payday_cents >= inputs.target ? [["This stop", row]] : [], quote.low_price_cents);
+  showExit(row && row.payday_cents >= inputs.target ? [["This stop", row]] : [], quote.low_price_cents, inputs);
   el("plan-heading").textContent = row ? (row.cash_cents ? "Bring " + money(row.cash_cents) + " to the stop." : "Cover fuel without separate cash.") : "Review the funding gap.";
   el("desk-split").hidden = !row;
   if (row) {
@@ -93,6 +93,7 @@ function paint() {
 }
 
 function price(delay, focus) {
+  clearExit();
   const id = ++revision;
   clearTimeout(timer); controller?.abort();
   current = null;
@@ -199,6 +200,7 @@ form.oninput = event => {
 };
 form.onreset = () => {
   el("exit-keep").value = "100";
+  el("cash-exit-budget").value = "30.00";
   sizeLoans = true;
   el("mix-priority").value = "most_cash"; el("payday-allow").checked = true; el("desk-setup").open = false;
   setTimeout(() => price(0, false), 0);

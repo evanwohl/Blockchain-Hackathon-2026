@@ -13,9 +13,11 @@ from solders.pubkey import Pubkey
 from solders.signature import Signature
 from solders.transaction import VersionedTransaction
 
-from freightos import atomic_fuel, devnet, freight_credit as credit, fuel_swap, load_credit, repeat_credit, split_payment as bill, stop_backup
+from freightos import atomic_fuel, devnet, freight_credit as credit, fuel_swap, load_credit, public_offer, repeat_credit, split_payment as bill, stop_backup
 
 SAMPLE = credit.DATA / "flash_exit.json.gz"
+MIXED_SAMPLE = credit.DATA / "cash_exit.json.gz"
+SAMPLE_CASH = 300_000
 
 
 def flash_instruction(owner, cash, amount, *, borrow_index=None):
@@ -33,7 +35,9 @@ def flash_instruction(owner, cash, amount, *, borrow_index=None):
     return Instruction(credit.KLEND, data, keys)
 
 
-def simulate(rpc=devnet.request):
+def simulate(rpc=devnet.request, *, cash_raw=0):
+    if type(cash_raw) is not int or not 0 <= cash_raw < bill.LOAN:
+        raise ValueError("Choose a cash contribution below the sample fuel principal")
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("The collateral exit requires Solana Devnet")
     owner, obligation, _, wrapped, cash = repeat_credit.accounts()
@@ -41,11 +45,15 @@ def simulate(rpc=devnet.request):
     rent = rpc("getMinimumBalanceForRentExemption", [165])
     block = rpc("getLatestBlockhash", [{"commitment": "confirmed", "minContextSlot": slot}])
     slot = block["context"]["slot"]
-    bridge = bill.LOAN + 1
+    sponsor_cash = load_credit.borrower_accounts(credit.OWNER)[4]
+    bridge = bill.LOAN + 1 - cash_raw
     close = load_credit.instructions(owner, bill.PLEDGE, bill.LOAN, repay=True)
 
-    def run(entry_cap, exit_cap, output, *, decline=False):
+    def run(entry_cap, exit_cap, output, *, sponsor_cap=0, decline=False):
         ops = bill.opening_instructions(owner, cash, route, entry_cap, rent)
+        if cash_raw:
+            ops.extend(fuel_swap.swap_instructions(credit.OWNER, sponsor_cash, route, cash_raw, sponsor_cap, rent))
+            ops.append(public_offer.transfer(sponsor_cash, credit.OWNER, cash, cash_raw))
         borrow_index = len(ops)
         ops.extend([flash_instruction(owner, cash, bridge), *close])
         ops.extend(fuel_swap.swap_instructions(owner, cash, route, output, exit_cap, rent))
@@ -78,16 +86,21 @@ def simulate(rpc=devnet.request):
         def checked(idx):
             return [(t["source"], t["destination"], t["mint"], int(t["tokenAmount"]["amount"]))
                     for t in transfers(idx, "transferChecked")]
-        def swap(idx, expected):
+        def swap(idx, expected, payer=owner, destination=cash):
             legs = transfers(idx, "transfer")
-            scratch = Pubkey.create_with_seed(owner, fuel_swap.SEED, devnet.TOKEN)
+            scratch = Pubkey.create_with_seed(payer, fuel_swap.SEED, devnet.TOKEN)
             if (len(legs) != 2 or legs[0]["source"] != str(scratch) or legs[0]["destination"] != str(route[1])
-                    or legs[1]["source"] != str(route[2]) or legs[1]["destination"] != str(cash)
+                    or legs[1]["source"] != str(route[2]) or legs[1]["destination"] != str(destination)
                     or int(legs[1]["amount"]) != expected):
                 raise ValueError("Unexpected Orca sale proceeds")
             return int(legs[0]["amount"])
 
-        entry, sold = swap(swaps[0], bill.SALE), swap(swaps[1], output)
+        entry, sold = swap(swaps[0], bill.SALE), swap(swaps[-1], output)
+        sponsor_spent = 0
+        if cash_raw:
+            sponsor_spent = swap(swaps[1], cash_raw, credit.OWNER, sponsor_cash)
+            if not 0 < sponsor_spent <= sponsor_cap or devnet.token_delta({"meta": v}, keys, sponsor_cash, devnet.MINT, credit.OWNER):
+                raise ValueError("The sponsored cash contribution did not reconcile")
         debt = credit.route()["ixs"][12]["a"][6][0]
         custody = credit.route()["ixs"][8]["a"][6][0]
         repay_idx, = [i for i, ix in enumerate(ops) if ix.program_id == credit.KLEND
@@ -102,7 +115,7 @@ def simulate(rpc=devnet.request):
                 or checked(original_idx) != [(debt, str(cash), str(devnet.MINT), bill.LOAN)]
                 or checked(borrow_index) != [(debt, str(cash), str(devnet.MINT), bridge)]
                 or checked(len(ops)-1) != [(str(cash), debt, str(devnet.MINT), bridge)]
-                or loan_repay[:3] != (str(cash), debt, str(devnet.MINT)) or not bill.LOAN <= repaid <= bridge
+                or loan_repay[:3] != (str(cash), debt, str(devnet.MINT)) or not bill.LOAN <= repaid <= bridge + cash_raw
                 or returned != (custody, str(wrapped), str(credit.SOL), bill.PLEDGE)):
             raise ValueError("The temporary USDC, original payoff or released collateral differs from the route")
         def change(k):
@@ -112,21 +125,22 @@ def simulate(rpc=devnet.request):
         vendor_owner = Pubkey.from_string(json.loads(devnet.SAMPLE.read_bytes())["vendor_owner"])
         vendor = devnet.token_delta({"meta": v}, keys, load_credit.vendor(), devnet.MINT, vendor_owner)
         closed, = v["accounts"]
-        if (start or finish != output-repaid or not 0 < sold <= exit_cap <= bill.PLEDGE or not 0 < entry <= entry_cap
+        if (start or finish != output+cash_raw-repaid or not 0 < sold <= exit_cap <= bill.PLEDGE or not 0 < entry <= entry_cap
                 or (closed and closed["lamports"]) or v["preBalances"][keys.index(obligation)] or change(obligation)
                 or change(owner) != bill.SPONSOR-entry-sold or vendor != bill.LOAN+bill.SALE):
             raise ValueError("Borrower cash, SOL or the closed obligation did not reconcile")
-        return dict(slot=result["context"]["slot"], repaid_raw=repaid, entry_lamports=entry, sold_lamports=sold,
+        return dict(sponsor_spent_lamports=sponsor_spent, cash_contributed_raw=cash_raw, slot=result["context"]["slot"], repaid_raw=repaid, entry_lamports=entry, sold_lamports=sold,
                     retained_lamports=bill.PLEDGE-sold, vendor_raw=vendor, bridge_raw=bridge, borrower_cash_raw=start,
                     remaining_usdc_raw=finish, pledge_lamports=bill.PLEDGE, sale_raw=output, message_bytes=len(wire))
 
-    probe = run(40_000_000, bill.PLEDGE, bridge)
+    probe = run(40_000_000, bill.PLEDGE, bridge, sponsor_cap=40_000_000)
     slot = probe["slot"]
     cap = min(bill.PLEDGE, stop_backup.buffered(probe["sold_lamports"]))
     entry_cap = stop_backup.buffered(probe["entry_lamports"])
-    result = run(entry_cap, cap, probe["repaid_raw"])
+    sponsor_cap = stop_backup.buffered(probe["sponsor_spent_lamports"])
+    result = run(entry_cap, cap, probe["repaid_raw"]-cash_raw, sponsor_cap=sponsor_cap)
     slot = result["slot"]
-    rejected = run(entry_cap, 1, result["sale_raw"], decline=True)
+    rejected = run(entry_cap, 1, result["sale_raw"], sponsor_cap=sponsor_cap, decline=True)
     return {**result, "exit_cap_lamports": cap, "rollback_slot": rejected["slot"]}
 
 
@@ -136,3 +150,11 @@ def saved():
     if hashlib.sha256(raw).hexdigest() != "7beb6b176fabb0ef4fa9035b66eba5292ff524b4a23239f63d9dc8b169e1452c":
         raise ValueError("The recorded collateral exit changed")
     return atomic_fuel.replay_calls(json.loads(gzip.decompress(raw)), simulate)
+
+
+@cache
+def saved_mixed():
+    raw = MIXED_SAMPLE.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != "569f354b7da3c60243bbaa03e1bc9b16860f72df9627d02abf4adaab5b3a8944":
+        raise ValueError("The recorded cash and collateral payoff changed")
+    return atomic_fuel.replay_calls(json.loads(gzip.decompress(raw)), lambda rpc: simulate(rpc, cash_raw=SAMPLE_CASH))

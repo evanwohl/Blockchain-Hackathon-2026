@@ -13,13 +13,17 @@ def sale_cents(draw, fee_sf):
     return ceil_div(raw + ceil_div(raw * fee_sf, FEE_SCALE), RAW_PER_CENT)
 
 
-def options(row, costs, lending, low_price):
-    debt, pledge = row["repay_cents"], row["pledge_lamports"]
-    fee = lending["flash_fee_sf"]
+def capacity_cents(row, lending):
     principal = row["draw_cents"] * RAW_PER_CENT
     origination = ceil_div(principal * lending["origination"], FEE_SCALE)
     available = max(0, lending["flash_available_raw"] - principal - origination)
-    capacity = min(debt, available // RAW_PER_CENT) if fee != FLASH_DISABLED else 0
+    return min(row["repay_cents"], available // RAW_PER_CENT) if lending["flash_fee_sf"] != FLASH_DISABLED else 0
+
+
+def options(row, costs, lending, low_price):
+    debt, pledge = row["repay_cents"], row["pledge_lamports"]
+    fee = lending["flash_fee_sf"]
+    capacity = capacity_cents(row, lending)
     choices = []
     for keep in (100, 75, 0):
         spendable = pledge - ceil_div(pledge * keep, 100)

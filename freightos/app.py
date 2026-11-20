@@ -626,12 +626,17 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/trip-cover":
             self.respond(200, {**trip_cover.saved(), "source": "recorded"})
             return
-        if self.path == "/evidence/collateral-exit":
-            self.reply(200, "application/json", gzip.decompress(flash_exit.SAMPLE.read_bytes()), static=True)
+        if self.path in ("/evidence/collateral-exit", "/evidence/cash-exit"):
+            sample = flash_exit.MIXED_SAMPLE if self.path.endswith("cash-exit") else flash_exit.SAMPLE
+            self.reply(200, "application/json", gzip.decompress(sample.read_bytes()), static=True)
             return
-        if self.path in ("/api/collateral-exit", "/api/collateral-exit/simulate"):
+        if self.path in ("/api/collateral-exit", "/api/collateral-exit/simulate", "/api/cash-exit", "/api/cash-exit/simulate"):
             try:
-                result = self.server.flash_exit.read() if self.path.endswith("/simulate") else flash_exit.saved()
+                mixed = self.path.startswith("/api/cash-exit")
+                if self.path.endswith("/simulate"):
+                    result = (self.server.cash_exit if mixed else self.server.flash_exit).read()
+                else:
+                    result = flash_exit.saved_mixed() if mixed else flash_exit.saved()
                 self.respond(200, result)
             except (OSError, ValueError, KeyError, TypeError, RuntimeError):
                 self.respond(503, {"error": "The collateral-funded payoff could not be verified."})
@@ -1215,6 +1220,7 @@ def main():
     server.policy_checks = {menu: PublicCheck(lambda m=menu: payday_policy.quotes(m, True)) for menu in customer_credit.MENUS}
     server.swap_checks = {net: PublicCheck(lambda n=net: fuel_swap.capture(n)[0]) for net in customer_credit.ADVANCES}
     server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
+    server.cash_exit = PublicCheck(lambda: flash_exit.simulate(cash_raw=flash_exit.SAMPLE_CASH))
     server.flash_exit = PublicCheck(flash_exit.simulate)
     server.split_payment = PublicCheck(split_payment.simulate)
     server.repeat_credit = PublicCheck(lambda: repeat_credit.verify(repeat_credit.capture()))

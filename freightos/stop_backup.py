@@ -9,12 +9,13 @@ from freightos import atomic_fuel, devnet, fuel_swap, next_stop, reserve_credit
 from hedging.quick_pay import integer
 
 SAMPLE = fuel_swap.SAMPLE.with_name("stop_backup.json.gz")
+SWAP_CAP_BPS = 10_050
 # $80 of SOL at the funding planner’s recorded $72.82 reference and 1:100 demo scale.
 DEFAULT_CAP = 8000 * 10_000_000 // 7282
 
 
 def buffered(spent):
-    return (spent * 10050 + 9999) // 10000
+    return (spent * SWAP_CAP_BPS + 9999) // 10000
 
 
 def boundary(full, allowance, measure):

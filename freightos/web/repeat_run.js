@@ -114,7 +114,7 @@ function showFullRun(q) {
   }
 }
 
-export function showRun(q) {
+export function showRun(q, inputs) {
   const s = q.series, rows = choiceRows(s);
   el("desk-basis").textContent = "Recorded mainnet estimate · Recurring route";
   el("desk-split").hidden = false;
@@ -172,7 +172,7 @@ export function showRun(q) {
   el("series-renewal").hidden = !!s.booking || s.renewal_pct === null;
   if (s.renewal_pct !== null) el("series-renewal").textContent = "If only the first stop is booked, each next stop needs at least a " + s.renewal_pct
     + "% chance of renewal for opening now to leave more expected cash at the stress price. This checks whole percentages with the same renewal chance each time.";
-  showExit(rows, q.low_price_cents);
+  showExit(rows, q.low_price_cents, inputs);
   el("split-proof").hidden = !s.sizing;
   el("series-proof").hidden = !!s.sizing;
   el("series-scope").textContent = scope;

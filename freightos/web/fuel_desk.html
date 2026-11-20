@@ -73,12 +73,14 @@
       </div>
         <details id="payoff-check" hidden><summary>How can I repay if freight pays late?</summary>
           <label id="exit-stage-field" hidden>Loan to check <select id="exit-stage"></select></label>
-          <label>How much of my pledged SOL should I keep? <select id="exit-keep"><option value="100">Keep all of it</option><option value="75">Keep at least three quarters</option><option value="0">Use what repayment needs</option></select></label>
-          <dl id="exit-amounts" aria-live="polite"></dl><p id="exit-how"></p><p id="exit-price"></p>
-          <details id="exit-mechanics"><summary>How the payoff works</summary><p>Kamino can lend temporary USDC to close the fuel loan and release the SOL. An Orca sale then repays the temporary credit in the same transaction. The estimate uses recorded liquidity, a fee allowance and whole-cent sale amounts. The SOL price check assumes one USDC is worth one dollar. Network fees and temporary account deposits require separate SOL. The loan must still hold its collateral. Reprice at payoff and plan the next stop using the SOL you have left.</p></details>
-          <details id="exit-proof"><summary>Verify a payoff with zero starting USDC</summary><p>This separate public Devnet example opens and immediately closes the sample $72.98 loan at 1:100 scale. A sponsor supplies test SOL for the opening, accounts and network fee.</p>
+          <label>Plan my repayment <select id="exit-keep"><option value="100">Keep all my pledged SOL</option><option value="75">Keep at least three quarters</option><option value="0">Use what repayment needs</option><option value="cash">Enter my cash budget</option></select></label>
+          <div id="cash-exit-form" hidden><label>Cash I can put toward this payoff ($)<input id="cash-exit-budget" type="number" min="0" max="1000000" step=".01" inputmode="decimal" value="30.00" required></label> <button id="cash-exit-check" type="button">Check my budget</button></div>
+          <p id="cash-exit-status" role="status" hidden></p>
+          <dl id="exit-amounts" aria-live="polite"></dl><div id="exit-retained" hidden><span id="exit-retained-label"></span><progress id="exit-retained-bar" max="100" aria-label="Minimum share of pledged SOL kept"></progress></div><p id="exit-how"></p><p id="exit-price"></p><button id="cash-exit-quarter" type="button" hidden></button>
+          <details id="exit-mechanics"><summary>How the payoff works</summary><p>Kamino can lend temporary USDC to close the fuel loan and release the SOL. An Orca sale then repays the temporary credit in the same transaction. The estimate includes a flash-fee allowance. Collateral presets quote sales in whole cents. A cash-budget check prices the exact USDC output across the two recorded Orca pools. The SOL price check assumes one USDC is worth one dollar. Network fees and temporary account deposits require separate SOL. The loan must still hold its collateral. Reprice at payoff and plan the next stop using the SOL you have left.</p><p id="exit-budget-prices" hidden></p></details>
+          <details id="exit-proof"><summary id="exit-proof-title">Verify a payoff with zero starting USDC</summary><p id="exit-proof-scope">This separate public Devnet example opens and immediately closes the sample $72.98 loan at 1:100 scale. A sponsor supplies test SOL for the opening, accounts and network fee.</p>
             <dl id="exit-receipt" hidden></dl><p id="exit-proof-result" role="status"></p>
-            <button id="exit-simulate" type="button">Recheck payoff on public Devnet</button> <a href="/evidence/collateral-exit" download="FreightOS-collateral-payoff.json">Download payoff evidence</a>
+            <button id="exit-simulate" type="button">Recheck payoff on public Devnet</button> <a id="exit-evidence" href="/evidence/collateral-exit" download="FreightOS-collateral-payoff.json">Download payoff evidence</a>
           </details>
         </details>
     </section>
