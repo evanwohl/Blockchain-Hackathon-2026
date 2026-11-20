@@ -16,6 +16,7 @@ from freightos import bill, devnet, fuel_update, next_stop, public_offer, reserv
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
+from freightos.load_calendar import project as project_load
 from hedging.quick_pay import integer, price_calendar
 from hedging.payment_timing import invoice_delay_gap, late_invoice_calendar, later_refill_calendar, reserve_deadline
 
@@ -606,6 +607,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/load": ("load.html", "text/html; charset=utf-8"),
+            "/load.js": ("load.js", "text/javascript"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
             "/next_stop.js": ("next_stop.js", "text/javascript"),
             "/public-offer": ("public_offer.html", "text/html; charset=utf-8"),
@@ -652,6 +655,9 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/load-calendar":
+                self.respond(200, project_load(data))
+                return
             if self.path in ("/api/next-stop", "/api/two-stops"):
                 fuel, road = data.get("fuel_cents"), data.get("road_cents")
                 next_stop.amounts(fuel, road)
