@@ -682,6 +682,15 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/devnet-approval-preview":
+                address = data.get("address")
+                if not isinstance(address, str):
+                    raise ValueError("Connect a wallet first")
+                try:
+                    self.respond(200, devnet.preview_approval(address))
+                except (OSError, KeyError, TypeError):
+                    self.respond(503, {"error": "Could not prepare the Devnet preview. Try again."})
+                return
             if self.path == "/api/devnet-wallet":
                 address = data.get("address")
                 if not isinstance(address, str):

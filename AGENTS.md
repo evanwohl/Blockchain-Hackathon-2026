@@ -168,3 +168,5 @@ On the load page, **Check my wallet on Solana Devnet** connects an injected Phan
 After the load comparison, **Review sample payment** opens a distinct fixed Devnet example showing its vendor, 5.55 test USDC reserve transfer and $190 modeled outside portion. The receipt links to the saved public record. Check my own wallet is optional; opening the review does not create or fund a wallet.
 
 The load header switches between Funding plan, Sample receipt and Edit load. The first view diagrams cash sources into the vendor bill and reprices on timing or eligibility changes. The separate receipt view opens the fixed Devnet example directly. The existing browser-wallet deep link opens its wallet disclosure.
+
+Preview reserve approval checks the connected payer against the fixed FOS-2048 Devnet bill. It checks the cluster, existing receipt and deposit balance, builds the same deposit and approval instructions as the CLI, and simulates the unsigned transaction. The browser displays the vendor, deposit, authorized payment and block-height expiry. The preview does not request a signature or broadcast.
