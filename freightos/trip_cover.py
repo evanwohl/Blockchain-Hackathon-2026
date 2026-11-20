@@ -12,7 +12,7 @@ from math import ceil
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from freightos import fuel_cover, fuel_update
+from freightos import fuel_cover, fuel_update, regional_diesel
 from hedging.quick_pay import integer
 
 SNAPSHOT = fuel_cover.SNAPSHOT.with_name("trip_cover.json.gz")
@@ -23,6 +23,8 @@ def validate(trip):
     if not integer(trip.get("gallons"), "gallons", 10000) or not integer(trip.get("pump_mills"), "diesel price", 99999):
         raise ValueError("Enter a positive gallon count and posted diesel price")
     integer(trip.get("budget_cents"), "fuel budget", 100_000_000)
+    if "region" in trip and (not isinstance(trip["region"], str) or trip["region"] not in regional_diesel.REGIONS):
+        raise ValueError("Choose a supported diesel region")
 
 
 def contracts(market):
@@ -153,10 +155,13 @@ def analyze(snapshot, trip, *, reserve=None):
     ceiling = max(Fraction(c["strike"]["value"]) for c in rows)
     anchor = Fraction(fuel["close"])
     base = Fraction(trip["pump_mills"] * trip["gallons"], 10)
-    slope = Fraction(fuel["cents_per_oil_dollar"]) * trip["gallons"] / int(fuel["gallons"])
+    per_gallon = Fraction(fuel["cents_per_oil_dollar"]) / int(fuel["gallons"])
+    slope = per_gallon * trip["gallons"]
+    regional = regional_diesel.history(trip["region"], per_gallon) if "region" in trip else None
+    allowance = regional["cents_per_gallon"] * trip["gallons"] if regional else 0
 
     def gap(oil):
-        return max(0, ceil(base + (oil - anchor)*slope) - trip["budget_cents"])
+        return max(0, ceil(base + allowance + (oil - anchor)*slope) - trip["budget_cents"])
 
     offers = top_offers(snapshot, fuel, rows)
     gaps = [gap(Fraction(o["strike"])) for o in offers] + [gap(ceiling)]
@@ -165,12 +170,20 @@ def analyze(snapshot, trip, *, reserve=None):
     result = {"trip": trip, "checked_at": snapshot["checked_at"], "expiry": fuel["expiry"], "anchor": str(fuel["close"]),
             "ceiling": str(ceiling), "pump_bill_cents": ceil(base), "cash_only_cents": gaps[-1], "best_single_cents": single,
             "offers": len(offers), "contracts_checked": len(rows), "combined": combined}
+    if regional:
+        result["regional"] = {**regional, "allowance_cents": allowance}
     if reserve is not None:
         available, road = reserve["available_cents"], reserve["road_cents"]
         fuel_cash = max(0, available - road)
         affordable = portfolio(offers, gaps, fuel_cash=fuel_cash) if available >= road else None
         result["reserve"] = {**reserve, "fuel_cash_cents": fuel_cash, "before_shortfall_cents": max(0, road + gaps[-1] - available),
                              "plan": affordable}
+        if affordable is None and available >= road and combined["legs"]:
+            fuel_due = combined["residual_cents"] - fuel_cash
+            result["reserve"]["split"] = {
+                "reserve_cents": fuel_cash, "outside_fuel_cents": fuel_due,
+                "upfront_cents": combined["upfront_cents"], "outside_total_cents": combined["upfront_cents"] + fuel_due,
+            }
     return result
 
 

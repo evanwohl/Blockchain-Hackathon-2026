@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, fuel_cover, fuel_update, next_stop, public_offer, reserve_return, trip_cover
+from freightos import bill, devnet, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -561,6 +561,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/trip-cover":
             self.respond(200, {**trip_cover.saved(), "source": "recorded"})
             return
+        if self.path == "/evidence/regional-diesel":
+            self.reply(200, "application/json", gzip.decompress(regional_diesel.SNAPSHOT.read_bytes()), static=True)
+            return
         if self.path == "/evidence/trip-cover":
             self.reply(200, "application/json", gzip.decompress(trip_cover.SNAPSHOT.read_bytes()), static=True)
             return
@@ -672,6 +675,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise TypeError("Expected a JSON object")
             if self.path == "/api/trip-cover":
                 trip = {key: data.get(key) for key in trip_cover.EXAMPLE}
+                if "region" in data:
+                    trip["region"] = data["region"]
                 trip_cover.validate(trip)
                 road = data.get("road_cents")
                 if road is not None:
