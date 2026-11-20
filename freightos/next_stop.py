@@ -7,10 +7,11 @@ from fractions import Fraction
 from functools import cache
 from math import ceil
 
-from freightos import devnet, fuel_update, public_offer
+from freightos import devnet, fuel_cover, fuel_update, public_offer
 from hedging.quick_pay import integer
 
 SNAPSHOT = devnet.SAMPLE.with_name("next_stop.json.gz")
+FUEL_BUFFERS = devnet.SAMPLE.with_name("fuel_buffers.json.gz")
 TWO_STOPS = devnet.SAMPLE.with_name("two_stops.json.gz")
 
 
@@ -163,9 +164,7 @@ def check_payment(plan, budget, fuel, road, rpc):
             "network_fee_lamports": value["fee"]}, instructions, state
 
 
-@cache
-def saved(two_stops=False):
-    sample = json.loads(gzip.decompress((TWO_STOPS if two_stops else SNAPSHOT).read_bytes()))
+def replay_preview(sample, fuel, road, *, holdback=None, keep_shares=False):
     calls = iter(sample["calls"])
 
     def replay(method, params):
@@ -174,13 +173,34 @@ def saved(two_stops=False):
             raise ValueError("The saved simulation differs from the requested instructions")
         return record["response"]
 
+    if keep_shares and replay("getGenesisHash", []) != devnet.GENESIS:
+        raise ValueError("The recorded reserve check requires public Devnet")
     result = preview(devnet.verify(json.loads(devnet.SAMPLE.read_bytes())),
                      public_offer.verify(json.loads(public_offer.SAMPLE.read_bytes())),
-                     1500 if two_stops else 2000, 500 if two_stops else 1000, replay,
-                     holdback=fuel_holdback(3, fuel_update.saved()) if two_stops else None)
+                     fuel, road, replay, holdback=holdback, keep_shares=keep_shares)
     if next(calls, None) is not None:
         raise ValueError("Unexpected extra calls in the saved simulation")
     return {**result, "source": "saved", "checked_at": sample["checked_at"]}
+
+
+@cache
+def saved(two_stops=False):
+    sample = json.loads(gzip.decompress((TWO_STOPS if two_stops else SNAPSHOT).read_bytes()))
+    return replay_preview(sample, 1500 if two_stops else 2000, 500 if two_stops else 1000,
+                          holdback=fuel_holdback(3, fuel_update.saved()) if two_stops else None)
+
+
+@cache
+def saved_buffer(case):
+    cover = fuel_cover.saved()
+    if case == "cash":
+        fuel = cover["cash_only_cents"]
+    elif case == "late" and cover["position"]:
+        fuel = cover["position"]["late_payout_gap_cents"]
+    else:
+        raise ValueError("No recorded reserve check matches this fuel plan")
+    samples = json.loads(gzip.decompress(FUEL_BUFFERS.read_bytes()))
+    return {**replay_preview(samples[case], fuel, 0, keep_shares=True), "buffer_case": case}
 
 
 def observed(result):

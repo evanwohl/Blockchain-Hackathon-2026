@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, credit_exit, devnet, diesel_model, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
+from freightos import bill, credit_exit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -610,18 +610,31 @@ class Handler(BaseHTTPRequestHandler):
                 (ROOT / "artifacts/gemini_ladder/active.json").read_bytes(),
             )
             return
-        if self.path in ("/api/next-stop", "/api/two-stops"):
+        if self.path in ("/api/next-stop", "/api/two-stops", "/api/fuel-buffer/cash", "/api/fuel-buffer/late"):
             try:
-                self.respond(200, next_stop.saved(self.path == "/api/two-stops"))
+                example = (next_stop.saved_buffer(self.path.rsplit("/", 1)[1]) if self.path.startswith("/api/fuel-buffer/")
+                           else next_stop.saved(self.path == "/api/two-stops"))
+                self.respond(200, example)
             except (OSError, ValueError, KeyError, TypeError):
                 self.respond(503, {"error": "The saved next-stop example is unavailable."})
             return
-        if self.path in ("/evidence/next-stop", "/evidence/two-stops"):
-            snapshot = next_stop.TWO_STOPS if self.path == "/evidence/two-stops" else next_stop.SNAPSHOT
+        if self.path in ("/evidence/next-stop", "/evidence/two-stops", "/evidence/fuel-buffers"):
+            snapshot = {"/evidence/two-stops": next_stop.TWO_STOPS, "/evidence/next-stop": next_stop.SNAPSHOT,
+                        "/evidence/fuel-buffers": next_stop.FUEL_BUFFERS}[self.path]
             self.reply(200, "application/json", gzip.decompress(snapshot.read_bytes()), static=True)
             return
         if self.path == "/api/trip-cover":
             self.respond(200, {**trip_cover.saved(), "source": "recorded"})
+            return
+        if self.path == "/evidence/settled-credit":
+            self.reply(200, "application/json", gzip.decompress(load_credit.SAMPLE.read_bytes()), static=True)
+            return
+        if self.path in ("/api/settled-credit", "/api/settled-credit/verify"):
+            try:
+                proof = self.server.settled_credit.read() if self.path.endswith("/verify") else load_credit.settled()
+                self.respond(200, proof)
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+                self.respond(503, {"error": "The two loan transactions could not be verified."})
             return
         if self.path == "/evidence/credit-exits":
             self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
@@ -715,6 +728,7 @@ class Handler(BaseHTTPRequestHandler):
 
             "/load": ("load.html", "text/html; charset=utf-8"),
             "/browser_wallet.js": ("browser_wallet.js", "text/javascript"),
+            "/load_credit.js": ("load_credit.js", "text/javascript"),
             "/load.js": ("load.js", "text/javascript"),
             "/next-stop": ("next_stop.html", "text/html; charset=utf-8"),
             "/next_stop.js": ("next_stop.js", "text/javascript"),
@@ -868,6 +882,18 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, KeyError, TypeError):
                     self.respond(503, {"error": "Could not prepare the Devnet preview. Try again."})
                 return
+            if self.path in ("/api/load-credit", "/api/load-credit/payoff"):
+                try:
+                    if self.path.endswith("/payoff"):
+                        result = load_credit.prepare_payoff(data["address"], data["signature"])
+                    else:
+                        result = load_credit.prepare(data["load"], data.get("address"), data["pledge_limit_lamports"])
+                    self.respond(200, result)
+                except (ValueError, TypeError) as exc:
+                    self.respond(400, {"error": str(exc)})
+                except (OSError, KeyError, IndexError, ArithmeticError, RuntimeError):
+                    self.respond(503, {"error": "Devnet could not verify these loan terms. Check the wallet and try again."})
+                return
             if self.path == "/api/devnet-wallet":
                 address = data.get("address")
                 if not isinstance(address, str):
@@ -948,6 +974,7 @@ def main():
                             for drop in (20, 40, 60) for days in (23, 30)}
     server.reserve_credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: reserve_credit.live(d, t))
                                   for drop, days in server.credit_checks}
+    server.settled_credit = PublicCheck(lambda: load_credit.settled(devnet.request))
     server.forward_check = PublicCheck(forward.ResultCheck().read)
     server.trip_books = PublicCheck(trip_cover.capture)
     server.fuel_cover = PublicCheck(fuel_cover.live)

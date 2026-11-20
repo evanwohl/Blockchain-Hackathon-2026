@@ -908,3 +908,28 @@ main.overview { width: 100%; max-width: none; padding: 0; }
  .flow-path dl div { flex-wrap:wrap; gap:.1rem .35rem; }
  .load-views { justify-content:space-between; gap:.35rem; }
 }
+
+.load-credit { margin: 1.8rem 0; border-block: 1px solid var(--paper-edge,#adb4a1); padding: 1.5rem 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.25rem 2rem; }
+.load-credit header { grid-column: 1/-1; max-width: 64ch; }
+.load-credit h2 { font: 600 clamp(2.6rem,6vw,5rem)/1 var(--display); letter-spacing: -.035em; margin: .45rem 0; }
+.load-credit h3 { font: 600 1.65rem/1.15 var(--display); margin: 0 0 .6rem; }
+.load-credit p { margin: .5rem 0 .85rem; }
+.credit-cycle,.credit-desk { min-width:0; border-top: 2px solid #72805e; padding-top: 1rem; }
+.credit-cycle ol { padding: 0; list-style:none; }
+.credit-cycle li { border-bottom: 1px solid #acb39e; padding: .65rem 0; }
+.credit-cycle li strong { display:block; font: 600 1.9rem/1.1 var(--display); }
+.load-credit details { border-top:1px solid #acb39e; margin-top:1rem; padding:.75rem 0; }
+.load-credit summary { cursor:pointer; font-weight:600; }
+.load-credit input,.load-credit select { display:block; width:100%; margin:.3rem 0 .65rem; min-height:44px; padding:.4rem .65rem; border:1px solid #808975; background:transparent; color:inherit; }
+#credit-cap { max-width:12rem; }
+#cycle-links a + a { margin-left:1rem; }
+#credit-account,#credit-wallet-status,#credit-figures dd { overflow-wrap:anywhere; }
+#cycle-outcome { font-weight:650; }
+.credit-desk > label { display:block; margin-top:.9rem; }
+#credit-send { background:var(--citron); color:var(--ink); padding:.75rem 1rem; }
+@media(max-width:760px) { .load-credit { grid-template-columns:minmax(0,1fr); } }
+
+.load-credit a { color:var(--citron); text-underline-offset:.2em; }
+.load-credit a:hover,.load-credit a:focus-visible { color:var(--white); }
+.credit-scale { color:#c4c8ba; font-size:.9rem; }
+#credit-price { background:var(--citron); border-color:var(--citron); color:var(--ink); }

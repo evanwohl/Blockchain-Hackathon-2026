@@ -176,3 +176,11 @@ def test_pump_sign_limit_is_the_largest_thousandth_affordable_on_verified_remain
 def test_invalid_pump_price_or_scenario_is_rejected(price, stress):
     with pytest.raises(ValueError):
         next_stop.check_fuel_inputs(3, price, stress)
+
+
+@pytest.mark.parametrize(("case", "cents"), [("cash", 1051), ("late", 1050)])
+def test_exact_gemini_buffer_replays_offline(case, cents):
+    result = next_stop.saved_buffer(case)
+    assert result["buffer_case"] == case and result["source"] == "saved"
+    assert result["fuel_cents"] == cents and result["road_cents"] == 0
+    assert result["vendor_raw"] == cents * 100 and result["shortfall_raw"] == 0

@@ -92,13 +92,18 @@ function render(data) {
   download.href = future ? "/evidence/two-stops" : "/evidence/next-stop";
   download.download = future ? "FreightOS-saved-two-stops.json" : "FreightOS-saved-next-stop.json";
   download.textContent = future ? "Download the original three-gallon simulation" : "Download the original $20 simulation";
+  if (data.buffer_case) {
+    download.href = "/evidence/fuel-buffers";
+    download.download = "FreightOS-recorded-fuel-buffers.json";
+    download.textContent = "Download the recorded fuel buffer checks";
+  }
   el("pump-limit").hidden = true;
   if (future) twoStops(data, model);
   else singleStop(data, model);
   result.hidden = false;
 }
 
-async function check(live) {
+async function check(live, recordedCase) {
   const attempt = ++revision;
   button.disabled = true;
   if (live) status.textContent = "Checking the paid receipts, reserve and fuel payment…";
@@ -111,8 +116,14 @@ async function check(live) {
       body.oil_rise = el("stop-rise").checked;
       if (el("stop-pump").value !== "") body.pump_mills = Math.round(el("stop-pump").valueAsNumber * 1000);
     }
-    const data = await request(later ? "/api/two-stops" : "/api/next-stop", body, AbortSignal.timeout(45000));
-    if (attempt === revision) render(data);
+    const path = recordedCase ? "/api/fuel-buffer/" + recordedCase : later ? "/api/two-stops" : "/api/next-stop";
+    const data = await request(path, body, AbortSignal.timeout(45000));
+    if (attempt !== revision) return;
+    if (recordedCase && (data.buffer_case !== recordedCase || data.fuel_cents !== Number(buffer[1])
+        || data.road_cents !== 0 || !el("keep-shares").checked || el("stop-road").valueAsNumber !== 0)) {
+      throw new Error("The saved simulation does not match these inputs.");
+    }
+    render(data);
   } catch {
     if (attempt === revision) {
       status.textContent = result.hidden ? "The preview is unavailable. Try checking again."
@@ -139,7 +150,7 @@ form.oninput = () => {
 form.onsubmit = event => { event.preventDefault(); check(true); };
 let buffer;
 function openBudget() {
-  buffer = /^#fuel-buffer=([1-9][0-9]{0,8})(?:&road=([0-9]{1,9}))?(&keep-shares)?$/.exec(location.hash);
+  buffer = /^#fuel-buffer=([1-9][0-9]{0,8})(?:&road=([0-9]{1,9}))?(&keep-shares)?(?:&recorded=(cash|late))?$/.exec(location.hash);
   form.reset();
   if (buffer) {
     el("keep-shares").checked = Boolean(buffer[3]);
@@ -153,7 +164,7 @@ function openBudget() {
   result.hidden = true;
   status.textContent = "Opening the saved preview…";
   updateMode();
-  check(Boolean(buffer));
+  check(Boolean(buffer && !buffer[4]), buffer?.[4]);
 }
 window.addEventListener("hashchange", openBudget);
 openBudget();

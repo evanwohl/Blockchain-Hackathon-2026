@@ -76,14 +76,15 @@ disconnect.addEventListener("click", async () => {
 const views = {reserve: document.querySelector("#reserve"), receipt: document.querySelector("#browser-wallet"), edit: document.querySelector("#edit")};
 function selectView() {
   const name = location.hash.slice(1);
-  const active = name === "browser-wallet" ? "receipt" : Object.hasOwn(views, name) ? name : "reserve";
+  const active = name === "credit" ? "edit" : name === "browser-wallet" ? "receipt" : Object.hasOwn(views, name) ? name : "reserve";
   for (const [key, panel] of Object.entries(views)) panel.hidden = key !== active;
   for (const link of document.querySelectorAll(".load-views a")) {
     if (link.hash === "#" + active) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
   if (name === "browser-wallet") views.receipt.querySelector("details").open = true;
-  window.scrollTo(0, 0);
+  if (name === "credit") document.querySelector("#credit").scrollIntoView();
+  else window.scrollTo(0, 0);
 }
 window.addEventListener("hashchange", selectView);
 selectView();

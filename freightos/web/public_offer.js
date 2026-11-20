@@ -148,7 +148,8 @@ function renderCover() {
     : "The demo holds no contracts. The comparison credits no unverified sale or payout.";
   const reserve = el("cover-reserve");
   reserve.hidden = !backup;
-  reserve.href = "/next-stop#fuel-buffer=" + backup + "&keep-shares";
+  const recording = cover.source === "saved" ? "&recorded=" + (relyingOnPayout ? "late" : "cash") : "";
+  reserve.href = "/next-stop#fuel-buffer=" + backup + "&keep-shares" + recording;
   reserve.textContent = relyingOnPayout ? "Check whether my reserve covers the " + money(backup) + " gap"
     : "Check the " + buffer + " cash buffer on Solana";
 }

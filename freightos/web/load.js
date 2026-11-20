@@ -1,3 +1,4 @@
+import { setupLoadCredit } from "./load_credit.js";
 const form = document.querySelector("#load");
 const retry = form.querySelector("button");
 const entries = document.querySelector("#entries");
@@ -66,6 +67,8 @@ async function update() {
     write("#road-total", money(inputs().floor_cents));
     write("#verdict", calendar.gap_cents ? "Cash gap before funding" : "Covered before funding");
     write("#gap", money(calendar.gap_cents));
+    write("#credit-calendar", calendar.gap_cents ? "Your " + money(calendar.fuel_cents) + " fuel bill is short " + money(calendar.gap_cents)
+      + " after keeping " + money(inputs().floor_cents) + " for the road." : "Your load covers the fuel bill and your road cash. No fuel loan is needed.");
     write("#summary", calendar.gap_cents ? "To pay for fuel and keep your road cash." : "You can pay for fuel and keep your road cash.");
     const {selected, waiting} = calendar.decision;
     write("#selected-plan", (waiting ? "Taking early pay: " : "") + explainPlan(selected));
@@ -87,7 +90,8 @@ async function update() {
     if (current === revision) {
       write("#verdict", "Forecast unavailable");
       message.textContent = error instanceof TypeError ? "Could not reach the calendar. Try again." : error.message;
-      retry.hidden = false;
+      write("#credit-calendar", "The cash calendar is unavailable. Check your load and try again.");
+    retry.hidden = false;
     }
   }
 }
@@ -142,10 +146,12 @@ function schedule() {
   document.querySelector("#funding-result").hidden = true;
   for (const id of ["#gap", "#fuel-total", "#road-total"]) write(id, "—");
   write("#summary", "");
+  write("#credit-calendar", "Checking your cash calendar…");
   write("#verdict", "Updating forecast");
   refreshControls();
   const invalid = form.querySelector(":invalid");
   if (invalid) {
+    write("#credit-calendar", "Check the amounts and dates in your load.");
     write("#verdict", "Check your entries");
     message.textContent = invalid.closest("label").textContent.trim() + ": " + invalid.validationMessage;
     retry.hidden = true;
@@ -299,3 +305,5 @@ bankBackup.addEventListener("change",previewTicket);
 document.querySelector("#customer-offer").addEventListener("change",previewTicket);
 retryTicket.addEventListener("click",previewTicket);
 previewTicket();
+
+setupLoadCredit(inputs, form);

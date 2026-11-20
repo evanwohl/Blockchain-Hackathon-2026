@@ -107,26 +107,32 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor
     tx = transaction(collateral, run["block"], advance, destination=destination)
     if (destination == "wallet" or "wire" in run) and base64.b64decode(run["wire"], validate=True) != bytes(tx):
         raise ValueError("Loan draw differs from the simulated transaction")
-    keys = list(tx.message.account_keys)
+    return evaluate_deltas(run, drop, days, advance, step, destination, list(tx.message.account_keys),
+                           OWNER, Pubkey.from_string(route()["obligation"]), "wire" in run)
+
+
+def evaluate_deltas(run, drop, days, advance, step, destination, keys, borrower, obligation_key, check_supply):
+    value = run["response"]["value"]
+    collateral = run["collateral"]
     proof = json.loads(devnet.SAMPLE.read_text())
     vendor = Pubkey.from_string(proof["decision"]["vendor"])
-    owner_cash = associated(OWNER, devnet.MINT)
+    owner_cash = associated(borrower, devnet.MINT)
     def change(account, owner):
         before, after = devnet.token_balances(value, keys, account, devnet.MINT, owner)
         return after - before
     retained = advance if destination == "wallet" else 0
-    if change(owner_cash, OWNER) != retained or (destination == "vendor" and change(vendor, Pubkey.from_string(proof["vendor_owner"])) != advance):
+    if change(owner_cash, borrower) != retained or (destination == "vendor" and change(vendor, Pubkey.from_string(proof["vendor_owner"])) != advance):
         raise ValueError("Borrow proceeds and fuel payment do not reconcile")
     obligation, debt, backing = [read_program_account(a, disc, size) for a, disc, size in zip(value["accounts"],
                                  ("a8ce8d6a584caca7", "2bf2ccca1af73b7f", "2bf2ccca1af73b7f"), (3344, 8624, 8624))]
     market = bytes(Pubkey.from_string(route()["market"]))
-    if (obligation[32:64] != market or obligation[64:96] != bytes(OWNER) or debt[32:64] != market or backing[32:64] != market
+    if (obligation[32:64] != market or obligation[64:96] != bytes(borrower) or debt[32:64] != market or backing[32:64] != market
             or obligation[96:128] != bytes(Pubkey.from_string(route()["sol"]))
             or obligation[1208:1240] != bytes(Pubkey.from_string(route()["usd"]))
             or debt[128:160] != bytes(devnet.MINT) or backing[128:160] != bytes(SOL)
-            or value["preBalances"][keys.index(Pubkey.from_string(route()["obligation"]))] != 0):
+            or value["preBalances"][keys.index(obligation_key)] != 0):
         raise ValueError("Loan market, obligation, or assets differ from the sample")
-    if destination == "wallet" or "wire" in run:
+    if destination == "wallet" or check_supply:
         authority, _ = Pubkey.find_program_address([b"lma", market], KLEND)
         supplied = -change(Pubkey.from_bytes(debt[160:192]), authority)
         fee_gain = change(Pubkey.from_bytes(debt[192:224]), authority)
@@ -152,7 +158,7 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor
     scale = int(proof["decision"]["raw_units_per_cent"])
     cost = ceiling((repayment - advance) / scale)
     fee = value["fee"]
-    setup = value["preBalances"][keys.index(OWNER)] - value["postBalances"][keys.index(OWNER)] - collateral - fee
+    setup = value["preBalances"][keys.index(borrower)] - value["postBalances"][keys.index(borrower)] - collateral - fee
     if fee < 0 or setup < 0:
         raise ValueError("Unexpected loan setup balance change")
     return {"destination": destination, "wallet_gain_raw": retained, "slot": run["response"]["context"]["slot"], "checked_at": run["checked_at"], "days": days, "drop": drop,
