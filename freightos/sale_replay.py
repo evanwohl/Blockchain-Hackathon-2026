@@ -2,19 +2,10 @@
 from fractions import Fraction
 from math import ceil, floor
 
-from freightos import fuel_floor, mainnet_loan, midtrip, payoff_budget, pledge_yield
+from freightos import mainnet_loan, midtrip, partial_sale, pledge_yield
+from freightos.payoff_budget import modeled_input
 
 SOL = mainnet_loan.LAMPORTS
-
-
-def modeled_input(pools, proceeds, price):
-    route = payoff_budget.raw_sale(pools, proceeds * midtrip.CENT)
-    if route is None:
-        return None
-    by_address = {pool["pool"]: pool for pool in pools}
-    spent = sum(fuel_floor.swap_cost(by_address[leg["pool"]], leg["output_raw"]) for leg in route["legs"])
-    spot = Fraction(max(pool["price"]**2 for pool in pools) * SOL, fuel_floor.Q64**2 * midtrip.CENT)
-    return ceil(spent * spot / price)
 
 
 def peak_debt(debt, payment, backing, terms, later):
@@ -56,4 +47,19 @@ def evaluate(row, budget, terms, path, price, drop, topup_limit, spare, folds, p
             trial["difference_cents"] = floor(topup["payday_cents"] - sale["payday_cents"] - (spend + excess) * mark / SOL)
         else:
             trial["difference_cents"] = 0
+        if not filled and loss_limit is not None and spend is not None:
+            split = partial_sale.choose(row, plan, {"traces": prior}, terms, training, pools, loss_limit)
+            if split:
+                risk = peak_debt(plan["day15_debt_raw"], split["payment_cents"], split["represented_lamports"], terms, later)
+                score = None
+                if max(risk, pledge_risk) < plan["limit_bps"]:
+                    _, reference = pledge_yield.positions(topup, row["pledge_lamports"], terms)
+                    _, mixed = pledge_yield.positions(split, row["pledge_lamports"], terms)
+                    _, gain = pledge_yield.share_growth(start, rates)
+                    path_points = dict(path["traces"][start])
+                    mark = price * path_points[60] / path_points[30]
+                    missed = floor(reference*gain) - floor(mixed*gain) - topup["deposit_lamports"] + split["deposit_lamports"]
+                    score = floor(topup["payday_cents"] - split["payday_cents"] - (missed + split["modeled_input_lamports"])*mark/SOL)
+                trial["split_option"] = dict(output_cents=split["output_cents"], added_lamports=split["deposit_limit_lamports"],
+                                             difference_cents=score, cushion_missed=risk > plan["target_bps"])
     return trials

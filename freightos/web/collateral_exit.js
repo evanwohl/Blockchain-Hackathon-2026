@@ -3,18 +3,18 @@ import {el, facts, money, request} from "./common.js";
 const minSol = raw => (Math.floor(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const maxSol = raw => (Math.ceil(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const initialView = new URLSearchParams(location.search).get("view");
-let jumpToPayoff = ["payoff", "cash-budget", "midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay"].includes(initialView);
-const openMidtrip = ["midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay"].includes(initialView);
-if (["pledge", "sale", "sale-limit", "sale-replay"].includes(initialView)) el("midtrip-topup").value = "250000000";
-if (["downside", "pledge", "sale", "sale-limit", "sale-replay"].includes(initialView)) el("midtrip-drop").value = "3000";
+let jumpToPayoff = ["payoff", "cash-budget", "midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay", "split-pledge"].includes(initialView);
+const openMidtrip = ["midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay", "split-pledge"].includes(initialView);
+if (["pledge", "sale", "sale-limit", "sale-replay", "split-pledge"].includes(initialView)) el("midtrip-topup").value = "250000000";
+if (["downside", "pledge", "sale", "sale-limit", "sale-replay", "split-pledge"].includes(initialView)) el("midtrip-drop").value = "3000";
 if (initialView === "sale-limit") el("sale-policy").value = "historical";
-if (initialView === "sale-replay") {
+if (["sale-replay", "split-pledge"].includes(initialView)) {
   el("sale-policy").value = "budget";
-  el("sale-later").open = true;
+  el("sale-later").open = initialView === "sale-replay";
 }
 if (openMidtrip) el("midtrip").open = true;
-if (["sale", "sale-limit", "sale-replay"].includes(initialView)) el("midtrip-sale").open = true;
-if (["midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
+if (["sale", "sale-limit", "sale-replay", "split-pledge"].includes(initialView)) el("midtrip-sale").open = true;
+if (["midtrip", "downside", "pledge", "sale", "sale-limit", "sale-replay", "split-pledge", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
 
 let focusMidtrip = openMidtrip;
 let budgetResult, pending, budgetRevision = 0;
@@ -109,9 +109,10 @@ let saleRequest, saleKey = "", saleRevision = 0;
 function showSale(q, row, inputs) {
   const t = q?.topup, s = t?.sale, panel = el("midtrip-sale");
   panel.hidden = !s;
-  const data = s?.preview ? {plan: {...inputs, payoff_cash: budgetCents(), midtrip_price: q.price_cents,
+  const split = s?.split, active = split || s;
+  const data = active?.preview ? {plan: {...inputs, payoff_cash: budgetCents(), midtrip_price: q.price_cents,
     midtrip_drop_bps: q.downside?.drop_bps || 0, midtrip_topup_lamports: t.cap_lamports, sale_policy: s.policy, sale_loss_cents: s.loss_limit_cents},
-    opening_lamports: row.opening_lamports, ...s.preview} : null;
+    opening_lamports: row.opening_lamports, ...active.preview} : null;
   const key = JSON.stringify(data);
   if (key !== saleKey) {
     saleKey = key;
@@ -121,32 +122,36 @@ function showSale(q, row, inputs) {
     el("sale-live").disabled = false;
   }
   if (!s) return;
-  const unavailable = !s.max_lamports;
+  const unavailable = !active.max_lamports;
+  el("sale-stress").closest("details").querySelector("summary").textContent = split ? "What if I sold the full amount?" : "What if SOL falls or recovers?";
   for (const id of ["sale-amounts", "sale-limit", "sale-crossover"]) el(id).hidden = unavailable;
-  el("sale-stress").closest("details").hidden = unavailable;
+  el("sale-stress").closest("details").hidden = !s.max_lamports;
   el("sale-budget").hidden = s.policy !== "budget";
   const minimum = s.outcomes.carry?.minimum_loss_limit_cents;
   const button = el("sale-minimum");
   button.hidden = minimum == null || s.modeled_fill || minimum === s.loss_limit_cents;
   if (!button.hidden) {
     button.dataset.cents = String(minimum);
-    button.textContent = "Compare a " + money(minimum) + " downside limit";
+    button.textContent = split ? "Compare selling the full " + money(s.output_cents) + " at a " + money(minimum) + " limit" : "Compare a " + money(minimum) + " downside limit";
   }
   el("sale-fill").hidden = unavailable;
   const trials = s.later_trips || [];
   el("sale-later").hidden = !trials.length;
   if (trials.length) {
     const fills = trials.filter(t => t.action === "sale").length;
-    const pledges = trials.filter(t => t.action === "pledge").length;
-    el("sale-later-summary").textContent = "The sale fit in " + fills + " of " + trials.length
-      + " later trips. " + pledges + " used the pledge fallback. Payday amounts below are relative to pledging.";
-    const misses = trials.filter(t => t.cushion_missed).length;
+    const mixes = trials.filter(t => t.split_option).length;
+    const pledges = trials.filter(t => t.action === "pledge" && !t.split_option).length;
+    el("sale-later-summary").textContent = "The full sale fit in " + fills + " of " + trials.length
+      + " later trips. " + (mixes ? mixes + " used a smaller sale and pledge. " : "")
+      + (pledges ? pledges + " used only the pledge. " : "") + "Payday amounts below are relative to pledging.";
+    const misses = trials.filter(t => (t.split_option || t).cushion_missed).length;
     if (misses) el("sale-later-summary").textContent += " The selected plan crossed the target debt cushion on " + misses + ".";
     facts(el("sale-later-results"), trials.map(t => {
-      const amount = t.difference_cents;
+      const amount = (t.split_option || t).difference_cents;
+      const action = t.split_option ? "Split" : "Sold";
       const result = t.action === "no_sale_plan" ? "No sale to compare" : amount == null ? "Liquidation threshold reached"
-        : t.action === "pledge" ? "Pledged · same result" : amount === 0 ? "Sold · even to the cent"
-        : "Sold · " + money(Math.abs(amount)) + (amount > 0 ? " ahead" : " behind");
+        : t.action === "pledge" && !t.split_option ? "Pledged · same result" : amount === 0 ? action + " · even to the cent"
+        : action + " · " + money(Math.abs(amount)) + (amount > 0 ? " ahead" : " behind");
       return [t.start, result];
     }));
   }
@@ -156,39 +161,54 @@ function showSale(q, row, inputs) {
     el("sale-proof").hidden = true;
     return;
   }
-  el("sale-title").textContent = !s.modeled_fill
-    ? "Which sale price would keep " + money(t.unused_cents) + " for the road?"
-    : "Sell some SOL and keep the same " + money(t.unused_cents);
-  el("sale-result").textContent = "Sell enough spare SOL for " + money(s.output_cents)
-    + (s.cash_cents ? " and add " + money(s.cash_cents) + " of road cash." : ". Your road cash stays untouched.")
-    + " The proceeds pay down the fuel loan immediately.";
-  if (s.policy === "historical" && s.min_net_price_cents > q.price_cents) {
-    el("sale-result").textContent = "This sale needs about " + money(s.min_net_price_cents)
-      + " per SOL after swap costs. At your " + money(q.price_cents) + " estimate, keep the pledge option available. Recheck the loan before acting if prices move.";
+  if (split) {
+    el("sale-title").textContent = "Keep " + money(split.unused_cents) + " with a smaller sale";
+    el("sale-result").textContent = "At your " + money(split.loss_limit_cents) + " payday downside limit, sell just enough SOL for "
+      + money(split.output_cents) + " and pledge " + pledgedSol(split.deposit_limit_lamports) + ".";
+    el("sale-fill").textContent = split.cash_cents ? "Add " + money(split.cash_cents) + " of your cash to repay "
+      + money(split.payment_cents) + " today." : "The sale covers the entire early payment. Your road cash stays available.";
+    facts(el("sale-amounts"), [["Cash left for the road", money(split.unused_cents)], ["Due on payday with the split", money(split.payday_cents)],
+      ["Due if you only add collateral", money(t.payday_cents)]]);
+    el("sale-limit").textContent = "The swap can spend up to " + (split.max_lamports / 1e9) + " SOL. Even at that limit the split leaves "
+      + minSol(split.freed_lamports) + " more unlocked than the pledge plan. Network fees are separate.";
+  } else {
+    el("sale-title").textContent = !s.modeled_fill
+      ? "Which sale price would keep " + money(t.unused_cents) + " for the road?"
+      : "Sell some SOL and keep the same " + money(t.unused_cents);
+    el("sale-result").textContent = "Sell enough spare SOL for " + money(s.output_cents)
+      + (s.cash_cents ? " and add " + money(s.cash_cents) + " of road cash." : ". Your road cash stays untouched.")
+      + " The proceeds pay down the fuel loan immediately.";
+    if (s.policy === "historical" && s.min_net_price_cents > q.price_cents) {
+      el("sale-result").textContent = "This sale needs about " + money(s.min_net_price_cents)
+        + " per SOL after swap costs. At your " + money(q.price_cents) + " estimate, keep the pledge option available. Recheck the loan before acting if prices move.";
+    }
+    if (s.policy === "budget") {
+      el("sale-result").textContent = "With a " + money(s.loss_limit_cents) + " downside limit, "
+        + (s.modeled_fill ? "the modeled sale fits." : "keep the pledge option available.")
+        + " Both choices leave " + money(t.unused_cents) + " for the road.";
+    }
+    el("sale-fill").textContent = s.modeled_input_lamports == null
+      ? "The recorded pools lack enough verified liquidity for this sale."
+      : "At " + money(q.price_cents) + " per SOL, the modeled Orca swap needs about "
+        + (s.modeled_input_lamports / 1e9).toFixed(6) + " SOL for " + money(s.output_cents) + " after swap costs. "
+        + (s.modeled_fill ? "That fits the sale limit." : "That exceeds the sale limit.")
+        + (button.hidden ? "" : " The smallest payday downside limit that fits this estimate is " + money(minimum) + ".");
+    facts(el("sale-amounts"), [["Cash left for the road", money(t.unused_cents)], ["Due on payday after selling", money(s.payday_cents)],
+      ["Due on payday after pledging", money(t.payday_cents)]]);
+    el("sale-limit").textContent = "The swap must deliver " + money(s.output_cents) + " within a limit of "
+      + (s.max_lamports / 1e9).toString() + " SOL or it stops. "
+      + (s.policy === "historical" && s.min_net_price_cents > q.price_cents ? "" : "That needs about "
+        + money(s.min_net_price_cents) + " per SOL after swap costs. ")
+      + "Network fees are separate.";
   }
-  if (s.policy === "budget") {
-    el("sale-result").textContent = "With a " + money(s.loss_limit_cents) + " downside limit, "
-      + (s.modeled_fill ? "the modeled sale fits." : "keep the pledge option available.")
-      + " Both choices leave " + money(t.unused_cents) + " for the road.";
-  }
-  el("sale-fill").textContent = s.modeled_input_lamports == null
-    ? "The recorded pools lack enough verified liquidity for this sale."
-    : "At " + money(q.price_cents) + " per SOL, the modeled Orca swap needs about "
-      + (s.modeled_input_lamports / 1e9).toFixed(6) + " SOL for " + money(s.output_cents) + " after swap costs. "
-      + (s.modeled_fill ? "That fits the sale limit." : "That exceeds the sale limit.")
-      + (button.hidden ? "" : " The smallest payday downside limit that fits this estimate is " + money(minimum) + ".");
-  facts(el("sale-amounts"), [["Cash left for the road", money(t.unused_cents)], ["Due on payday after selling", money(s.payday_cents)],
-    ["Due on payday after pledging", money(t.payday_cents)]]);
-  el("sale-limit").textContent = "The swap must deliver " + money(s.output_cents) + " within a limit of "
-    + (s.max_lamports / 1e9).toString() + " SOL or it stops. "
-    + (s.policy === "historical" && s.min_net_price_cents > q.price_cents ? "" : "That needs about "
-      + money(s.min_net_price_cents) + " per SOL after swap costs. ")
-    + "Network fees are separate.";
-  const carry = s.outcomes.carry, outcomes = carry || s.outcomes;
+  const carry = s.outcomes.carry?.histories ? s.outcomes.carry : null, outcomes = carry || s.outcomes;
   const crossover = carry ? carry.crossover_cents : s.crossover_cents;
-  el("sale-crossover").textContent = crossover == null ? "The latest share change gives no positive break-even price." :
+  if (!split) el("sale-crossover").textContent = crossover == null ? "The latest share change gives no positive break-even price." :
     "At the full sale limit, about " + money(crossover) + " per SOL on payday makes selling and pledging come out even"
     + (carry ? " if the latest 15-day collateral earnings repeat." : " before collateral earnings.") + " Selling fewer coins raises that price.";
+  if (split) el("sale-crossover").textContent = "At the swap limit, the split’s lowest payday result across the tested prices is "
+    + (split.worst_difference_cents >= 0 ? money(split.worst_difference_cents) + " ahead of" : money(-split.worst_difference_cents) + " behind")
+    + " pledging. Prices outside those cases can change the result.";
   const stress = outcomes.stress_difference_cents, histories = outcomes.histories;
   const stressLine = el("sale-stress");
   stressLine.hidden = stress == null;
@@ -208,8 +228,9 @@ function showSale(q, row, inputs) {
   el("sale-yield-link").hidden = !carry;
   el("sale-proof").hidden = !data;
   const link = el("sale-evidence");
-  link.hidden = !s.evidence;
-  if (s.evidence) link.href = s.evidence;
+  el("sale-live").textContent = split ? "Check the split payment on Devnet" : "Check sale and repayment on Devnet";
+  link.hidden = !active.evidence;
+  if (active.evidence) link.href = active.evidence;
   else link.removeAttribute("href");
   if (panel.open && !link.hidden && !el("sale-receipt").textContent) checkSale(false);
 }
@@ -222,10 +243,11 @@ async function checkSale(live) {
   try {
     const p = await request("/api/midtrip-payment/preview", {...saleRequest, source: live ? "live" : "recorded"});
     if (id !== saleRevision) return;
-    if (p.sale_cap !== saleRequest.sale_cap || p.sale_raw !== saleRequest.output_cents * 100
+    if ((p.added_lamports || 0) !== (saleRequest.added_lamports || 0) || p.sale_cap !== saleRequest.sale_cap || p.sale_raw !== saleRequest.output_cents * 100
         || p.payment_raw !== saleRequest.payment_cents * 100 || p.sold_lamports > p.sale_cap) throw new Error();
     status.textContent = (live ? "Public" : "Saved") + " Devnet simulation at slot " + p.slot + ". The borrower sold "
-      + (p.sold_lamports / 1e9) + " test SOL for " + (p.sale_raw / 1e6).toFixed(4) + " test USDC. The loan has "
+      + (p.sold_lamports / 1e9) + " test SOL for " + (p.sale_raw / 1e6).toFixed(4) + " test USDC"
+      + (p.added_lamports ? " and added " + (p.added_lamports / 1e9) + " test SOL to the same pledge" : "") + ". The loan has "
       + (p.remaining_raw / 1e6).toFixed(4) + " test USDC left. The vendor received " + (p.vendor_raw / 1e6).toFixed(4)
       + ". A second check at slot " + p.rollback_slot + " rejected a one-lamport sale limit and rolled back the bundle. "
       + "These immediate checks use sponsored test funds at 1:100 scale. No funds moved.";
@@ -373,7 +395,7 @@ export function showExit(rows, low, inputs) {
         update();
         if (budgetResult && focusMidtrip) {
           focusMidtrip = false;
-          const focus = ["sale", "sale-limit", "sale-replay"].includes(initialView) && !el("midtrip-sale").hidden ? el("sale-title") : el("midtrip").querySelector("summary");
+          const focus = ["sale", "sale-limit", "sale-replay", "split-pledge"].includes(initialView) && !el("midtrip-sale").hidden ? el("sale-title") : el("midtrip").querySelector("summary");
           focus.focus();
         } else if (budgetResult && restorePolicy && document.activeElement === document.body && !el("midtrip-sale").hidden) {
           el("sale-policy").focus();
@@ -508,11 +530,15 @@ function earlyPaymentLine(q) {
     + (sale.modeled_fill ? " The modeled Orca input fits." : " The modeled Orca sale does not fit.")
     + (sale.policy === "historical" ? " This limit requires at least one cent over pledging in each matched historical finish, including collateral earnings." : "")
     : "";
+  const split = sale?.split;
+  const mixed = split ? " Smaller sale and pledge: receive " + money(split.output_cents) + " within " + split.max_lamports
+    + " lamports, pledge " + split.deposit_limit_lamports + " lamports and add " + money(split.cash_cents) + " cash. Road cash left: "
+    + money(split.unused_cents) + ". Due on payday: " + money(split.payday_cents) + "." : "";
   return begin + "Pay " + money(q.payment_cents) + " early, keep " + money(q.unused_cents) + " cash, still owe "
     + money(q.payday_cents) + " on day 30. Additional cash needed for the tested cushion: " + money(q.short_cents)
     + ". Worst modeled debt as a share of collateral: " + percent(q.paid_peak_bps) + " across " + q.windows + " Gemini paths" + (q.downside ? " plus driver stress." : ".") + downside + thresholds
     + (q.downside ? " History alone requires " + money(q.downside.history_needed_cents) + " early. Minimum price through payday with available cash: " + money(q.cash_floor_cents) + "/SOL." : "")
-    + " Earlier-only sizing missed the cushion in " + q.later_trials.filter(t => t.missed).length + " of " + q.later_trials.length + " eligible later cases." + spare + sell;
+    + " Earlier-only sizing missed the cushion in " + q.later_trials.filter(t => t.missed).length + " of " + q.later_trials.length + " eligible later cases." + spare + sell + mixed;
 }
 
 function partialSummary(q, live) {

@@ -101,7 +101,7 @@ def quote(row, budget, marks, windows, terms, folds=(), drop_bps=0, *, topup_lim
             prices.append(ceil(executable_mark / move))
         return max(prices)
 
-    base = dict(day15_debt_raw=debt, price_cents=current_price, current_ltv_bps=ceil(current_ltv), limit_bps=threshold,
+    base = dict(day15_debt_raw=debt, partial_limit_cents=partial_limit, price_cents=current_price, current_ltv_bps=ceil(current_ltv), limit_bps=threshold,
                 target_bps=target, windows=windows, eligible=current_ltv < threshold,
                 no_payment_price_cents=minimum_price(0), budget_price_cents=minimum_price(spendable))
     if extra:

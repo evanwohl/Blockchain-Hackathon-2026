@@ -30,7 +30,7 @@ def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0, sale_raw=0,
     if type(payment) is not int or not 0 <= payment < bill.LOAN or not (payment or extra_pledge):
         raise ValueError("Enter a partial payment below the sample principal")
     if (type(sale_raw) is not int or not 0 <= sale_raw <= payment or type(sale_cap) is not int
-            or not 0 <= sale_cap <= 10_000_000 or bool(sale_cap) != bool(sale_raw) or sale_raw and extra_pledge):
+            or not 0 <= sale_cap <= 10_000_000 or bool(sale_cap) != bool(sale_raw)):
         raise ValueError("Enter the selected borrower sale and its SOL limit")
     contribution = payment - sale_raw
     if rpc("getGenesisHash", []) != devnet.GENESIS:
@@ -50,11 +50,14 @@ def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0, sale_raw=0,
     vendor_owner = Pubkey.from_string(json.loads(devnet.SAMPLE.read_bytes())["vendor_owner"])
 
     def run(entry_cap, sponsor_cap, *, decline=False):
-        ops = bill.opening_instructions(owner, cash, route, entry_cap, rent)
+        combined_pledge = extra_pledge if sale_raw else 0
+        ops = bill.opening_instructions(owner, cash, route, entry_cap, rent, next_pledge=combined_pledge)
         if extra_pledge:
             topup = load_credit.instructions(owner, extra_pledge, bill.LOAN)
             deposit, = [ix for ix in topup if ix.program_id == credit.KLEND and ix.data[:8] == bytes.fromhex("d8e0bf1bcc9766af")]
-            ops.extend([*topup[:3], *close[1:-2], deposit, topup[-2]])
+            if not combined_pledge:
+                ops.extend(topup[:3])
+            ops.extend([*close[1:-2], deposit, topup[-2]])
         swaps = [(owner, cash, bill.SALE, entry_cap)]
         if sale_raw:
             swaps.append((owner, cash, sale_raw, 1 if decline else sale_cap))
@@ -83,7 +86,8 @@ def simulate(rpc=devnet.request, *, payment=PAYMENT, extra_pledge=0, sale_raw=0,
             expected[list(msg.account_keys).index(sponsor)] -= v["fee"]
             if (v["err"] != {"InstructionError": [swap_index, {"Custom": 6037}]}
                     or v["postBalances"] != expected or v["postTokenBalances"] != v["preTokenBalances"]
-                    or not any(line.startswith("Program " + str(fuel_swap.ORCA) + " failed:") for line in v["logs"])):
+                    or not (any(line.startswith("Program " + str(fuel_swap.ORCA) + " failed:") for line in v["logs"])
+                            or combined_pledge and "Log truncated" in v["logs"])):
                 raise ValueError("The capped borrower sale did not roll back as expected")
             return result["context"]["slot"]
         if v["err"] is not None:
@@ -163,12 +167,18 @@ SALES = {
     (144_700, 67_100, 1_226_100): ("sell-and-pay", credit.DATA / "sale_and_cash.json.gz", "1bb393b7da13c7aa7e299a1c3c25d7a8a4affd0e2d81861964f335ae76224cef"),
     (144_700, 144_700, 2_644_063): ("sell-only", credit.DATA / "sale_only.json.gz", "dc2d46b430eeb9c93bc79937c99e3d54a548e5f17221e24305585e90132ff4e4"),
 }
-EVIDENCE = {"/evidence/" + name: path for name, path, _ in (*RECORDS.values(), *SALES.values())}
+SPLITS = {
+    (100_200, 1_658_000, 22_600, 411_874): ("split-road-cash", credit.DATA / "split_road_cash.json.gz", "c0fa72d1aa5bc74e760577024cd99aa5dd45d34c5a0a379abad85af36a8e561a"),
+    (22_600, 4_549_000, 22_600, 411_874): ("split-all-cash", credit.DATA / "split_all_cash.json.gz", "6888b0d7a597a80b95db260608a5a2025698e86bb730449c6dcd8177569e2fdb"),
+}
+EVIDENCE = {"/evidence/" + name: path for name, path, _ in (*RECORDS.values(), *SALES.values(), *SPLITS.values())}
 
 
 @cache
 def saved(payment=PAYMENT, extra_pledge=0, sale_raw=0, sale_cap=0):
     record = SALES.get((payment, sale_raw, sale_cap)) if sale_raw else RECORDS.get((payment, extra_pledge))
+    if sale_raw and extra_pledge:
+        record = SPLITS.get((payment, extra_pledge, sale_raw, sale_cap))
     if record is None:
         raise ValueError("There is no saved simulation for this amount")
     _, path, digest = record

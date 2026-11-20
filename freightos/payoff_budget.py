@@ -2,6 +2,7 @@
 from bisect import bisect_left, bisect_right
 from fractions import Fraction
 from functools import cache
+from math import ceil
 
 from freightos import collateral_exit, fuel_floor, mainnet_loan, stop_backup
 
@@ -38,6 +39,16 @@ def raw_sale(pools, output):
             best = min(best, (buffered_cost(k), k))
     cost, second = best
     return dict(max_lamports=cost, legs=[dict(pool=p["pool"], output_raw=n) for p, n in zip(pools, (output-second, second)) if n])
+
+
+def modeled_input(pools, proceeds, price):
+    route = raw_sale(pools, proceeds * CENT)
+    if route is None:
+        return None
+    by_address = {pool["pool"]: pool for pool in pools}
+    spent = sum(fuel_floor.swap_cost(by_address[leg["pool"]], leg["output_raw"]) for leg in route["legs"])
+    spot = Fraction(max(pool["price"]**2 for pool in pools) * SOL, fuel_floor.Q64**2 * CENT)
+    return ceil(spent * spot / price)
 
 
 def quote(row, budget, pools, lending, prices):

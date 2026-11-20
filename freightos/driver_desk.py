@@ -6,7 +6,7 @@ from fractions import Fraction
 from math import ceil
 
 from hedging.quick_pay import integer
-from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, midtrip, partial_payment, payday_policy, payoff_budget, pledge_yield, route_booking, route_sizing, sale_replay
+from freightos import collateral_exit, collateral_path, fuel_floor, mainnet_loan, mainnet_stop, midtrip, partial_payment, partial_sale, payday_policy, payoff_budget, pledge_yield, route_booking, route_sizing, sale_replay
 
 MAX_BILL = 250_000
 VENDOR_FEE_LAMPORTS = 5_000
@@ -161,6 +161,8 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
                 sale["outcomes"]["carry"] = carry
                 sale["modeled_input_lamports"] = spend
                 sale["modeled_fill"] = spend is not None and spend <= sale["max_lamports"]
+                if carry and loss_limit is not None and not sale["modeled_fill"]:
+                    sale["split"] = partial_sale.choose(row, decision, path, lending, marks, pools, loss_limit)
                 if carry:
                     sale["later_trips"] = sale_replay.evaluate(row, budget, lending, path, midprice, drop, topup,
                                                                spare, folds, pools, strict, loss_limit)
@@ -172,14 +174,22 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
                     record = partial_payment.RECORDS.get((payment, added))
                     if record:
                         alternative["evidence"] = "/evidence/" + record[0]
-                if sale and sale["payment_cents"] * partial_payment.SCALE < partial_payment.bill.LOAN:
-                    cap_test = sale["max_lamports"] // partial_payment.SCALE
+                for choice in (sale, sale.get("split") if sale else None):
+                    if not choice or choice["payment_cents"] * partial_payment.SCALE >= partial_payment.bill.LOAN:
+                        continue
+                    cap_test = choice["max_lamports"] // partial_payment.SCALE
                     if 0 < cap_test <= 10_000_000:
-                        sale["preview"] = dict(payment_cents=sale["payment_cents"], output_cents=sale["output_cents"], sale_cap=cap_test)
-                        record = partial_payment.SALES.get((sale["payment_cents"]*partial_payment.SCALE,
-                                                            sale["output_cents"]*partial_payment.SCALE, cap_test))
+                        preview = dict(payment_cents=choice["payment_cents"], output_cents=choice["output_cents"], sale_cap=cap_test)
+                        paid, sold = choice["payment_cents"]*partial_payment.SCALE, choice["output_cents"]*partial_payment.SCALE
+                        if "deposit_limit_lamports" in choice:
+                            extra = choice["deposit_limit_lamports"] // partial_payment.SCALE
+                            preview["added_lamports"] = extra
+                            record = partial_payment.SPLITS.get((paid, extra, sold, cap_test))
+                        else:
+                            record = partial_payment.SALES.get((paid, sold, cap_test))
+                        choice["preview"] = preview
                         if record:
-                            sale["evidence"] = "/evidence/" + record[0]
+                            choice["evidence"] = "/evidence/" + record[0]
             if drop:
                 amount = partial_payment.matching_payment(row, decision)
                 if amount:
@@ -200,6 +210,8 @@ def selected_topup(data):
         output = integer(data.get("output_cents"), "sale proceeds", 7298)
         limit = integer(data.get("sale_cap"), "scaled sale limit", 10_000_000)
         expected = dict(payment_cents=cents, output_cents=output, sale_cap=limit)
+        if "added_lamports" in data:
+            expected["added_lamports"] = integer(data["added_lamports"], "scaled test pledge", 10_000_000)
     else:
         added = integer(data.get("added_lamports"), "scaled test pledge", 10_000_000)
         expected = dict(payment_raw=cents * partial_payment.SCALE, added_lamports=added)
@@ -210,9 +222,11 @@ def selected_topup(data):
         if isinstance(row, dict) and row.get("opening_lamports") == opening:
             alternative = row.get("cash_payoff", {}).get("midtrip", {}).get("topup", {})
             choice = alternative.get("sale", {}) if sale else alternative
+            if sale and "added_lamports" in expected:
+                choice = choice.get("split") or {}
             if choice.get("preview") == expected:
                 if sale:
-                    return cents * partial_payment.SCALE, 0, output * partial_payment.SCALE, limit
+                    return cents * partial_payment.SCALE, expected.get("added_lamports", 0), output * partial_payment.SCALE, limit
                 return cents * partial_payment.SCALE, added
     raise ValueError("The cash or collateral amount differs from the selected plan")
 

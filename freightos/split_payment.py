@@ -6,6 +6,7 @@ import json
 from functools import cache
 
 from solders.hash import Hash
+from solders.instruction import Instruction
 from solders.message import MessageV1, TransactionConfig
 from solders.pubkey import Pubkey
 from solders.signature import Signature
@@ -22,7 +23,7 @@ SPONSOR = 100_000_000
 POOL = fuel_swap.POOLS[0]
 
 
-def opening_instructions(owner, cash, route, maximum, rent):
+def opening_instructions(owner, cash, route, maximum, rent, *, next_pledge=0):
     sponsor, vendor = credit.OWNER, load_credit.vendor()
     setup = [transfer(TransferParams(from_pubkey=sponsor, to_pubkey=owner, lamports=SPONSOR)),
              devnet.create_ata(sponsor, owner, devnet.MINT)]
@@ -30,6 +31,13 @@ def opening_instructions(owner, cash, route, maximum, rent):
     loan = load_credit.instructions(owner, PLEDGE, LOAN)
     if loan[-1].accounts[2].pubkey != vendor or loan[-1].program_id != devnet.TOKEN:
         raise ValueError("Unexpected final Kamino vendor transfer")
+    if next_pledge:
+        fund = loan[0]
+        if fund.program_id != Pubkey.default() or fund.data[:4] != bytes.fromhex("02000000") or loan[-2].data != b"\x09":
+            raise ValueError("The borrower wrapped SOL instructions changed")
+        amount = int.from_bytes(fund.data[4:], "little") + next_pledge
+        loan[0] = Instruction(fund.program_id, fund.data[:4] + amount.to_bytes(8, "little"), fund.accounts)
+        del loan[-2]
     setup.extend(ix for ix in loan[:-1] if not (ix.program_id == credit.KLEND and ix.data[:8] == tag))
     return [*setup, *fuel_swap.swap_instructions(owner, cash, route, SALE, maximum, rent),
             public_offer.transfer(cash, owner, vendor, LOAN + SALE)]

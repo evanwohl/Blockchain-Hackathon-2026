@@ -218,3 +218,74 @@ def test_unavailable_pool_depth_has_no_fill_and_no_spend_threshold(monkeypatch):
     assert s["modeled_input_lamports"] is None and not s["modeled_fill"]
     assert "minimum_loss_limit_cents" not in s["outcomes"]["carry"]
     assert all(t["action"] == "pledge" for t in s["later_trips"])
+
+
+@pytest.mark.parametrize("limit,deposit,owed,road", [(250_000_000,165_800_000,6356,2224), (10**9,454_900_000,7135,3000)])
+def test_smaller_swap_and_pledge_share_a_single_limit_and_public_obligation(limit,deposit,owed,road):
+    args, row = route(limit, sale_policy="budget", sale_loss_cents=100)
+    topup = row["cash_payoff"]["midtrip"]["topup"]
+    sale = topup["sale"]
+    split = sale["split"]
+    assert not sale["modeled_fill"] and split["output_cents"] == 226
+    assert (split["deposit_limit_lamports"], split["payday_cents"], split["unused_cents"]) == (deposit, owed, road)
+    assert split["modeled_input_lamports"] <= split["max_lamports"] == 41_187_477
+    assert deposit + split["max_lamports"] + split["freed_lamports"] == topup["deposit_limit_lamports"]
+    assert split["worst_difference_cents"] >= -100
+    selection = dict(plan=args,opening_lamports=row["opening_lamports"],**split["preview"])
+    proof = partial_payment.saved(*driver_desk.selected_topup(selection))
+    assert proof["added_lamports"] == deposit//100 and proof["sale_raw"] == 22_600
+    assert proof["vendor_raw"] == 950_000 and proof["pledge_lamports"] == 21_920_000 + deposit//100
+    assert proof["sale_raw"] + proof["cash_raw"] == proof["loan_raw"] - proof["remaining_raw"] == split["payment_cents"]*100
+    assert proof["rollback_slot"] >= proof["slot"]
+    for key in ("payment_cents","added_lamports","sale_cap","output_cents"):
+        with pytest.raises(ValueError, match="differs"):
+            driver_desk.selected_topup(dict(selection, **{key:selection[key]-1}))
+
+
+def test_split_search_matches_exhaustive_cent_search_and_minimum_healthy_deposit():
+    from bisect import bisect_left
+    from freightos import payoff_budget, pledge_yield
+    _, row = route(250_000_000,sale_policy="budget",sale_loss_cents=100)
+    decision = row["cash_payoff"]["midtrip"]
+    t = decision["topup"]
+    s = t["sale"]["split"]
+    terms = mainnet_loan.saved()
+    path = collateral_path.saved()
+    marks, _ = midtrip.checkpoints(path,5500,terms["apr"]*2)
+    tests = [(price, growth) for _, price, _, growth, _ in marks] + [(3850,marks[-1][3])]
+    factor = Fraction(terms["usd_price"])*terms["factor"]*10**7 / decision["target_bps"]
+    backing = Fraction(terms["collateral_supply_sf"],1<<60)
+    supply = terms["collateral_shares"]
+    first, used = pledge_topup.deposited(row["pledge_lamports"],backing,supply)
+    backing += used
+    supply += first
+    claims = []
+    debits = []
+    for deposit in range(0,t["deposit_limit_lamports"]+1,100_000):
+        shares, debit = pledge_topup.deposited(deposit,backing,supply)
+        claims.append((first+shares)*(backing+debit)/(supply+shares))
+        debits.append(debit)
+    rates = pledge_yield.saved()
+    finishes = []
+    for start, trace in sorted(path["traces"].items()):
+        pts = dict(trace)
+        finishes.append((5500*pts[60]/pts[30],pledge_yield.share_growth(start,rates)[1]))
+    finishes.append((3850,finishes[-1][1]))
+    pools = driver_desk.mainnet_stop.saved()[1]
+    for proceeds in range(t["sale"]["output_cents"], 0, -1):
+        debt = decision["day15_debt_raw"] - (proceeds+t["payment_cents"])*10_000
+        payday = ceil(debt*marks[-1][3]/10_000)
+        required = max(ceil(ceil(debt*g)*factor/p) for p,g in tests)
+        n = bisect_left(claims,required)
+        spend = payoff_budget.modeled_input(pools,proceeds,5500)
+        if n == len(claims) or spend+100_000*n > t["deposit_limit_lamports"]:
+            continue
+        def advantage(mark, growth):
+            missed = floor(claims[-1]*growth)-floor(claims[n]*growth)-debits[-1]+debits[n]
+            return floor(t["payday_cents"]-payday-(spend+missed)*Fraction(mark)/10**9)
+        if min(advantage(*case) for case in finishes) >= -100:
+            assert (proceeds,n*100_000) == (s["output_cents"],s["deposit_limit_lamports"])
+            break
+    else:
+        pytest.fail("No feasible split")
+    assert [r["split_option"]["difference_cents"] for r in t["sale"]["later_trips"]] == [-46,37,46,51]

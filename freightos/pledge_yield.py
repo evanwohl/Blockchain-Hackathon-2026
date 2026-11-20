@@ -52,13 +52,17 @@ def positions(topup, original, terms):
     return initial, after
 
 
-def finish(start, points, price, positions, deposit, rates):
-    initial, after = positions
+def share_growth(start, rates):
     opening = datetime.fromisoformat(start).replace(hour=21, tzinfo=timezone.utc)
     middle, end = opening + timedelta(days=15), opening + timedelta(days=30)
-    growth = rates[middle] / rates[end]
+    return end.date().isoformat(), rates[middle] / rates[end]
+
+
+def finish(start, points, price, positions, deposit, rates):
+    initial, after = positions
+    end, growth = share_growth(start, rates)
     excess = floor(after * growth) - floor(initial * growth) - deposit
-    return end.date().isoformat(), excess, price * points[60] / points[30]
+    return end, excess, price * points[60] / points[30]
 
 
 def compare(topup, sale, original, terms, path, price, stress_floor, strict, *, loss_limit=None, estimated_input=None):
