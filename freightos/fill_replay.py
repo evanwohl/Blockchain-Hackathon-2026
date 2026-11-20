@@ -9,27 +9,50 @@ from math import ceil
 import gzip
 import json
 
-from freightos import regional_diesel
+import numpy as np
+
+from freightos import regional_diesel, replay_prices
 
 
 @cache
-def changes(region):
-    rows = json.loads(gzip.decompress(regional_diesel.SNAPSHOT.read_bytes()))["prices"]
+def prices():
+    return json.loads(gzip.decompress(replay_prices.SNAPSHOT.read_bytes()))
+
+
+def expiry_offsets(reference, expiry):
+    days = (expiry - reference).days
+    to_fill = (0 - expiry.weekday()) % 7
+    if 0 < days and days + to_fill <= 7:
+        return days + to_fill, to_fill
+
+
+@cache
+def changes(region, offsets):
+    tape = prices()
+    oil = tape["oil_cents"]
+    diesel = tape["diesel_mills"][region]
     weeks = []
-    for a, b in zip(rows, rows[1:]):
-        end = date.fromisoformat(b["date"])
-        if end - date.fromisoformat(a["date"]) == timedelta(days=7):
-            weeks.append((end, Fraction(b["oil_cents"] - a["oil_cents"], 100),
-                          b["diesel_mills"][region] - a["diesel_mills"][region]))
+    for stamp, price in sorted(diesel.items()):
+        end = date.fromisoformat(stamp)
+        start = (end - timedelta(days=7)).isoformat()
+        if end.weekday() != 0 or start not in diesel:
+            continue
+        oil_move = Fraction(0)
+        if offsets:
+            opening, closing = ((end - timedelta(days=n)).isoformat() for n in offsets)
+            if opening not in oil or closing not in oil:
+                continue
+            oil_move = Fraction(oil[closing] - oil[opening], 100)
+        weeks.append((end, oil_move, price - diesel[start]))
     return weeks
 
 
-def fills(trip, anchor, offers, fuel_cash, as_of):
+def fills(trip, anchor, offers, fuel_cash, as_of, offsets):
     strikes = [Fraction(o["strike"]) for o in offers]
     early, later = [], []
     split = date.fromisoformat(regional_diesel.TEST_START)
     cutoff = as_of - timedelta(days=7)
-    for end, oil_move, diesel_move in changes(trip["region"]):
+    for end, oil_move, diesel_move in changes(trip["region"], offsets):
         if end > cutoff or end - timedelta(days=7) < split <= end:
             continue
         oil = anchor + oil_move
@@ -51,6 +74,29 @@ def pump_gaps(samples, offers, plan):
     positions = {leg["strike"]: leg["lots"] for leg in plan["legs"]}
     payouts = list(accumulate((positions.get(o["strike"], 0) for o in offers), initial=0))
     return [max(0, need - payouts[band]) for band, need, *_ in samples], payouts
+
+
+def delay_threshold(ready, delayed, premium):
+    """Fewest adversarial payout delays that erase the tail-cash saving against cash alone."""
+    weeks = len(ready)
+    whole, remainder = divmod(weeks, 10)
+    fractional = int(remainder > 0)
+    max_delays = whole + fractional
+    scores = np.full((whole + 1, fractional + 1, max_delays + 1), -10**15, dtype=np.int64)
+    scores[0, 0, :] = 0
+    for on_time, late in zip(ready, delayed):
+        next_scores = scores.copy()
+        for cost, used in ((on_time, 0), (late, 1)):
+            prior = scores[:, :, :max_delays + 1 - used]
+            full = next_scores[1:, :, used:]
+            np.maximum(full, prior[:-1] + 10*cost, out=full)
+            if fractional:
+                part = next_scores[:, 1, used:]
+                np.maximum(part, prior[:, 0] + remainder*cost, out=part)
+        scores = next_scores
+    totals = scores[whole, fractional] + weeks*premium
+    count = int(np.flatnonzero(totals >= tail_sum(delayed))[0])
+    return {"count": count, "tail_cash_cents": ceil(Fraction(int(totals[count]), weeks))}
 
 
 def month_sensitivity(samples, offers, original, fitted):

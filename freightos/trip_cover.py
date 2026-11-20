@@ -358,15 +358,25 @@ def pump_target(offers, gaps, pump_cash, reserve_cash, spend_limit, gallon_cents
             "plan": plan, "minimum_spend_cents": minimum}
 
 
-def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of):
-    early, later = fill_replay.fills(trip, anchor, offers, fuel_cash, as_of)
+def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fuel):
+    reference = datetime.fromisoformat(fuel["close_expiry"]).astimezone(timezone.utc).date()
+    expiry = datetime.fromisoformat(fuel["expiry"]).astimezone(timezone.utc).date()
+    offsets = fill_replay.expiry_offsets(reference, expiry) if offers else None
+    if offers and offsets is None:
+        return
+    early, later = fill_replay.fills(trip, anchor, offers, fuel_cash, as_of, offsets)
     if not later:
         return
     base = target["plan"]
     cash = fill_replay.summary(later, offers, {"legs": [], "upfront_cents": 0})
 
     def replay(plan):
-        return {"before": cash, "after": fill_replay.summary(later, offers, plan)}
+        window = {"from": reference.isoformat(), "to": expiry.isoformat()} if offsets else None
+        after = fill_replay.summary(later, offers, plan)
+        if plan["legs"]:
+            ready, _ = fill_replay.pump_gaps(later, offers, plan)
+            after["delays"] = fill_replay.delay_threshold(ready, [row[1] for row in later], plan["upfront_cents"])
+        return {"before": cash, "after": after, "oil_window": window}
 
     target["fill_replay"] = replay(base)
     risk = target["funding_risk"]
@@ -483,7 +493,7 @@ def analyze(snapshot, trip, *, reserve=None):
         result["pump_target"] = target
         if regional:
             as_of = datetime.fromisoformat(snapshot["checked_at"]).date()
-            compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of)
+            compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of, fuel)
 
     return result
 

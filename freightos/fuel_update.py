@@ -63,6 +63,13 @@ def instruments(record):
             for c in rows}
 
 
+@cache
+def prior_expiry(ticker):
+    events = json.loads((DATA / "gemini_settlements.json").read_bytes())["data"]
+    prior, = [event for event in events if event["ticker"] == ticker]
+    return prior["expiryDate"]
+
+
 def compare(snapshot):
     decision, g, base, window, ticker = watch_terms()
     checked = datetime.fromisoformat(snapshot["checked_at"])
@@ -108,6 +115,7 @@ def compare(snapshot):
     return {"checked_at": snapshot["checked_at"], "base_cents": base, "paid_cents": paid, "marked_cents": marked,
             "headroom_cents": paid - marked, "reference": str(reference), "close": str(price),
             "close_ticker": latest["ticker"] if latest else g["prior_event"],
+            "close_expiry": latest["expiryDate"] if latest else prior_expiry(g["prior_event"]),
             "close_at": latest["resolvedAt"] if latest else None, "gallons": g["gallons"], "cents_per_oil_dollar": str(multiplier),
             "customer_cents": decision["outside_cents"], "reserve_needed_cents": max(0, marked - decision["outside_cents"]),
             "paid_reserve_cents": decision["reserve_cents"], "last_covered_oil": str(last_covered),
