@@ -69,8 +69,10 @@ def pool_backup(plan, pool, reserve, wallet, base, rent, fee, cap, first_slot, s
     return {**sized, "retained_raw": follow["retained_raw"], "next_cent_entry_lamports": next_entry}, slot
 
 
-def observe(cap, rpc):
+def observe(cap, rpc, *, outside_cents=None):
     integer(cap, "SOL available for the backup", 10**12)
+    if outside_cents is not None:
+        integer(outside_cents, "separate fuel cash", 100000000)
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("The backup requires public Devnet")
     reserve = reserve_credit.reserve_leg(rpc)
@@ -106,13 +108,60 @@ def observe(cap, rpc):
         raise ValueError("The backup quotes are too far apart")
     best = min(rows, key=lambda q: (-q["vendor_raw"], q["spent_lamports"], q["entry_lamports"]), default=None)
     paid = best["vendor_raw"] // scale if best else 0
-    return {"bill_cents": bill, "covered_cents": paid, "outside_cents": bill - paid, "cap_lamports": cap,
+    result = {"bill_cents": bill, "covered_cents": paid, "outside_cents": bill - paid, "cap_lamports": cap,
             "best": best, "routes": rows, "unavailable_pools": unavailable, "first_slot": first_slot, "last_slot": slot, "scale": scale,
             "protected_cents": reserve["holdback"]["cost_cents"]}
 
+    if outside_cents is not None:
+        target = max(0, bill - outside_cents)
+        alternatives = []
+        if 0 < target < paid:
+            alternatives, slot = fixed_payment(plan, reserve, wallet, rent, fee, cap, target, slot, rpc)
+        if slot - first_slot > 240:
+            raise ValueError("The two cash choices were observed too far apart")
+        result.update(separate_cents=outside_cents, fixed_routes=alternatives, last_slot=slot)
+    return result
+
+
+def fixed_payment(plan, reserve, wallet, rent, fee, cap, target, slot, rpc):
+    scale = reserve["raw_units_per_cent"]
+    separate = reserve["fuel_cents"] - target
+    smaller = fuel_swap.spendable_reserve(reserve, separate, int(wallet["usdc_raw"]), rpc)
+    output = max(0, target * scale - smaller["vendor_raw"] - int(wallet["usdc_raw"]) // scale * scale)
+    slot = max(slot, smaller["slot"])
+    rows = []
+    for pool in fuel_swap.POOLS if output else (None,):
+        route, slot = fuel_swap.pool_accounts(pool, slot, rpc) if pool else (None, slot)
+        def simulate(limit, follow=False):
+            nonlocal slot
+            row = fuel_swap.simulate(plan, route, output, limit, rent, smaller, separate, wallet, slot, rpc, follow=follow)
+            slot = row["slot"]
+            if row["fee_lamports"] != fee or row["vendor_raw"] != target * scale:
+                raise ValueError("The fuel transfer or fee changed during the cash comparison")
+            return row
+        try:
+            limit = 0
+            if output:
+                if cap <= rent + fee:
+                    continue
+                probe = simulate(cap - rent - fee)
+                limit = buffered(probe["spent_lamports"])
+                if limit > cap - rent - fee:
+                    continue
+            sized = simulate(limit)
+            retained = simulate(limit, True)
+        except fuel_swap.PoolDeclined as declined:
+            slot = declined.slot
+            continue
+        if (sized["entry_lamports"] > cap or sized["spent_lamports"] != retained["spent_lamports"]
+                or buffered(sized["spent_lamports"]) != limit):
+            raise ValueError("The cash split changed while checking the protected fuel reserve")
+        rows.append({**sized, "retained_raw": retained["retained_raw"]})
+    return rows, slot
+
 
 def replay(data):
-    observed = atomic_fuel.replay_calls(data["calls"], lambda rpc: observe(data["cap_lamports"], rpc))
+    observed = atomic_fuel.replay_calls(data["calls"], lambda rpc: observe(data["cap_lamports"], rpc, outside_cents=data.get("separate_cents")))
     if "result" in data and observed != data["result"]:
         raise ValueError("The saved backup differs from the simulated payments")
     return observed

@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cover, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, stop_backup, trip_cover
+from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cash, fuel_cover, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, stop_backup, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -639,6 +639,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/credit-exits":
             self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
             return
+        if self.path == "/evidence/fuel-cash":
+            self.reply(200, "application/json", gzip.decompress(fuel_cash.SAMPLE.read_bytes()), static=True)
+            return
         if self.path == "/evidence/stop-backup":
             self.reply(200, "application/json", gzip.decompress(stop_backup.SAMPLE.read_bytes()), static=True)
             return
@@ -956,18 +959,28 @@ class Handler(BaseHTTPRequestHandler):
                 stress = data.get("stress_cents")
                 if stress is not None:
                     integer(stress, "additional SOL price", 10000000)
+                separate = data.get("separate_cents")
+                if separate is not None:
+                    integer(separate, "separate fuel cash", 100000000)
                 source = data.get("source")
-                if not reference or source not in ("recorded", "live") or (source == "recorded" and cap != stop_backup.DEFAULT_CAP):
+                matches_recording = cap == stop_backup.DEFAULT_CAP and separate in (None, fuel_cash.SAMPLE_CASH)
+                if not reference or source not in ("recorded", "live") or (source == "recorded" and not matches_recording):
                     raise ValueError("Choose a matching wallet limit and backup check")
                 live = source == "live"
                 if live and not self.server.trip_credit_lock.acquire(blocking=False):
                     self.respond(503, {"error": "A public funding check is running. Try again shortly."})
                     return
                 try:
-                    q = stop_backup.observe(cap, devnet.read_with_retry()) if live else stop_backup.saved()
+                    if live:
+                        q = stop_backup.observe(cap, devnet.read_with_retry(), outside_cents=separate)
+                    else:
+                        q = stop_backup.saved() if separate is None else fuel_cash.saved()
                     cases, _ = payday_policy.price_cases(reference, stress)
-                    after = stop_backup.payday(q, [c["price_cents"] for c in cases], floor)
-                    self.respond(200, {**q, "payday": after, "source": source})
+                    prices = [c["price_cents"] for c in cases]
+                    result = {**q, "payday": stop_backup.payday(q, prices, floor), "source": source}
+                    if separate is not None:
+                        result["cash_comparison"] = fuel_cash.compare(q, prices)
+                    self.respond(200, result)
                 except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):
                     self.respond(503, {"error": "Could not verify the fuel amount and protected reserve within the same market window."})
                 finally:

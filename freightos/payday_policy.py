@@ -99,6 +99,10 @@ def inputs(menu, fee, funds, extra, floor, stress):
         integer(stress, "additional all-in SOL price", 10000000)
 
 
+def reference_price(observation):
+    return int((Decimal(observation["loan"]["sol_price"]) * 100).to_integral_value(rounding=ROUND_HALF_UP))
+
+
 def price_cases(reference, stress):
     observed, excluded = history()
     cases = [{"label": "Unchanged SOL price", "price_cents": reference}]
@@ -223,7 +227,7 @@ def decide(observations, menu, fee, funds, extra, floor=0, stress=None, *, budge
     if (max(slots) - min(slots) > 240 or any(q["loan"]["payday_stress"]["days"] != 30 or q["holdback"] != first["holdback"] or q["scale"] != first["scale"]
             or any(q["wallet"][k] != v for k, v in wallet.items()) for q in observations)):
         raise ValueError("Wallet, next-stop budget or observation window changed between offers")
-    reference = int((Decimal(first["loan"]["sol_price"]) * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    reference = reference_price(first)
     cases, excluded = price_cases(reference, stress)
     unit = Fraction(reference * 10**6, 100 * first["scale"] * 10**9)
     if budget_cents is not None:

@@ -1,6 +1,6 @@
 import { el, facts, money, request, saveFile } from "./common.js";
 
-let openBackupLink = location.hash === "#fuel-backup";
+let openBackupLink = ["#fuel-backup", "#cash-split"].includes(location.hash);
 
 const title = net => net ? money(net) + " early" : "Wait for the full invoice";
 const method = plan => plan.kind === "loan" ? "secured loan" : plan.sold_lamports ? "exchange" : "wallet";
@@ -15,14 +15,60 @@ function offerSummary(rows) {
   return affordable.length ? "Payday target short by " + money(affordable[0].payday_gap) : "No checked route fits both limits";
 }
 
+function renderCashSplits(pair, missing, floor, shortfall) {
+  const choices = pair.choices;
+  const rows = el("cash-split-rows");
+  rows.replaceChildren();
+  const win = choices.find(p => p.least_cents - missing >= floor);
+  for (const p of [...choices].sort((a,b) => a.separate_cents - b.separate_cents)) {
+    const row = rows.insertRow();
+    if (p === win) row.className = "chosen-split";
+    for (const cents of [p.separate_cents, p.vendor_cents, p.least_cents - missing]) row.insertCell().textContent = money(cents);
+  }
+  rows.closest("table").hidden = choices.length < 2;
+  const heading = el("cash-decision"), reason = el("cash-reason");
+  if (choices.length < 2) {
+    heading.textContent = choices.length ? "One checked split fits this cash amount" : "More cash is needed for fuel";
+    reason.textContent = choices.length ? "The verified payment uses " + money(choices[0].separate_cents) + " of separate cash." :
+      "Bring another " + money(shortfall) + " to cover the bill under this wallet limit.";
+  } else if (win) {
+    el("backup-amount-label").textContent = "Separate cash to use";
+    el("backup-gap").textContent = money(win.separate_cents);
+    el("backup-sources").textContent = win.vendor_cents ? "The wallet could send " + money(win.vendor_cents) + " to the fuel company. "
+      + money(win.wallet_cash_cents) + " comes from wallet cash, " + money(win.reserve_cents) + " from the reserve and "
+      + money(win.exchange_cents) + " from selling SOL. " + money(win.retained_cents) + " stays for the next stop."
+      : "Your separate cash covers the bill in full. The wallet stays untouched.";
+    el("backup-balance").textContent = money(win.untouched_cents) + " of your separate cash stays with you at the stop.";
+    heading.textContent = "Use " + money(win.separate_cents) + " of your separate cash";
+    reason.textContent = "After paying yourself back, " + money(win.least_cents - missing) + " to "
+      + money(win.most_cents - missing) + " remains on payday across the tested prices.";
+    const other = choices.find(p => p !== win);
+    if (other.least_cents - missing < floor) reason.textContent += " Using " + money(other.separate_cents)
+      + " can leave only " + money(other.least_cents - missing) + ", below your " + money(floor) + " target.";
+    else if (win.minimum_edge_cents > 0) reason.textContent += " That is at least " + money(win.minimum_edge_cents)
+      + " more than using " + money(other.separate_cents) + " at every tested price.";
+  } else {
+    heading.textContent = "Fuel is covered. Payday still falls short.";
+    reason.textContent = "The stronger of these two splits needs another " + money(floor + missing - Math.max(...choices.map(p => p.least_cents)))
+      + " to meet your payday target in the weakest case.";
+  }
+  el("cash-switch").textContent = pair.lasting_price_cents === null ? "" : "The tested SOL prices run from " + money(pair.low_price_cents)
+    + " to " + money(pair.high_price_cents) + ". If buying back one SOL costs " + money(pair.lasting_price_cents)
+    + " or more, using more separate cash leaves more on payday.";
+}
+
 function setupBackup(policy) {
   const panel = el("backup-panel"), cash = el("backup-cash"), refresh = el("backup-refresh");
   const result = el("backup-result"), status = el("backup-status"), receipts = el("backup-invoice");
   const current = () => panel.ontoggle === toggle && !el("policy-result").hidden;
-  let displayed, busy = false, alignOnOpen = openBackupLink;
+  let displayed, baseSources, busy = false, alignOnOpen = openBackupLink;
   result.hidden = el("backup-proof").hidden = true;
   refresh.disabled = false;
-  cash.value = "";
+  const compare = el("backup-compare"), splits = el("cash-splits");
+  compare.hidden = splits.hidden = true;
+  el("backup-payday").hidden = false;
+  const cashCents = () => cash.value === "" || !cash.validity.valid ? null : Math.round(cash.valueAsNumber * 100);
+  if (openBackupLink && location.hash === "#cash-split") cash.value = "75.00";
   const invoice = policy.invoice_cents, plan = policy.winner;
   receipts.replaceChildren(new Option("Full invoice · " + money(invoice), invoice));
   if (plan?.customer_cents) {
@@ -50,13 +96,32 @@ function setupBackup(policy) {
       : cash.value === "" ? "" : short ? money(short) + " would still be due at the stop."
       : "That covers the bill. " + money(available - need) + " of your separate cash stays with you.";
   }
-  async function check(source) {
+  function cashChoices() {
+    if (!displayed) return;
+    const amount = cashCents();
+    const pair = displayed.cash_comparison;
+    const matched = pair && amount === displayed.separate_cents;
+    el("backup-amount-label").textContent = "Least separate cash in this check";
+    el("backup-gap").textContent = money(displayed.outside_cents);
+    el("backup-sources").textContent = baseSources;
+    balance();
+    const example = cash.value === "" && cash.validity.valid && policy.recorded_backup;
+    compare.hidden = Boolean(matched) || !(example || (amount !== null && amount > displayed.outside_cents));
+    compare.disabled = busy;
+    compare.textContent = example ? "Compare with $75 of separate cash" : amount === 7500 && policy.recorded_backup
+      ? "Compare my two cash splits" : "Check my two cash splits on public Solana";
+    splits.hidden = !matched;
+    el("backup-payday").hidden = Boolean(matched && pair.choices.length === 2);
+    if (!matched) return;
+    renderCashSplits(pair, invoice - Number(receipts.value), policy.floor_cents, displayed.outside_cents - amount);
+  }
+  async function check(source, separate = null) {
     if (busy) return;
-    busy = refresh.disabled = true;
+    busy = refresh.disabled = compare.disabled = true;
     status.textContent = source === "live" ? "Checking both exchanges and the fuel reserve on public Solana…" : "Opening the recorded backup…";
     try {
       const q = await request("/api/stop-backup", {source, cap_lamports: policy.available_lamports,
-        reference_cents: policy.reference_cents, stress_cents: policy.stress_cents,
+        separate_cents: separate, reference_cents: policy.reference_cents, stress_cents: policy.stress_cents,
         floor_cents: policy.floor_cents}, AbortSignal.timeout(95000));
       if (!current()) return;
       displayed = q;
@@ -73,26 +138,38 @@ function setupBackup(policy) {
         + "The check sizes the wallet payment in whole cents, keeps the three-gallon reserve and leaves room for a 0.5% change in exchange cost. "
         + "Payday restores the separate cash, wallet cash, reserve and SOL at the maximum allowed sale cost including the network fee. "
         + "This independent Devnet check used slots " + q.first_slot.toLocaleString("en-US") + "–" + q.last_slot.toLocaleString("en-US") + ".";
+      if (q.cash_comparison) el("backup-terms").textContent += " Both splits use one wallet and the same observation window. Among splits meeting your payday target throughout the price range, FreightOS minimizes the largest amount left on the table versus the other split, checking cent rounding throughout.";
       if (q.unavailable_pools.length) el("backup-sources").textContent += " A pool declined the payment check. Another route might cover more.";
+      baseSources = el("backup-sources").textContent;
       el("backup-download").hidden = source !== "recorded";
-      balance();
-      if (alignOnOpen && panel.open && document.activeElement === panel.querySelector("summary"))
+      el("backup-download").href = q.cash_comparison ? "/evidence/fuel-cash" : "/evidence/stop-backup";
+      cashChoices();
+      if (alignOnOpen && location.hash === "#cash-split" && !splits.hidden && document.activeElement === panel.querySelector("summary")) {
+        el("cash-decision").focus({preventScroll: true});
+        splits.scrollIntoView({block: "center"});
+      } else if (alignOnOpen && panel.open && document.activeElement === panel.querySelector("summary"))
         panel.scrollIntoView({block: "start"});
       alignOnOpen = false;
     } catch (error) {
       if (current()) status.textContent = error.message + (displayed ? " The previous backup is still shown (" + displayed.source + " Devnet check)." : " The fuel backup is unconfirmed.");
     } finally {
       busy = false;
-      if (current()) refresh.disabled = false;
+      if (current()) { refresh.disabled = false; cashChoices(); }
     }
   }
   function toggle() {
-    if (panel.open && policy.recorded_backup && !displayed) check("recorded");
+    if (panel.open && policy.recorded_backup && !displayed) check("recorded", cashCents() === 7500 ? 7500 : null);
   }
   status.textContent = "See how much you could pay without borrowing or collecting early. This uses the SOL limit above.";
-  cash.oninput = () => { balance(); payday(); };
-  receipts.onchange = payday;
-  refresh.onclick = () => check("live");
+  cash.oninput = () => { payday(); cashChoices(); };
+  receipts.onchange = () => { payday(); cashChoices(); };
+  compare.onclick = () => {
+    if (cash.value === "") cash.value = "75.00";
+    const amount = cashCents();
+    balance();
+    if (amount !== null) check(policy.recorded_backup && amount === 7500 ? "recorded" : "live", amount);
+  };
+  refresh.onclick = () => check("live", cashCents());
   panel.ontoggle = toggle;
   if (openBackupLink) {
     openBackupLink = false;
@@ -100,7 +177,7 @@ function setupBackup(policy) {
     panel.scrollIntoView({block: "start"});
     panel.querySelector("summary").focus({preventScroll: true});
   }
-  if (panel.open && policy.recorded_backup) check("recorded");
+  if (panel.open && policy.recorded_backup) check("recorded", cashCents() === 7500 ? 7500 : null);
 }
 
 export function showPolicy(d) {

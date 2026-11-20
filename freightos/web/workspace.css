@@ -226,3 +226,12 @@
   #fuel-settings { position: sticky; top: min(1rem, calc(100dvh - var(--settings-height, 100dvh) - 1rem)); }
 }
 #backup-panel { scroll-margin-block-start: 1rem; }
+
+#cash-splits { padding: 1rem 0; border-block: 1px solid var(--paper-hairline); margin-block: 1rem; }
+#cash-splits h3 { margin: 0; font: 600 1.75rem/1.1 var(--display); }
+#cash-splits table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+#cash-splits caption { text-align: left; font-weight: 650; padding: .6rem 0; }
+#cash-splits th, #cash-splits td { padding: .55rem .35rem; border-block-end: 1px solid var(--paper-hairline); text-align: end; font-variant-numeric: tabular-nums; }
+#cash-splits th { font-size: .8rem; line-height: 1.25; vertical-align: bottom; }
+#cash-splits th:first-child, #cash-splits td:first-child { text-align: start; padding-inline-start: 0; }
+#cash-splits .chosen-split { background: #e7ecd8; font-weight: 650; }
