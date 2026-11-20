@@ -9,6 +9,18 @@ function legs(row) {
 }
 
 function choiceRows(s) {
+  if (s.booking) {
+    const chosen = s.booking.choice;
+    if (!chosen) return [];
+    const start = chosen.open_stop;
+    const range = (from, to) => from === to ? "Stop " + from : "Stops " + from + "–" + to;
+    if (start === null) return [[range(1, s.stops), s.debt_free]];
+    const rows = [];
+    if (start > 1) rows.push([range(1, start - 1), s.debt_free]);
+    rows.push([range(start, start), s.first]);
+    if (start < s.stops) rows.push([range(start + 1, s.stops), s.later]);
+    return rows;
+  }
   if (s.choice === "unfunded") return [];
   return [["First stop", s.choice === "open" ? s.first : s.debt_free],
     ["Each later stop", s.choice === "open" ? s.later : s.debt_free]];
@@ -26,11 +38,53 @@ function verdict(s) {
   return comparison + (turn && turn <= 12 ? " Setup first pulls ahead at " + turn + (turn === 1 ? " stop." : " stops.") : " Setup never pulls ahead within 12 identical stops.");
 }
 
-export function showRun(q) {
-  const s = q.series, rows = choiceRows(s);
-  el("desk-basis").textContent = "Recorded mainnet estimate · Recurring route";
+function timing(stop) {
+  return stop === null ? "Stay debt-free" : "Open on stop " + stop;
+}
+
+function bookingReason(b) {
+  if (!b.choice) return "No borrowing date covers the bills and leaves your required payday cash in every tested outcome.";
+  if (b.alternatives.length === 1) return "Only this schedule covers each bill and meets your payday target in every tested outcome.";
+  return "Across the tested routes and prices, this timing leaves at most " + money(b.choice.missed_cents)
+    + " less than the best date you could have picked with hindsight.";
+}
+
+function showBooking(s, rows) {
+  const b = s.booking, chosen = b.choice;
+  el("plan-heading").textContent = !chosen ? "This run needs more funding." : chosen.open_stop === null ? "Keep this run debt-free."
+    : chosen.open_stop === 1 ? "Open the loan on stop one." : "Wait until stop " + chosen.open_stop + " to borrow.";
+  el("desk-split").textContent = b.booked + " of " + b.stops + " stops booked. Keep at least " + money(s.floor_cents) + " on each payday.";
+  el("series-total-label").textContent = "Your first fuel stop";
+  const today = rows[0]?.[1];
+  facts(el("series-totals"), today ? [["Cash you bring", money(today.cash_cents)], ["Loan today", money(today.draw_cents)]] : []);
+  const next = chosen?.open_stop;
+  el("series-verdict").textContent = (next > 1 ? "If stop " + next + " goes ahead, borrow " + money(s.first.draw_cents)
+    + " and repay " + money(s.first.repay_cents) + " when its freight invoice pays. " : "") + bookingReason(b);
+  const details = el("booking-check");
+  details.hidden = !chosen;
+  el("booking-method").textContent = "We test every route length from " + b.booked + " to " + b.stops + " stops. Each payday can take any of "
+    + b.price_count + " distinct SOL prices from recorded Gemini moves, the opening price and your extra price. We compare every feasible first-loan date and staying debt-free using the quoted funding splits.";
+  const body = details.querySelector("tbody");
+  body.replaceChildren();
+  for (const a of b.alternatives) {
+    const tr = body.insertRow();
+    tr.classList.toggle("selected-timing", a.open_stop === chosen.open_stop);
+    tr.insertCell().textContent = timing(a.open_stop) + (a.open_stop === chosen.open_stop ? " · selected" : "");
+    tr.insertCell().textContent = money(a.missed_cents);
+  }
+  if (chosen) {
+    const w = chosen.witness;
+    el("booking-witness").textContent = "One case behind that limit: " + w.stops + (w.stops === 1 ? " stop" : " stops")
+      + ", with payday SOL at " + w.prices.map(money).join(" → ") + ". Your schedule leaves " + money(w.cash_cents)
+      + " across those paydays. The best timing for that case leaves " + money(w.cash_cents + chosen.missed_cents) + ".";
+  }
+}
+
+function showFullRun(q) {
+  const s = q.series;
+  el("booking-check").hidden = true;
+  el("series-total-label").textContent = "Total cash left across the run";
   el("plan-heading").textContent = s.choice === "open" ? "Open the loan on stop one." : s.choice === "debt_free" ? "Keep this run debt-free." : "This run needs more funding.";
-  el("desk-split").hidden = false;
   el("desk-split").textContent = s.stops + " fuel stops at " + money(q.bill_cents) + " each. Keep at least " + money(s.floor_cents) + " on every payday.";
   const figure = n => n === null ? "Outside limits" : money(n);
   facts(el("series-totals"), [["Open on stop one", figure(s.open_cents)], ["Stay debt-free", figure(s.debt_free_cents)]]);
@@ -41,30 +95,58 @@ export function showRun(q) {
     el("series-verdict").textContent += " At the recorded " + money(q.reference_cents) + " opening price, "
       + (gap === 0 ? "the choices tie." : (gap > 0 ? "opening the loan" : "staying debt-free") + " leaves " + money(Math.abs(gap)) + " more.");
   }
+}
+
+export function showRun(q) {
+  const s = q.series, rows = choiceRows(s);
+  el("desk-basis").textContent = "Recorded mainnet estimate · Recurring route";
+  el("desk-split").hidden = false;
+  if (s.booking) showBooking(s, rows);
+  else showFullRun(q);
+  const opening = s.booking?.choice?.open_stop;
+  el("booking-collateral").hidden = !opening;
+  if (opening) {
+    const setup = q.mainnet.secured_loan.setup;
+    el("booking-collateral").textContent = "On stop " + opening + ", pledge " + (s.first.pledge_lamports / 1e9).toFixed(4)
+      + " SOL. Allow another " + ((setup.deposit_lamports + setup.setup_fee_lamports) / 1e9).toFixed(8)
+      + " SOL for loan account setup and its transaction. A large SOL price drop can put the collateral at risk before freight pays.";
+  }
   el("series-funding-title").hidden = el("series-funding").hidden = !rows.length;
   const body = el("series-funding").querySelector("tbody");
   body.replaceChildren();
   if (rows.length) {
-    const [, first] = rows[0], [, later] = rows[1];
-    const amounts = [["Cash you bring", first.cash_cents, later.cash_cents],
-      ["Customer early pay", first.advance_cents - first.surplus_cents, later.advance_cents - later.surplus_cents],
-      ["Wallet dollars", first.stable_cents, later.stable_cents], ["Sell SOL for", first.sale_cents, later.sale_cents],
-      ["Borrow against SOL", first.draw_cents, later.draw_cents], ["Payoff on day 30", first.repay_cents, later.repay_cents],
-      ["Cash left on payday", first.payday_cents, later.payday_cents]];
-    for (const [label, a, b] of amounts) {
-      if (!a && !b && label !== "Cash left on payday") continue;
+    const head = el("series-funding").tHead.rows[0];
+    head.replaceChildren();
+    for (const name of ["Source", ...rows.map(([label]) => label)]) {
+      const th = document.createElement("th"); th.scope = "col"; th.textContent = name; head.append(th);
+    }
+    const amounts = [["Cash you bring", r => r.cash_cents], ["Customer early pay", r => r.advance_cents - r.surplus_cents],
+      ["Wallet dollars", r => r.stable_cents], ["Sell SOL for", r => r.sale_cents], ["Borrow against SOL", r => r.draw_cents],
+      ["Payoff on day 30", r => r.repay_cents], ["Cash left at highest SOL price", r => r.payday_cents]];
+    for (const [label, read] of amounts) {
+      const values = rows.map(([, row]) => read(row));
+      if (!values.some(Boolean) && label !== "Cash left at highest SOL price") continue;
       const tr = body.insertRow(), heading = document.createElement("th");
       heading.scope = "row"; heading.textContent = label; tr.append(heading);
-      tr.insertCell().textContent = money(a); tr.insertCell().textContent = money(b);
+      for (const value of values) tr.insertCell().textContent = money(value);
     }
   }
-  el("series-prices").hidden = !s.prices.length;
+  const picker = el("funding-stage");
+  picker.replaceChildren(...rows.map(([label], i) => new Option(label, String(i + 1))));
+  el("funding-stage-field").hidden = !s.booking || rows.length < 2;
+  el("series-funding").classList.toggle("pick-stage", !el("funding-stage-field").hidden);
+  picker.onchange = () => {
+    for (const tr of el("series-funding").rows)
+      for (const cell of tr.cells) cell.classList.toggle("other-stage", cell.cellIndex > 0 && cell.cellIndex !== Number(picker.value));
+  };
+  picker.onchange();
+  el("series-prices").hidden = !!s.booking || !s.prices.length;
   el("series-prices").querySelector("tbody").replaceChildren(...s.prices.map(price => {
     const tr = document.createElement("tr");
     for (const value of [price.price_cents, price.open_cents, price.debt_free_cents]) tr.insertCell().textContent = money(value);
     return tr;
   }));
-  el("series-renewal").hidden = s.renewal_pct === null;
+  el("series-renewal").hidden = !!s.booking || s.renewal_pct === null;
   if (s.renewal_pct !== null) el("series-renewal").textContent = "If only the first stop is booked, each next stop needs at least a " + s.renewal_pct
     + "% chance of renewal for opening now to leave more expected cash at the stress price. This checks whole percentages with the same renewal chance each time.";
   el("series-scope").textContent = scope;
@@ -77,19 +159,27 @@ export function saveRun(q, reference) {
   const loan = q.mainnet.secured_loan;
   const lines = ["FreightOS · Recurring fuel plan", reference || "Recurring route", "Recorded mainnet estimate",
     s.stops + " separate 30-day stops. Fuel bill per stop: " + money(q.bill_cents) + ". Invoice per stop: " + money(q.invoice_cents),
-    "Payday target per stop: " + money(s.floor_cents), "Payday stress price: " + money(q.high_price_cents) + "/SOL", verdict(s)];
+    "Payday target per stop: " + money(s.floor_cents), "Payday stress price: " + money(q.high_price_cents) + "/SOL", s.booking ? bookingReason(s.booking) : verdict(s)];
+  if (s.booking) {
+    lines.push(s.booking.booked + " confirmed stops. Selected timing: " + timing(s.booking.choice.open_stop));
+    const w = s.booking.choice.witness;
+    lines.push("At " + w.stops + " stops and payday SOL prices of " + w.prices.map(money).join(", ")
+      + ", this schedule leaves " + money(w.cash_cents) + " versus " + money(w.cash_cents + s.booking.choice.missed_cents)
+      + " with the best timing for that case. Collateral remains exposed to price drops before payoff.");
+    for (const a of s.booking.alternatives) lines.push(timing(a.open_stop) + " · maximum missed payday cash: " + money(a.missed_cents));
+  }
   for (const [label, row] of rows) {
     lines.push("", label, legs(row), "Customer pays early: " + money(row.advance_cents) + ". Fee: " + money(row.fee_cents)
       + ". Invoice still owed: " + money(row.invoice_balance_cents), "Pledged: " + (row.pledge_lamports / 1e9).toFixed(4) + " SOL. Estimated payoff: " + money(row.repay_cents),
       "Account setup at opening, including extra fee allowance: " + ((row.draw_cents ? loan.setup.refunded_lamports + loan.setup.setup_fee_lamports
-        + (label === "First stop" ? loan.setup.retained_lamports : 0) : 0) / 1e9).toFixed(9) + " SOL",
+        + (row === s.first ? loan.setup.retained_lamports : 0) : 0) / 1e9).toFixed(9) + " SOL",
       "Payday after restoring balances: " + money(row.payday_cents));
   }
   for (const [label, cents] of [["Open now", s.open_cents], ["Stay debt-free", s.debt_free_cents]]) {
-    lines.push(label + " · total modeled payday cash: " + (cents === null ? "outside limits" : money(cents)));
+    lines.push(label + " · total at the highest SOL price: " + (cents === null ? "outside limits" : money(cents)));
   }
   for (const p of s.prices) lines.push(money(p.price_cents) + "/SOL: open now " + money(p.open_cents) + ", stay debt-free " + money(p.debt_free_cents));
-  if (s.renewal_pct !== null) lines.push("Minimum conditional renewal chance for a strictly higher expected stress-case balance: " + s.renewal_pct + "% (whole percentages).");
+  if (!s.booking && s.renewal_pct !== null) lines.push("Minimum conditional renewal chance for a strictly higher expected stress-case balance: " + s.renewal_pct + "% (whole percentages).");
   lines.push("", scope, "Recorded slots · Kamino lending " + loan.slot + ", Orca pools " + q.mainnet.slot + ", account deposits " + loan.setup.slot,
     "Planning estimate only. No loan or payment was submitted.");
   saveFile("FreightOS-repeat-run.txt", lines.join("\n"), "text/plain;charset=utf-8");

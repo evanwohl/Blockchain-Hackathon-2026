@@ -100,3 +100,12 @@
 #series-funding thead th { font-size: .78rem; }
 #series-funding tbody th { font-weight: 400; }
 #series-funding tbody tr:last-child > * { font-weight: 700; border-top: 2px solid #768875; }
+
+#booking-check .selected-timing { background: #e8eedb; color: #243d2b; font-weight: 650; }
+#booking-check .selected-timing td { padding-inline: .4rem; }
+#funding-stage-field { display: none; }
+@media (max-width: 480px) {
+  #funding-stage-field:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-block: .75rem; }
+  #funding-stage { min-height: 44px; border: 1px solid #849284; border-radius: 0; padding-inline: .65rem; background: var(--paper); color: var(--ink); }
+  #series-funding.pick-stage .other-stage { display: none; }
+}

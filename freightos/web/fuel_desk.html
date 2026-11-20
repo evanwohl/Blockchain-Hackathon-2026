@@ -11,7 +11,7 @@
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" width="38" height="38" alt="">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/fuel-desk" aria-current="page">Funding desk</a><a href="/bill">Fuel bill</a></nav></div></header>
 <main>
   <header class="desk-banner"><div class="desk-wrap">
-    <div><p class="desk-kicker">Single fuel stop · 30-day terms</p><h1>Fuel funding <em>desk.</em></h1><p>Cover today’s diesel bill and see what you keep when freight pays.</p></div>
+    <div><p class="desk-kicker">Fuel funding · 30-day terms</p><h1>Fuel funding <em>desk.</em></h1><p>Cover today’s diesel bill and see what you keep when freight pays.</p></div>
     <dl class="desk-dates"><div><dt>Fuel due today</dt><dd id="desk-bill">$190.00</dd></div><div><dt>Freight invoice · Day 30</dt><dd id="desk-invoice">$200.00</dd></div></dl>
   </div></header>
   <div class="desk-wrap desk-grid">
@@ -29,6 +29,7 @@
           <label>Borrowing in this Kamino market<select id="borrower-state"><option value="ready">All loan accounts ready</option><option value="new">My first loan here</option><option value="returning">Previous loan closed · reuse my accounts</option></select></label>
           <small id="borrower-help">Use the setup that matches your wallet. The sample has its accounts ready.</small>
           <label id="stops-field" hidden>Identical stops, 30 days apart<select id="stops"><option value="1">This stop only</option><option value="2">2 stops</option><option value="3">3 stops</option><option value="4">4 stops</option><option value="5">5 stops</option><option value="6">6 stops</option><option value="7">7 stops</option><option value="8">8 stops</option><option value="9">9 stops</option><option value="10">10 stops</option><option value="11">11 stops</option><option value="12">12 stops</option></select></label>
+          <label id="booked-field" hidden>How should we plan this run?<select id="booked"><option value="">Compare the full run at the highest SOL price</option></select></label>
           <label>Spendable wallet dollars and fuel reserve ($)<input id="stable" type="number" min="0" max="1000000" step=".01" value="20.43" inputmode="decimal" aria-describedby="stable-help" required></label>
           <small id="stable-help">Include only dollars ready for fuel and reserve money you can withdraw. Exclude the SOL entered above.</small>
           <label>Cash I need left on payday ($)<input id="target" type="number" min="0" max="1000000" step=".01" value="3.00" inputmode="decimal" required></label>
@@ -36,6 +37,7 @@
           <button type="submit" class="desk-secondary">Review my plan</button> <button type="reset" class="desk-reset">Restore sample</button>
         </form>
       </details>
+      <a class="desk-receipt-jump" href="/fuel-desk?example=booked-route">Try a partially booked $745 route</a>
       <a class="desk-receipt-jump" href="#signed-loan">Inspect a settled loan on Devnet</a>
     </aside>
     <section class="desk-decision" aria-labelledby="plan-heading">
@@ -52,8 +54,11 @@
       </div>
       <div id="series-panel" hidden>
         <p class="series-caption" id="series-total-label">Total cash left across the run</p><dl id="series-totals" aria-labelledby="series-total-label"></dl><p id="series-verdict"></p>
+        <details id="booking-check" hidden><summary>Why this borrowing date?</summary><p id="booking-method"></p><table><caption>Cash you could miss versus the best timing for the outcome</caption><thead><tr><th scope="col">First loan</th><th scope="col">Most cash missed</th></tr></thead><tbody></tbody></table><p id="booking-witness"></p><p>Recorded terms: <a href="/evidence/mainnet-fuel-lending">Kamino lending</a> · <a href="/evidence/mainnet-fuel-pools">Orca swaps</a> · <a href="/evidence/gemini-collateral-paths">Gemini collateral history</a></p></details>
         <h3 id="series-funding-title">How to fund each stop</h3>
+        <label id="funding-stage-field" hidden>Show funding for <select id="funding-stage"></select></label>
         <table id="series-funding" aria-labelledby="series-funding-title"><thead><tr><th scope="col">Source</th><th scope="col">First stop</th><th scope="col">Each later stop</th></tr></thead><tbody></tbody></table>
+        <p id="booking-collateral" hidden></p>
         <details id="series-prices"><summary>What if SOL costs less on payday?</summary><table><caption>Cash left across the run with each funding split held fixed</caption><thead><tr><th scope="col">SOL price</th><th scope="col">Open now</th><th scope="col">Stay debt-free</th></tr></thead><tbody></tbody></table></details>
         <details id="series-terms"><summary>When does this comparison hold?</summary><p id="series-renewal"></p><p id="series-scope"></p></details>
         <details id="series-proof"><summary>See a repeat loan simulated on Solana</summary><p>A separate Devnet example reuses the borrower from the signed fuel payment below. The sponsor supplies test SOL, a token account and payoff cash inside the simulation. The loan is repaid immediately.</p>

@@ -3,7 +3,7 @@ from decimal import ROUND_HALF_UP
 from fractions import Fraction
 
 from hedging.quick_pay import integer
-from freightos import collateral_path, fuel_floor, mainnet_loan, mainnet_stop, payday_policy
+from freightos import collateral_path, fuel_floor, mainnet_loan, mainnet_stop, payday_policy, route_booking
 
 MAX_BILL = 250_000
 VENDOR_FEE_LAMPORTS = 5_000
@@ -31,13 +31,18 @@ def quote(data):
     stops = integer(data.get("stops", 1), "number of repeat stops", 12)
     if stops == 0 or (stops > 1 and state != "new"):
         raise ValueError("Compare 2–12 identical stops starting with a first loan")
+    booked = None
+    if "booked" in data:
+        booked = integer(data["booked"], "confirmed stops", stops)
+        if booked < 1 or stops < 2:
+            raise ValueError("Enter at least one confirmed stop in a recurring route")
     try:
-        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops)
+        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked)
     except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError) as exc:
         raise RuntimeError("Recorded funding terms could not be verified") from exc
 
 
-def _price(bill, invoice, values, stress, offer, state, stops):
+def _price(bill, invoice, values, stress, offer, state, stops, booked):
     lending = mainnet_loan.saved()
     reference = int((lending["sol_price"] * 100).to_integral_value(rounding=ROUND_HALF_UP))
     cases, _ = payday_policy.price_cases(reference, stress)
@@ -58,6 +63,12 @@ def _price(bill, invoice, values, stress, offer, state, stops):
     if stops > 1:
         result["series"] = recurring_plan(loan["combined"]["best_loan"], loan["repeat_plan"],
                                           loan["combined"]["most_cash_without_loan"], stops, plan)
+        if booked is not None:
+            series = result["series"]
+            series["booking"] = route_booking.compare(series["first"], series["later"], series["debt_free"],
+                                                     booked, stops, prices, plan["floor_cents"])
+            choice = series["booking"]["choice"]
+            series["choice"] = "unfunded" if choice is None else {None: "debt_free", 1: "open"}.get(choice["open_stop"], "defer")
     return result
 
 

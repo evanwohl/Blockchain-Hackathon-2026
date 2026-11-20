@@ -9,7 +9,9 @@ let current, controller, timer, revision = 0;
 function terms() {
   const cents = id => Math.round(el(id).valueAsNumber * 100);
   const menu = el("terms").value;
-  return {borrower_state: el("borrower-state").value, stops: el("borrower-state").value === "new" ? Number(el("stops").value) : 1, bill: cents("bill"), invoice: cents("invoice"), stable: cents("stable"), stress: cents("stress"), cash: cents("cash"), budget: cents("budget"),
+  const stops = el("borrower-state").value === "new" ? Number(el("stops").value) : 1;
+  const booked = stops > 1 && el("booked").value ? {booked: Math.min(stops, Number(el("booked").value))} : {};
+  return {...booked, borrower_state: el("borrower-state").value, stops, bill: cents("bill"), invoice: cents("invoice"), stable: cents("stable"), stress: cents("stress"), cash: cents("cash"), budget: cents("budget"),
     target: cents("target"), offer_menu: menu, offer_amount: menu === "counter" ? cents("advance") : null,
     offer_fee: menu === "counter" ? cents("discount") : menu === "partial" ? cents("fee") : 0};
 }
@@ -100,6 +102,13 @@ function price(delay, focus) {
   el("scaled-offer").hidden = el("fee").disabled = !flexible;
   const inputs = terms();
   el("series-panel").hidden = true;
+  el("booked-field").hidden = inputs.stops < 2;
+  const bookings = el("booked");
+  if (bookings.options.length !== inputs.stops + 1) {
+    bookings.length = 1;
+    for (let n = 1; n <= inputs.stops; n++) bookings.add(new Option("Test price changes · " + n + (n === 1 ? " confirmed stop" : " confirmed stops"), String(n)));
+    bookings.value = inputs.booked ? String(inputs.booked) : "";
+  }
   el("stops-field").hidden = inputs.borrower_state !== "new";
   el("borrower-help").textContent = inputs.borrower_state === "returning"
     ? "Assumes the same profile and collateral-tracking account still exist. Enter only SOL available now."
@@ -207,8 +216,14 @@ el("desk-retry").onclick = () => price(0, false);
 el("desk-save").onclick = fundingSheet;
 el("mix-request").onclick = () => downloadOffer(selected(), el("trip-ref").value.trim());
 el("cycle-verify").onclick = () => showCycle(true);
-if (new URLSearchParams(location.search).get("example") === "repeat-run") {
+const example = new URLSearchParams(location.search).get("example");
+if (["repeat-run", "booked-route"].includes(example)) {
   el("bill").value = "186"; el("borrower-state").value = "new"; el("stops").value = "4";
+}
+if (example === "booked-route") {
+  for (const [id, value] of Object.entries({bill: 745, invoice: 3100, cash: 250, budget: 600, stable: 150, target: 2000, advance: 250, discount: 5}))
+    el(id).value = value;
+  el("booked").add(new Option("2 confirmed stops", "2", false, true));
 }
 showCycle(false);
 price(0, false);
