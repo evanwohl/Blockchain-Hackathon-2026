@@ -1,0 +1,56 @@
+.fuel-stop { background: var(--paper); }
+.stop-desk { width: min(100%, 76rem); margin: 0 auto; padding: clamp(1.2rem, 4vw, 3.5rem) var(--page-gutter) 3.5rem; }
+.stop-title { display: flex; align-items: end; justify-content: space-between; padding-bottom: 1.3rem; border-bottom: 2px solid var(--ink); }
+.stop-title a, .stop-links a { font-size: .85rem; }
+.stop-title h1 { margin: .65rem 0 0; font: 600 clamp(3.3rem, 6.4vw, 6.3rem)/.96 var(--display); letter-spacing: -.035em; }
+.stop-title h1 em { color: #486141; font: italic 1em/.95 "Instrument Serif",Georgia,serif; }
+.stop-bill { text-align: end; }
+.stop-bill span, .stop-bill small { display: block; font-size: .8rem; }
+.stop-bill strong { display: block; font: 600 clamp(2rem, 3.3vw, 3.1rem)/1.1 var(--display); }
+.stop-spread { display: grid; grid-template-columns: minmax(15rem,.8fr) minmax(0,1.35fr); gap: clamp(1.75rem,5.6vw,5.5rem); margin-top: 2rem; }
+.stop-spread h2, .stop-spread h3 { font: 600 1.9rem/1.08 var(--display); margin: 0; }
+.stop-intro, .stop-details p, .stop-check p, .stop-ticket p { font-size: .9rem; line-height: 1.5; }
+.stop-intro { margin: .55rem 0 1.45rem; color: var(--muted); }
+#stop-inputs label { display: block; margin: 1.05rem 0 .3rem; font-size: .89rem; font-weight: 600; }
+.stop-money { display: flex; align-items: center; border: 1px solid #89937d; background: #fbfaf5; }
+.stop-money:focus-within { outline: 2px solid #267087; outline-offset: 1px; }
+.stop-money span { padding-left: .75rem; color: #5f6957; }
+.stop-money input { background: transparent; border: 0; color: var(--ink); outline: 0; min-width: 0; width: 100%; height: 2.8rem; padding: 0 .65rem; font: 600 1.7rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.stop-details { margin-top: 1.35rem; padding-block: .35rem; border-block: 1px solid var(--line); }
+.stop-details summary { padding-block: .65rem; font-size: .93rem; font-weight: 600; }
+.stop-details p { margin-block: .65rem; }
+.stop-ticket { padding: clamp(1.1rem, 3vw, 2rem); color: #f5f5e8; background: #25382d; }
+.ticket-line { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; padding-bottom: .7rem; border-bottom: 1px solid #667265; }
+.ticket-line span:last-child { color: #d8dfce; text-align: right; font-size: .78rem; }
+.stop-ticket #decision { margin: 1.05rem 0 .45rem; font: 600 clamp(2.75rem, 5.2vw, 4.75rem)/.98 var(--display); letter-spacing: -.018em; font-variant-numeric: tabular-nums; }
+.stop-ticket p { color: #edf1e2; max-width: 57ch; }
+.stop-strip { display: flex; height: .55rem; background: #485647; margin: 1.3rem 0 .45rem; }
+.stop-strip i:nth-child(1) { background: repeating-linear-gradient(125deg,#a89dbc 0 2px,#d6cbe6 2px 5px); }
+.stop-strip i:nth-child(2) { background: var(--citron); }
+.stop-strip i:nth-child(3) { background: repeating-linear-gradient(90deg,#6c7569 0 1px,#e1ded2 1px 3px); }
+#fuel-legs { font-size: .82rem; color: #f1f2df; }
+.stop-totals { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; border-top: 1px solid #667265; margin-top: 1.2rem; padding-top: .85rem; }
+.stop-totals dt { font-size: .78rem; color: #e1e6da; }.stop-totals dd { font: 600 2rem/1.15 var(--display); font-variant-numeric: tabular-nums; }
+#changes { border-inline-start: 3px solid #837493; margin-top: 1rem; padding-inline-start: .95rem; }
+#changes h3 { font-size: 1.35rem; }
+#fixes, .stop-links { display: flex; flex-wrap: wrap; gap: .5rem .75rem; padding: .7rem 0; }
+.stop-outcome button { border: 1px solid #65715c; padding: .6rem .85rem; min-height: 44px; background: transparent; color: var(--ink); font: 600 .84rem/1.25 Inter,sans-serif; }
+.stop-outcome button:hover:enabled { background: #e6eadb; }
+.stop-check { margin-top: 1.1rem; }
+#check-status { margin-top: .4rem; color: var(--muted); }
+#wallet-parts > div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); padding: .55rem 0; font-size: .9rem; }
+#wallet-parts dd { font-variant-numeric: tabular-nums; font-weight: 600; }
+@media(max-width: 700px) {
+  .stop-spread { grid-template-columns: 1fr; margin-top: 1.1rem; gap: 1.65rem; }
+  .stop-outcome { grid-row: 1; }
+  .stop-bill span,.stop-bill small { font-size: .72rem; }
+}
+
+.stop-edit { display: none; }
+@media(max-width:700px) {
+  .stop-edit { display: inline-block; margin: 0 .8rem .4rem 0; padding-block: .6rem; font-size: .88rem; }
+}
+
+.stop-outcome[aria-busy="true"] #funding, .stop-outcome[aria-busy="true"] #changes { opacity: .55; }
+.stop-totals dd { text-align: left; }
+#budget-help { display: block; margin-top: .25rem; color: var(--muted); font-size: .78rem; }

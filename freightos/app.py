@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, stop_backup, trip_cover
+from freightos import atomic_fuel, bill, credit_exit, customer_credit, devnet, diesel_model, load_credit, forward, freight_credit, fuel_cash, fuel_cover, fuel_floor, fuel_swap, fuel_update, next_stop, payday_policy, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, road_cash, stop_backup, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -738,6 +738,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         assets = {
             "/": ("overview.html", "text/html; charset=utf-8"),
+            "/fuel-stop": ("fuel_stop.html", "text/html; charset=utf-8"),
+            "/fuel-stop.js": ("fuel_stop.js", "text/javascript"),
+            "/fuel-stop.css": ("fuel_stop.css", "text/css"),
             "/fuel-credit": ("fuel_credit.html", "text/html; charset=utf-8"),
             "/payday_policy.js": ("payday_policy.js", "text/javascript"),
             "/fuel_swap.js": ("fuel_swap.js", "text/javascript"),
@@ -954,6 +957,24 @@ class Handler(BaseHTTPRequestHandler):
                     calendar["decision"] = funding_options(
                         data, calendar, self.server.settlement.load_reserve(data.get("reserve_mode")))
                 self.respond(200, calendar)
+                return
+            if self.path == "/api/fuel-stop":
+                args = [data.get(k) for k in ("budget", "cash", "received", "target", "stress")]
+                road_cash.limits(*args)
+                source = data.get("source")
+                if source not in ("recorded", "live"):
+                    raise ValueError("Choose recorded or live funding checks")
+                live = source == "live"
+                if live and not self.server.trip_credit_lock.acquire(blocking=False):
+                    self.respond(503, {"error": "Another public check is running. Try again shortly."})
+                    return
+                try:
+                    self.respond(200, road_cash.evaluate(*args, live=live))
+                except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):
+                    self.respond(503, {"error": "The pool prices and fuel funds could not be checked together."})
+                finally:
+                    if live:
+                        self.server.trip_credit_lock.release()
                 return
             if self.path == "/api/stop-backup":
                 cap = integer(data.get("cap_lamports"), "wallet limit for fuel")

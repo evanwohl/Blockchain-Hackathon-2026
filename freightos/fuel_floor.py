@@ -188,7 +188,7 @@ def public_quotes(cap, cash, received, floor, high, rpc):
         try:
             result, end = snapshot(plan, reserve, wallet, cap, rent, fee, slot, rpc, [(cash, received, floor, high)])
             if end - min(reserve["slot"], wallet["slot"]) <= 240:
-                return result, end
+                return {**result, "wallet_lamports": wallet["lamports"]}, end
         except (OSError, ValueError, KeyError, TypeError, ArithmeticError, RuntimeError):
             pass
         return None, slot
@@ -207,11 +207,15 @@ def replay(data):
 
 
 @cache
-def saved():
+def saved_evidence():
     raw = gzip.decompress(SAMPLE.read_bytes())
     if sha256(raw).hexdigest() != "068b8d83186c1ab5b57da1e751914e5a4e5195aa66ab0dba61c2b2f4577b6a8b":
         raise ValueError("The pool curves or fuel payment proof changed")
-    return json.loads(raw)["result"]
+    return json.loads(raw)
+
+
+def saved():
+    return saved_evidence()["result"]
 
 
 if __name__ == "__main__":

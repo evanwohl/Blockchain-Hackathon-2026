@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#25382d"><title>Fuel stop · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/fuel-stop.css">
+  <script type="module" src="/fuel-stop.js"></script>
+</head>
+<body class="fuel-stop">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a></nav><span class="sandbox"><i></i>Demo workspace</span></div></header>
+<main class="stop-desk">
+  <header class="stop-title"><div><h1>Fuel <em>stop.</em></h1><a class="stop-edit" href="#cash">Edit my numbers ↓</a></div><div class="stop-bill"><span>Fuel due at the stop</span><strong>$190.00</strong><small>Sample load FOS-2048</small></div></header>
+  <div class="stop-spread">
+    <form id="stop-inputs" aria-labelledby="inputs-heading">
+      <h2 id="inputs-heading">Money available</h2><p class="stop-intro">Fuel is due before freight pays. Set what you can use today and what you need to have left on payday.</p>
+      <label for="cash">Cash I can bring to the stop</label><div class="stop-money"><span>$</span><input type="number" step=".01" min="0" max="1000000" inputmode="decimal" id="cash" value="75.00" required></div>
+      <label for="budget">Wallet limit for this stop</label><div class="stop-money"><span>$</span><input type="number" step=".01" min="0" max="1000000" inputmode="decimal" id="budget" value="80.00" aria-describedby="budget-help" required></div>
+      <small id="budget-help">Dollar value of SOL you can use for fuel.</small>
+      <label for="target">Cash I need left on payday</label><div class="stop-money"><span>$</span><input type="number" step=".01" min="0" max="1000000" inputmode="decimal" id="target" value="3.00" required></div>
+      <details class="stop-details"><summary>Freight and price assumptions</summary>
+        <label for="received">Freight paid by day 30</label><div class="stop-money"><span>$</span><input id="received" type="number" min="0" max="200" value="200.00" step=".01" inputmode="decimal" required></div>
+        <label for="stress">Extra SOL buyback price to test</label><div class="stop-money"><span>$</span><input id="stress" type="number" min="0" max="100000" value="150.00" step=".01" inputmode="decimal" placeholder="Optional"></div>
+        <p>Gemini’s recorded 30-day SOL price moves supply the other test prices. The demo assumes the vendor accepts cash plus a wallet payment.</p>
+      </details>
+    </form>
+    <section id="stop-outcome" class="stop-outcome" aria-label="Fuel payment plan">
+      <article class="stop-ticket">
+        <div class="ticket-line"><span>At the pump</span><span id="source">Saved Devnet prices</span></div>
+        <h2 id="decision" tabindex="-1" aria-live="polite" aria-atomic="true">Pricing the bill…</h2><p id="decision-note"></p>
+        <div id="funding" hidden><div class="stop-strip" aria-hidden="true"><i></i><i></i><i></i></div><div id="fuel-legs"></div>
+        <dl class="stop-totals"><div><dt>Cash kept at the stop</dt><dd id="kept"></dd></div><div><dt>Left on payday, weakest case</dt><dd id="payday"></dd></div></dl></div>
+      </article>
+      <div id="changes" hidden><h3 id="change-heading">Ways to cover fuel and protect payday</h3><div id="fixes"></div></div>
+      <div class="stop-check"><button type="button" id="verify" disabled>Check payment on public Solana</button><p id="check-status" role="status"></p></div>
+      <details class="stop-details" id="sources" hidden><summary>Where the wallet money comes from</summary><dl id="wallet-parts"></dl><p id="math"></p><p id="proof"></p><div class="stop-links"><a href="/evidence/fuel-floor" download="FreightOS-fuel-pool-checks.json">Saved pool checks</a><a href="/evidence/sol-payday" download="FreightOS-Gemini-prices.json">Gemini prices</a><a href="/public-offer">See a signed demo bill →</a></div></details>
+    </section>
+  </div>
+</main>
+</body></html>

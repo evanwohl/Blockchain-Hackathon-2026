@@ -42,7 +42,6 @@ function displayQuote() {
   const original = state.plans["fuel budget"].bill_cents;
   el("flow-load").textContent = "Sample load " + plan.load;
   el("flow-plan").href = el("quote-open").href;
-  el("flow-alternatives").hidden = el("offer-example").hidden && el("delay-link").hidden;
   el("flow-fuel-value").textContent = money(plan.bill_cents);
   el("flow-original").textContent = money(original);
   el("flow-gallons").textContent = plan.gemini.gallons + " gallons";
