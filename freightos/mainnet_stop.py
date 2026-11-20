@@ -184,6 +184,37 @@ def counteroffer(bill, stable, received, target, cash, wallet_cap, price, net, f
             "fee_ceiling_cents": ceiling, "nearest_net_cents": nearest[1] if nearest else None}
 
 
+def range_offer(routes, bill, received, target, net, asked, low, high, denominator=LAMPORTS):
+    maximum = chosen_key = chosen = None
+    reason = "funding"
+    for own, sale, waiting_sale, restore, waiting_restore in routes:
+        if net > received:
+            reason = "invoice"
+            break
+        before_fee = received - bill + sale - fuel_floor.ceil_div(restore * high, denominator)
+        if before_fee < target:
+            if chosen is None:
+                reason = "payday"
+            continue
+        gap, witness = payday_policy.worst_rounding_gap(restore, waiting_restore, denominator, low, high)
+        vs_wait = sale - waiting_sale - gap
+        limit = min(vs_wait, before_fee - target, received - net)
+        maximum = limit if maximum is None else max(maximum, limit)
+        negotiated = min(asked, limit)
+        key = negotiated, -own
+        if chosen_key is not None and key <= chosen_key:
+            continue
+        chosen_key = key
+        reason = "waiting" if negotiated < 0 else None
+        charged = max(0, negotiated)
+        chosen = {"cash_cents": own, "wallet_cents": bill - own - min(net, bill), "sale_cents": sale,
+                  "fee_cents": negotiated if negotiated >= 0 else None, "advance_cents": net,
+                  "invoice_balance_cents": reserve_credit.INVOICE_CENTS - net - charged,
+                  "later_cents": received - net - charged, "payday_cents": before_fee - charged,
+                  "worst_difference_cents": vs_wait - charged, "worst_price_cents": witness}
+    return {"low_cents": low, "high_cents": high, "best_limit_cents": maximum, "reason": reason, "split": chosen}
+
+
 def price_crossover(wait_restore, early_restore, cash_cost, denominator=LAMPORTS):
     slope = wait_restore - early_restore
     if slope == 0:
@@ -228,13 +259,19 @@ def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="pa
     fee = market["fee_lamports"]
     rent = data["rent"]
 
-    def price(separate, buyback=high):
+    def funding(separate):
         vendor = bill - separate
         sale = max(0, vendor - stable)
         if sale >= len(costs):
             return None
         restore = costs[sale] + (fee if vendor else 0)
-        opening = restore + (rent if sale else 0)
+        return sale, restore, restore + (rent if sale else 0)
+
+    def price(separate, buyback=high):
+        route = funding(separate)
+        if route is None:
+            return None
+        sale, restore, opening = route
         payday = received - bill + sale - fuel_floor.ceil_div(restore * buyback, LAMPORTS)
         return opening, payday
 
@@ -265,6 +302,14 @@ def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="pa
     covered_range = len(costs) > max(0, bill - stable)
     if offer_menu == "counter":
         counter = counteroffer(bill, stable, received, target, cash, wallet_cap, price, offer_amount, offer_fee)
+        used = min(bill, offer_amount)
+        pairs = []
+        for own in range(min(bill - used, cash) + 1):
+            early, wait_route = funding(own + used), funding(own)
+            if early and wait_route and max(early[2], wait_route[2]) <= wallet_cap:
+                pairs.append((own, early[0], wait_route[0], early[1], wait_route[1]))
+        counter["ranges"] = {name: range_offer(pairs, bill, received, target, offer_amount, offer_fee, low, high)
+                             for name, low in (("full", plan["low_price_cents"]), ("rising", reference))}
         row = counter["plan"]
         counter["wait"] = None
         if row:

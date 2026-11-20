@@ -70,6 +70,14 @@
             </section>
             <p id="wait-history"></p>
           </details>
+          <details id="range-offer" hidden>
+            <summary>What fee works across a range of prices?</summary>
+            <label for="fee-range">SOL buyback range to cover</label>
+            <select id="fee-range"><option value="full">Full tested range</option><option value="rising">Starting price and above, through the tested high</option></select>
+            <section aria-live="polite"><h3 id="range-title"></h3><p id="range-decision"></p>
+              <dl id="range-ledger"></dl><p id="range-limit"></p></section>
+            <button id="range-draft" type="button" hidden>Download these customer terms</button>
+          </details>
           <div id="counter-actions" hidden><button type="button" id="try-counter-fee" hidden></button>
             <button type="button" id="try-counter-net" hidden></button><button type="button" id="undo-counter" hidden>Return to customer’s offer</button></div>
           <button type="button" id="open-counter" hidden>Check customer’s reply</button>

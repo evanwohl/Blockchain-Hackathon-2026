@@ -210,3 +210,56 @@ def test_fixed_cash_quote_distinguishes_affordability_from_matching_waiting():
     def cash(sale, fee, price):
         return 1000 + sale - fee - fuel_floor.ceil_div((costs[sale] + 5000) * price, 10**9)
     assert [cash(457, 206, p) - cash(9457, 0, p) for p in (7377, 7378, 7379)] == [-2, 0, 1]
+
+
+def test_range_fee_search_matches_all_prices_and_cash_choices():
+    bill, net, denominator = 20, 5, 11
+    routes = [(own, max(0, 12-own), max(0, 17-own), max(0, 12-own)*3, max(0, 17-own)*4)
+              for own in range(14)]
+    for low, high in ((0, 8), (6, 6), (5, 11), (13, 17)):
+        for received, target, asked in ((28, 5, 6), (26, 4, 0), (28, 3, 2), (60, 0, 150), (16, 18, 3)):
+            q = mainnet_stop.range_offer(routes, bill, received, target, net, asked, low, high, denominator)
+            eligible = []
+            for own, sale, wait_sale, restore, wait_restore in routes:
+                early = [received - bill + sale - fuel_floor.ceil_div(restore*p, denominator) for p in range(low, high+1)]
+                wait = [received - bill + wait_sale - fuel_floor.ceil_div(wait_restore*p, denominator) for p in range(low, high+1)]
+                if min(early) < target:
+                    continue
+                advantage = [a-b for a,b in zip(early, wait)]
+                limit = min(received-net, min(early)-target, min(advantage))
+                eligible.append((limit, own, advantage))
+            if not eligible:
+                assert q["reason"] == "payday" and q["split"] is None
+                continue
+            maximum = max(row[0] for row in eligible)
+            fee = min(maximum, asked)
+            _, own, advantage = min((r for r in eligible if r[0] >= fee), key=lambda r: r[1])
+            split = q["split"]
+            assert q["best_limit_cents"] == maximum and split["cash_cents"] == own
+            assert split["fee_cents"] == (fee if fee >= 0 else None)
+            assert split["worst_difference_cents"] == min(advantage) - max(fee, 0)
+            assert advantage[split["worst_price_cents"] - low] == min(advantage)
+    assert mainnet_stop.range_offer([],20,28,3,5,1,4,8)["reason"] == "funding"
+    assert mainnet_stop.range_offer(routes,20,4,3,5,1,4,8)["reason"] == "invoice"
+
+
+def test_mainnet_negotiated_draft_survives_the_entire_selected_range():
+    def bands(fee, budget=15000):
+        q = road_cash.evaluate(budget, 7500, 20000, 300, 15000, offer_menu="counter", offer_amount=9000, offer_fee=fee)
+        return q["mainnet"]["early_freight"]["counter"]["ranges"]
+    full, rising = bands(206).values()
+    assert full["reason"] == "waiting" and full["best_limit_cents"] == -2781
+    assert full["split"]["fee_cents"] is None and full["split"]["payday_cents"] >= 300
+    row = rising["split"]
+    assert rising["best_limit_cents"] == row["fee_cents"] == 86 and row["cash_cents"] == 7389
+    assert row["wallet_cents"] == 2611 and row["later_cents"] == 10914
+    assert bands(50)["rising"]["split"]["fee_cents"] == 50
+    assert bands(206, 8000)["rising"]["reason"] == "funding"
+    costs = mainnet_stop.sale_table(19000)[0]
+    def ending(own, net, fee, level):
+        sale = 19000 - own - net - 2043
+        return 1000 + sale - fee - fuel_floor.ceil_div((costs[sale] + 5000)*level, 10**9)
+    for level in range(7282,15001):
+        assert ending(7389,9000,86,level) >= max(300, ending(7389,0,0,level))
+    for own in range(7501):
+        assert ending(own,9000,87,15000) < 300 or ending(own,9000,87,7282) < ending(own,0,0,7282)

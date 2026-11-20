@@ -56,9 +56,9 @@
 #budget-help { display: block; margin-top: .25rem; color: var(--muted); font-size: .78rem; }
 
 #mainnet-check summary strong { display: inline-block; margin-inline-start: .4rem; font-weight: 500; color: #466045; }
-#offer-ledger > div, #mainnet-ledger > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding: .6rem 0; }
-#offer-ledger dt, #mainnet-ledger dt { font-size: .86rem; }
-#offer-ledger dd, #mainnet-ledger dd { margin: 0; text-align: end; font-weight: 600; font-variant-numeric: tabular-nums; }
+#range-ledger > div, #offer-ledger > div, #mainnet-ledger > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding: .6rem 0; }
+#range-ledger dt, #offer-ledger dt, #mainnet-ledger dt { font-size: .86rem; }
+#range-ledger dd, #offer-ledger dd, #mainnet-ledger dd { margin: 0; text-align: end; font-weight: 600; font-variant-numeric: tabular-nums; }
 #mainnet-terms, #mainnet-quoted > a { font-size: .8rem; }
 
 #offer-menu { width: 100%; padding: .65rem; color: var(--ink); background: #fbfaf5; border: 1px solid #89937d; font: inherit; }
@@ -69,9 +69,12 @@
 #counter-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
 
 #wait-prices { margin-block: 1rem; border-block: 1px solid var(--line); padding-block: 1rem; }
-#wait-prices h3 { font: 600 1.6rem/1.05 var(--display); }
+#range-offer h3, #wait-prices h3 { font: 600 1.6rem/1.05 var(--display); }
 #wait-prices label { display: block; font-size: .85rem; margin-bottom: .35rem; }
-#wait-scenario { width: 100%; border: 1px solid #89937d; padding: .65rem; background: #fbfaf5; color: var(--ink); font: inherit; }
+#fee-range, #wait-scenario { width: 100%; border: 1px solid #89937d; padding: .65rem; background: #fbfaf5; color: var(--ink); font: inherit; }
 #wait-values dl { display: flex; gap: 1.3rem; margin: .55rem 0; }
 #wait-values dt, #case-price { font-size: .85rem; }
 #wait-values dd { margin: .2rem 0; font: 600 1.6rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
+
+#range-offer label { display: block; margin-bottom: .35rem; font-size: .85rem; }
+#range-title { margin-top: .9rem; }

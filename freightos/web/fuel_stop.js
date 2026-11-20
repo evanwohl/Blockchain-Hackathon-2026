@@ -3,7 +3,7 @@ import {el, facts, money, request, saveFile} from "./common.js";
 const form = el("stop-inputs"), verify = el("verify"), note = el("check-status");
 let focusMainnet = false, focusOffer = false, keepRoadCash = false;
 let originalCounter;
-let focusWait = false;
+let focusWait = false, focusRange = false;
 let preference = "keep-cash";
 let revision = 0, timer, pending, last, undo;
 
@@ -124,6 +124,37 @@ function showCrossover(wait) {
     + "From " + money(ahead) + " up, early pay leaves more with the same driver cash.";
 }
 
+function showRange(q, counter) {
+  const select = el("fee-range");
+  for (const option of select.options) {
+    const band = counter.ranges[option.value];
+    option.textContent = (option.value === "full" ? "Full range" : "Starting price and up") + " · " + money(band.low_cents) + " to " + money(band.high_cents);
+  }
+  const band = counter.ranges[select.value], row = band.split;
+  const title = el("range-title"), note = el("range-decision");
+  el("range-draft").hidden = el("range-ledger").hidden = !!band.reason;
+  el("range-limit").hidden = !!band.reason;
+  if (band.reason) {
+    title.textContent = band.reason === "waiting" ? "Even a zero fee falls short" : "These terms cannot be compared";
+    note.textContent = ({
+      waiting: row && "Among splits that protect your payday target, the closest result with free early pay still leaves "
+        + money(-row.worst_difference_cents) + " less than waiting at " + money(row.worst_price_cents) + " per SOL.",
+      funding: "Your available cash and wallet limit must cover fuel both with the advance and while waiting, using the same driver cash.",
+      payday: "Even free early pay falls below your payday target at the high price for every split that could also fund waiting.",
+      invoice: "The requested early payment exceeds the freight you expect to collect by payday."
+    })[band.reason];
+    return;
+  }
+  title.textContent = row.fee_cents === counter.flat_fee_cents ? "The offered fee works" : "Ask for a " + money(row.fee_cents) + " flat fee";
+  note.textContent = "Collect " + money(row.advance_cents) + " early and bring " + money(row.cash_cents)
+    + ". At every cent price in this range, this plan meets your " + money(q.floor_cents) + " target and leaves at least as much as waiting with the same cash.";
+  el("range-draft").textContent = "Download request with " + money(row.fee_cents) + " fee";
+  facts(el("range-ledger"), [[row.sale_cents ? "Wallet pays, including " + money(row.sale_cents) + " from selling SOL" : "Wallet pays for fuel", money(row.wallet_cents)], ["Flat discount", money(row.fee_cents)],
+    ["Freight left to collect by payday", money(row.later_cents)], ["Left at " + money(band.high_cents) + " per SOL", money(row.payday_cents)]]);
+  el("range-limit").textContent = "Across all affordable splits, the highest fee that works is " + money(band.best_limit_cents) + "."
+    + (band.low_cents > counter.ranges.full.low_cents ? " This range excludes a drop below the starting price." : "");
+}
+
 function showCounter(q, c) {
   const row = c.plan;
   el("offer-switch").hidden = el("offer-tradeoff").hidden = el("offer-fuel-only").hidden = true;
@@ -183,7 +214,8 @@ function showOffer(q) {
       ["Customer’s early-pay fee", money(chosen.fee_cents)], ["Freight still expected by payday", money(chosen.later_cents)],
       ["Left after restoring funds at " + money(q.high_price_cents) + " per SOL", money(chosen.payday_cents)]]);
   }
-  if (isCounter) { showCounter(q, offer.counter); return; }
+  el("range-offer").hidden = !isCounter;
+  if (isCounter) { showCounter(q, offer.counter); showRange(q, offer.counter); return; }
   el("compare-wait").hidden = true;
   const toggle = el("offer-switch");
   toggle.hidden = !(chosen && offer.smallest.advance_cents !== offer.keep_cash.advance_cents);
@@ -282,13 +314,14 @@ function render(q) {
   repairs(q); showPriceRoom(q); showMainnet(q);
   if (focusOffer && q.mainnet) {
     revealOffer();
-    if (focusWait && !el("compare-wait").hidden) {
-      el("compare-wait").open = true;
-      const summary = el("compare-wait").querySelector("summary");
+    const panel = focusRange ? el("range-offer") : el("compare-wait");
+    if ((focusWait || focusRange) && !panel.hidden) {
+      panel.open = true;
+      const summary = panel.querySelector("summary");
       summary.focus({preventScroll: true}); summary.scrollIntoView({block: "start"});
     }
   }
-  focusWait = focusOffer = false;
+  focusRange = focusWait = focusOffer = false;
   if (focusMainnet) {
     el("mainnet-check").querySelector("summary").focus({preventScroll: true});
     focusMainnet = false;
@@ -398,10 +431,8 @@ el("offer-switch").onclick = () => {
   keepRoadCash = !keepRoadCash;
   showOffer(last);
 };
-el("offer-draft").onclick = () => {
-  if (!last?.mainnet) return;
-  const row = chosenOffer(last.mainnet.early_freight);
-  if (!row?.advance_cents) return;
+function downloadOffer(row) {
+  if (!row?.advance_cents || row.fee_cents === null) return;
   const draft = [
     "Draft early-payment request · FreightOS sample load FOS-2048", "",
     "Could you send " + money(row.advance_cents) + " before the fuel stop on this load?",
@@ -410,7 +441,15 @@ el("offer-draft").onclick = () => {
     "Please confirm the amount, discount and arrival time before we rely on the payment.", ""
   ];
   saveFile("FOS-2048-early-payment-request.txt", draft.join("\n"), "text/plain;charset=utf-8");
+}
+el("offer-draft").onclick = () => {
+  if (last?.mainnet) downloadOffer(chosenOffer(last.mainnet.early_freight));
 };
+el("fee-range").onchange = () => {
+  const counter = last?.mainnet?.early_freight.counter;
+  if (counter) showRange(last, counter);
+};
+el("range-draft").onclick = () => downloadOffer(last?.mainnet?.early_freight.counter?.ranges[el("fee-range").value]?.split);
 el("mainnet-try").onclick = () => {
   if (last?.mainnet?.target_cash_cents != null) {
     focusMainnet = true;
@@ -452,6 +491,9 @@ function openPreset() {
   el("offer-result").open = focusOffer;
   focusWait = focusOffer && preset.get("view") === "buyback";
   el("compare-wait").open = focusWait;
+  focusRange = focusOffer && preset.get("view") === "fee-range";
+  el("range-offer").open = focusRange;
+  el("fee-range").value = "full";
   el("wait-scenario").value = "starting_price";
   estimate();
 }
