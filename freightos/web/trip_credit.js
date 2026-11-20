@@ -1,4 +1,4 @@
-import { el, facts, money, request, tokenUnits } from "./common.js";
+import { el, facts, money, request, saveFile, tokenUnits } from "./common.js";
 import { creditUse, showSchedule } from "./payday.js";
 
 let gap = 0;
@@ -15,6 +15,9 @@ let savedCheck;
 function clear() {
   revision++;
   savedCheck = null;
+  el("gap-exit").hidden = el("gap-exit-result").hidden = true;
+  el("gap-exit-check").disabled = false;
+  el("gap-exit-status").textContent = "";
   el("gap-answer").hidden = el("gap-saved").hidden = true;
   el("gap-status").textContent = "";
   el("gap-coverage").hidden = el("gap-cash-backup").hidden = el("gap-payday").hidden = true;
@@ -41,6 +44,52 @@ export function setFuelGap(cents, alternative = null, {week = null, payout = nul
   if (!gap) el("gap-credit").open = false;
   const label = payday ? " backup through payday" : adjusted ? " price-adjusted backup" : backup ? " weekly backup" : week ? (payout === null ? " gap" : " late-payout gap") + " from the week ending " + week : " fuel gap";
   el("gap-title").textContent = "Could a loan cover the " + money(gap) + label + "?";
+}
+
+function payoffPreview(data) {
+  const loan = data.loan;
+  if (loan.destination !== "wallet") return;
+  const button = el("gap-exit-check");
+  const attempt = revision;
+  el("gap-exit").hidden = false;
+  button.hidden = false;
+  button.textContent = "Check what comes back at repayment";
+  button.onclick = async () => {
+    button.disabled = true;
+    el("gap-exit-status").textContent = "Checking the loan payoff and the return of your SOL…";
+    try {
+      const proof = await request("/api/trip-credit/exit", {collateral_lamports: loan.collateral_lamports,
+        advance_raw: loan.advance_raw, days: loan.days, drop: loan.drop, source: data.source}, AbortSignal.timeout(45000));
+      if (attempt !== revision) return;
+      if (proof.advance_raw !== loan.advance_raw || proof.returned_lamports !== loan.collateral_lamports) throw new Error("Payoff differs from the selected loan.");
+      el("gap-exit-title").textContent = "About " + money(proof.refund_cents) + " of setup cash could come back";
+      facts(el("gap-exit-facts"), [
+        ["Setup cash needed upfront at this check’s price", money(proof.entry_cash_cents)],
+        ["Setup cash still held after payoff", money(proof.held_cents)],
+        ["Estimated cash cost through payday", money(proof.net_cash_cost_cents)]
+      ]);
+      let verdict = "The estimate includes borrowing, both network fees and the setup cash still held. It excludes the repaid principal.";
+      if (!data.remaining_cents && el("gap-offer").value !== "") {
+        const room = Math.round(el("gap-offer").valueAsNumber * 100) - proof.net_cash_cost_cents;
+        verdict += room > 0 ? " That leaves " + money(room) + " against your other fee before conversion and the cost of tying up SOL."
+          : room < 0 ? " Your other fee is " + money(-room) + " lower." : " This equals your other fee.";
+      }
+      el("gap-exit-verdict").textContent = verdict;
+      el("gap-exit-proof").textContent = "At Devnet slot " + proof.slot.toLocaleString("en-US") + ", the demo borrowed and immediately repaid "
+        + tokenUnits(proof.advance_raw) + " test USDC. All " + tokenUnits(proof.returned_lamports / 1000)
+        + " test SOL came back. Kamino closed the loan account and kept a separate account for the borrower. "
+        + "The estimate uses $" + proof.sol_price + " per SOL and a fee quote for a separate payoff. Interest over "
+        + loan.days + " days is projected. Getting the pledge back assumes full repayment before liquidation.";
+      el("gap-exit-status").textContent = (proof.source === "recorded" ? "Saved Devnet payoff simulation." : "Public Devnet payoff simulation.") + " No funds moved.";
+      el("gap-exit-data").onclick = () => saveFile("FreightOS-payoff-" + proof.slot + ".json", JSON.stringify(proof.evidence), "application/json");
+      el("gap-exit-result").hidden = false;
+      button.hidden = true;
+    } catch (error) {
+      if (attempt === revision) el("gap-exit-status").textContent = error.message + " The upfront estimate still applies.";
+    } finally {
+      if (attempt === revision) button.disabled = false;
+    }
+  };
 }
 
 function show(data) {
@@ -128,7 +177,7 @@ function show(data) {
   let verdict = "Compare fees once the rest of the fuel payment is funded.";
   if (comparison) {
     const room = comparison.room_cents;
-    verdict = room == null ? "Your other offer would need to cost more than " + money(comparison.entry_and_financing_cents) + " to leave any room for savings."
+    verdict = room == null ? "With all setup cash counted upfront, your other offer would need to cost more than " + money(comparison.entry_and_financing_cents) + " to leave any room for savings."
       : room > 0 ? "Your quoted fee leaves " + money(room) + " for repayment, conversion and the cost of locking up SOL before the loan loses its cost advantage."
       : room < 0 ? "Your other offer uses " + money(-room) + " less cash in fees and setup at these terms."
       : "Both choices use the same amount in fees and setup before exit costs.";
@@ -155,6 +204,7 @@ function show(data) {
     + tokenUnits(q.advance_raw) + " test USDC against " + tokenUnits(q.collateral_lamports / 1000) + " test SOL in the simulation. "
     + "Trip amounts use " + q.model_ratio + "× the test loan and collateral. Entry uses the observed test SOL outlay at $" + q.sol_price
     + " per SOL, without scaling fixed costs. Repayment assumes $1 per USDC and a steady " + (q.rate_bps / 100).toFixed(2) + "% annual rate.";
+  payoffPreview(data);
   el("gap-answer").hidden = false;
   const time = new Date(q.checked_at).toLocaleString("en-US", {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"});
   el("gap-status").textContent = (data.source === "recorded" ? "Saved Devnet simulation" : "Public Devnet simulation") + " · " + time + " UTC. No funds moved.";

@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, diesel_model, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_return, trip_cover
+from freightos import bill, credit_exit, devnet, diesel_model, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -573,6 +573,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/trip-cover":
             self.respond(200, {**trip_cover.saved(), "source": "recorded"})
             return
+        if self.path == "/evidence/credit-exits":
+            self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
+            return
         if self.path == "/evidence/fuel-credit":
             self.reply(200, "application/json", gzip.decompress((freight_credit.DATA / "credit_examples.json.gz").read_bytes()), static=True)
             return
@@ -701,6 +704,27 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise TypeError("Expected a JSON object")
+            if self.path == "/api/trip-credit/exit":
+                collateral = integer(data.get("collateral_lamports"), "loan pledge", 10**10)
+                advance = integer(data.get("advance_raw"), "loan proceeds", 10**10)
+                days, drop, source = data.get("days"), data.get("drop"), data.get("source")
+                freight_credit.terms(drop, days)
+                if not collateral or not advance or source not in ("recorded", "live"):
+                    raise ValueError("Choose a funded loan and payoff source")
+                live = source == "live"
+                if live and not self.server.trip_credit_lock.acquire(blocking=False):
+                    self.respond(503, {"error": "Another loan check is running. Try again shortly."})
+                    return
+                try:
+                    result = credit_exit.check(collateral, advance, drop, days, recorded=not live)
+                    self.respond(200, {**result, "source": source})
+                except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError, RuntimeError):
+                    message = "Devnet could not verify the payoff." if live else "No verified saved payoff matches this draw and pledge."
+                    self.respond(503, {"error": message})
+                finally:
+                    if live:
+                        self.server.trip_credit_lock.release()
+                return
             if self.path == "/api/trip-credit":
                 gap, cap = data.get("gap_cents"), data.get("pledge_millis")
                 drop, days = data.get("drop"), data.get("days")

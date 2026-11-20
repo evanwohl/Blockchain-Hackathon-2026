@@ -43,7 +43,7 @@ def terms(drop, days):
         raise ValueError("Choose one of the displayed collateral stresses and payment dates")
 
 
-def transaction(collateral, block, advance=ADVANCE, *, destination="vendor"):
+def loan_instructions(collateral, advance, destination):
     proof = json.loads(devnet.SAMPLE.read_text())
     vendor = Pubkey.from_string(proof["decision"]["vendor"])
     instructions = []
@@ -67,6 +67,11 @@ def transaction(collateral, block, advance=ADVANCE, *, destination="vendor"):
         instructions.append(Instruction(TOKEN, struct.pack("<BQB", 12, advance, 6), transfer))
     elif destination != "wallet":
         raise ValueError("Unknown loan destination")
+    return instructions
+
+
+def transaction(collateral, block, advance=ADVANCE, *, destination="vendor"):
+    instructions = loan_instructions(collateral, advance, destination)
     message = MessageV0.try_compile(OWNER, instructions, [], Hash.from_string(block))
     return VersionedTransaction.populate(message, [Signature.default()])
 
