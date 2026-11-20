@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#22271f"><title>Secured fuel credit · FreightOS</title>
+  <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><script type="module" src="/fuel_credit.js"></script>
+</head>
+<body class="workspace">
+<header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
+<main class="public-ledger trip-cover">
+  <a class="ledger-back" href="/public-payment">← Fuel bill and receipt</a>
+  <div class="public-spread">
+    <section class="public-cover">
+      <p class="panel-label">Working capital · FOS-2048</p>
+      <h1>Keep the full<br><em>invoice.</em></h1>
+      <p>You need $190 for diesel today. Getting your $200 invoice paid early costs $10. If you already own SOL, you can test borrowing the $190 against it and paying the loan when the invoice clears.</p>
+      <form id="credit-form"><div class="trip-fields">
+        <label>SOL price drop to allow for<select id="credit-drop"><option value="20">20%</option><option value="40" selected>40%</option><option value="60">60%</option></select></label>
+        <label>When will the customer pay?<select id="credit-days"><option value="23">On time · 23 days</option><option value="30">A week late · 30 days</option></select></label>
+      </div><button class="primary" id="credit-check">Check loan on public Solana</button></form>
+      <p id="credit-status" role="status" aria-live="polite">Opening the recorded loan preview…</p>
+      <p class="credit-scope">Devnet simulation. The loan sends test USDC to the fuel vendor. Your wallet stays unchanged.</p>
+    </section>
+    <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label">Secured loan · Kamino</p>
+      <h2 id="credit-heading" tabindex="-1">What borrowing would cost</h2>
+      <div id="credit-result" hidden>
+        <div class="trip-outcome"><small>Estimated financing cost on $190</small><strong id="credit-cost"></strong><p id="credit-repay"></p></div>
+        <dl class="facts" id="credit-compare"></dl>
+        <section class="spending-result"><h3>What happens if SOL falls?</h3><p id="credit-pledge"></p><dl id="credit-risk"></dl><p>Kamino can liquidate collateral if SOL falls to the estimated liquidation price. The borrower still owes the loan if the freight invoice goes unpaid.</p></section>
+        <details><summary>How the loan and payment were checked</summary><p id="credit-proof"></p><p id="credit-assumptions"></p>
+          <a href="/evidence/fuel-credit" download="FreightOS-secured-loan-simulations.json">Download the recorded Solana simulations</a></details>
+      </div>
+    </section>
+  </div>
+</main></body></html>
