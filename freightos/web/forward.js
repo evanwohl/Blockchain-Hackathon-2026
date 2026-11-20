@@ -1,3 +1,4 @@
+import { showPumpValue } from "./pump_value.js";
 import { el, facts, money, request } from "./common.js";
 
 const amount = cents => cents == null ? "Pending" : money(cents);
@@ -10,6 +11,7 @@ function show(data) {
   facts(el("fixed-inputs"), [["Starting diesel price", "$" + (data.baseline.mills / 1000).toFixed(3) + "/gal"],
     ["Trip fuel budget", money(data.trip.budget_cents)], ["Reserve available for extra fuel", money(reserve)],
     ["Other pump cash", money(data.trip.pump_cash_cents)], ["Premium paid on paper", money(selected.premium_cents)]]);
+  showPumpValue(data.pump_value, data.trip, data.positions);
   const edge = data.edge;
   el("forward-edge").textContent = edge ? "The plan starts saving extra cash when oil settles at $" + edge.minimum_strike
     + " or higher and regional diesel reaches $" + (edge.minimum_pump_mills / 1000).toFixed(3)

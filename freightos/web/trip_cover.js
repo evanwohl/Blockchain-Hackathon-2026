@@ -1,3 +1,4 @@
+import { showPumpValue } from "./pump_value.js";
 import { el, facts, money, request, saveFile } from "./common.js";
 
 import { setFuelGap } from "./trip_credit.js";
@@ -212,6 +213,7 @@ function showPastFills(target, selected, later) {
       + ". Oil " + move(peak.oil_move_cents, oil + " per barrel") + " by the contract deadline.";
   }
   const compareCosts = later && selected.plan.legs.length > 0;
+  showPumpValue(compareCosts && sample.pump_value, current.trip, selected.plan);
   el("history-costs").hidden = !compareCosts;
   if (compareCosts) {
     el("history-cash-ready").textContent = el("history-cash-late").textContent = money(history.before.tail_cash_cents);
