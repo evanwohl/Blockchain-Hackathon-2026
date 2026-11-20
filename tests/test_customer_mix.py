@@ -29,7 +29,7 @@ def test_prices_every_valid_split_against_an_independent_exhaustive_calendar():
     for budget, received, target, price, fee in product((0, 900000, 2300000, 6000000), (19, 29), (0, 3), (7000, 15000), (0, 1900)):
         policy = {"bill_cents": bill, "receipt_cents": received, "high_price_cents": price, "floor_cents": target}
         m = mainnet_loan.customer_mix(policy, costs, schedule, stable, cash, budget, network, rent, "partial", fee, None)
-        candidates = []
+        candidates, funded = [], []
         for advance in range(received + 1):
             discount = customer_credit.customer_fee(advance, fee)
             own = min(cash, max(0, bill - advance))
@@ -44,9 +44,34 @@ def test_prices_every_valid_split_against_an_independent_exhaustive_calendar():
                 opening = used + pledge + (rent if sale else 0)
                 later = received - advance - discount
                 payday = later + max(0, advance - bill) - own - dollars - repay - ceil_div(used * price, 10**9)
-                if later >= 0 and opening <= budget and payday >= target:
-                    candidates.append((advance, draw, payday))
+                if later >= 0 and opening <= budget:
+                    funded.append((advance, draw, payday))
+                    if payday >= target:
+                        candidates.append((advance, draw, payday))
         for key, eligible in (("plan", candidates), ("without_loan", [c for c in candidates if c[1] == 0])):
             row = m[key]
             got = (row["advance_cents"], row["draw_cents"], row["payday_cents"]) if row else None
             assert got == min(eligible, default=None)
+        for key, eligible in (("most_cash", funded), ("most_cash_without_loan", [c for c in funded if c[1] == 0])):
+            row = m[key]
+            got = (row["advance_cents"], row["draw_cents"], row["payday_cents"]) if row else None
+            assert got == min(eligible, key=lambda c: (-c[2], c[1], c[0]), default=None)
+
+
+def test_maximum_payday_cash_compares_identical_customer_terms_and_keeps_below_target_balances():
+    def mix(fee, floor):
+        return road_cash.evaluate(8000, 7500, 20000, floor, 15000, offer_menu="counter",
+                                  offer_fee=fee, offer_amount=9000)["mainnet"]["secured_loan"]["combined"]
+    q = mix(300, 300)
+    best, free = q["most_cash"], q["most_cash_without_loan"]
+    assert best["advance_cents"] == free["advance_cents"] == 9000
+    assert best["fee_cents"] == free["fee_cents"] == 300
+    assert (best["draw_cents"], best["sale_cents"], best["repay_cents"], best["payday_cents"]) == (457, 0, 461, 692)
+    assert (free["draw_cents"], free["sale_cents"], free["payday_cents"]) == (0, 457, 206)
+    assert best["path_check"]["peak_ltv_bps"] <= 7000
+    assert q["prices"] == [dict(price_cents=p, allowed_cents=a, debt_free_cents=b)
+                           for p, a, b in ((4984, 694, 841), (7282, 694, 695), (15000, 692, 206))]
+    assert q["history"] == {"windows": 9, "ahead": 6, "ties": 0}
+    high_fee = mix(1000, 300)
+    assert high_fee["plan"] is None and high_fee["most_cash"]["payday_cents"] == -8
+    assert high_fee["most_cash_without_loan"]["payday_cents"] == -494

@@ -51,12 +51,24 @@
         <details id="mix" class="funding-slip" hidden>
           <summary>Plan the full fuel payment <strong id="mix-preview"></strong></summary>
           <label for="mix-priority">What matters for this stop?</label>
-          <select id="mix-priority"><option value="plan">Smallest customer request</option><option value="without_loan">Cover fuel without a new loan</option></select>
+          <select id="mix-priority"><option value="plan">Smallest customer request</option><option value="most_cash">Most cash left on payday</option></select>
+          <fieldset id="payday-choices">
+            <legend id="funding-comparison-label">Customer cash needed before the stop</legend>
+            <label><input type="radio" name="payday-credit" id="payday-allow" checked><span>Borrowing allowed<strong id="payday-with"></strong></span></label>
+            <label><input type="radio" name="payday-credit" id="payday-free"><span>No new loan<strong id="payday-without"></strong></span></label>
+          </fieldset>
           <div aria-live="polite">
             <h3 id="mix-title"></h3><p id="mix-reason"></p>
             <div id="mix-figures">
               <dl id="mix-sources"></dl>
               <p id="mix-payday"></p><p id="mix-risk"></p>
+              <details id="payday-prices" hidden>
+                <summary>What if SOL costs less on payday?</summary>
+                <table><caption>Cash after repaying and restoring balances</caption>
+                  <thead><tr><th scope="col">SOL price</th><th scope="col">Borrowing allowed</th><th scope="col">No new loan</th></tr></thead>
+                  <tbody id="payday-price-rows"></tbody></table>
+                <p id="payday-history"></p>
+              </details>
               <details id="mix-path" hidden>
                 <summary>Could the lender sell my SOL before payday?</summary>
                 <p id="path-verdict"></p>

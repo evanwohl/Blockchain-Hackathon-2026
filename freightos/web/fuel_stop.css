@@ -79,10 +79,10 @@
 #range-offer label { display: block; margin-bottom: .35rem; font-size: .85rem; }
 #range-title { margin-top: .9rem; }
 
-#loan-outcomes { width: 100%; border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
-#loan-outcomes caption { text-align: start; font-weight: 600; padding-block: .8rem .4rem; }
-#loan-outcomes th, #loan-outcomes td { text-align: end; padding: .5rem .2rem; border-bottom: 1px solid var(--line); }
-#loan-outcomes :is(th, td):first-child { text-align: start; }
+:is(#loan-outcomes, #payday-prices table) { width: 100%; border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
+:is(#loan-outcomes, #payday-prices table) caption { text-align: start; font-weight: 600; padding-block: .8rem .4rem; }
+:is(#loan-outcomes, #payday-prices table) :is(th, td) { text-align: end; padding: .5rem .2rem; border-bottom: 1px solid var(--line); }
+:is(#loan-outcomes, #payday-prices table) :is(th, td):first-child { text-align: start; }
 #loan-result details { margin-block-start: .8rem; }
 #loan-result details a { display: block; margin-block: .6rem; }
 
@@ -102,3 +102,10 @@
 .pledge-figure svg { width: 100%; display: block; fill: #405c44; border-block: 1px solid var(--line); border-top: 1px dashed #956445; }
 .pledge-dates { display: flex; justify-content: space-between; font-size: .78rem; margin-top: .25rem; }
 #mix-path a { display: block; margin-block: .5rem; }
+
+#payday-choices { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; border: 0; margin: 0 0 1rem; padding: 0; }
+#payday-choices legend { padding: 0 0 .35rem; font-size: .8rem; }
+#payday-choices label { display: flex; align-items: baseline; gap: .4rem; margin: 0; padding: .55rem; background: #fbfaf5; border: 1px solid var(--line); cursor: pointer; }
+#payday-choices label:has(:checked) { border-color: #496143; }
+#payday-choices input { margin: 0; accent-color: #496143; }
+#payday-choices strong { display: block; margin-top: .2rem; font: 600 1.45rem/1.1 var(--display); font-variant-numeric: tabular-nums; }

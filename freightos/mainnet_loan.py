@@ -135,8 +135,20 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
     combined = None
     if offer_terms is not None:
         combined = customer_mix(plan, costs, schedule, stable, cash, wallet_cap, fee, rent, *offer_terms)
+        payday_plan, debt_free = combined["most_cash"], combined["most_cash_without_loan"]
+        if payday_plan and debt_free:
+            def balances(price):
+                def balance(row):
+                    restore = row["restore_lamports"]
+                    return row["payday_cents"] + ceil_div(restore * high, LAMPORTS) - ceil_div(restore * price, LAMPORTS)
+                return dict(price_cents=price, allowed_cents=balance(payday_plan), debt_free_cents=balance(debt_free))
+            observations = [balances(price) for price in history]
+            combined["prices"] = [balances(price) for price in dict.fromkeys((low, reference, high))]
+            combined["history"] = dict(windows=len(observations),
+                                       ahead=sum(v["allowed_cents"] > v["debt_free_cents"] for v in observations),
+                                       ties=sum(v["allowed_cents"] == v["debt_free_cents"] for v in observations))
     if path:
-        for row in (chosen, minimum, combined and combined["plan"]):
+        for row in (chosen, minimum, combined and combined["plan"], combined and combined["most_cash"]):
             if not row or not row["draw_cents"]:
                 continue
             raw = row["draw_cents"] * RAW_PER_CENT
@@ -167,43 +179,58 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
     with_loan = [c + fee + 2 * LOAN_FEE_ALLOWANCE for c in costs]
     startup = np.array([c + (rent if s else 0) for s, c in enumerate(with_loan)], dtype=np.int64)
     buyback = np.array([ceil_div(c * high, LAMPORTS) for c in with_loan], dtype=np.int64)
-    chosen = no_debt = None
+    chosen = no_debt = most_cash = best_debt_free = None
+    inf = np.iinfo(np.int64).max
+
+    def describe(net, draw):
+        discount = offer_fee if menu == "counter" and net else customer_credit.customer_fee(net, offer_fee)
+        own = min(cash, max(0, bill - net))
+        vendor = max(0, bill - net - own)
+        dollars = min(vendor, stable)
+        sale = vendor - dollars - draw
+        pledge, repay = schedule[draw]
+        restore = costs[sale] + (fee if vendor else 0) + (2 * LOAN_FEE_ALLOWANCE if draw else 0)
+        return dict(advance_cents=net, fee_cents=discount, invoice_balance_cents=invoice-net-discount,
+                    cash_cents=own, stable_cents=dollars, surplus_cents=max(0, net-bill), draw_cents=draw,
+                    sale_cents=sale, pledge_lamports=pledge, repay_cents=repay,
+                    restore_lamports=restore, opening_lamports=restore + pledge + (rent if sale else 0),
+                    payday_cents=received - bill + sale + draw - discount - repay - ceil_div(restore * high, LAMPORTS))
+
     for early in amounts:
-        discount = (offer_fee if early else 0) if menu == "counter" else customer_credit.customer_fee(early, offer_fee)
+        discount = offer_fee if menu == "counter" and early else customer_credit.customer_fee(early, offer_fee)
         if early + discount > min(received, invoice):
             continue
-        own = min(cash, max(0, bill - early))
-        vendor = max(0, bill - early - own)
+        vendor = max(0, bill - early - cash)
         gap = max(0, vendor - stable)
         proceeds = received - bill + gap - discount
         allowance = proceeds - plan["floor_cents"]
-        draw = None
         if gap < len(costs):
             restore = costs[gap] + (fee if vendor else 0)
-            if restore + (rent if gap else 0) <= cap and ceil_div(restore * high, LAMPORTS) <= allowance:
-                draw = 0
-        if chosen is None and draw is None and allowance > 0:
-            first, last = max(1, gap - len(costs) + 1), min(gap, last_draw)
-            if first <= last:
-                draws = slice(first, last + 1)
-                sales = slice(gap - last, gap - first + 1)
-                fits = (valid[draws] & (pledged[draws] + startup[sales][::-1] <= cap)
-                        & (repayments[draws] + buyback[sales][::-1] <= allowance))
-                if fits.any():
-                    draw = first + int(fits.argmax())
-        if draw is not None and (chosen is None or no_debt is None and draw == 0):
-            sale = gap - draw
-            pledge, repay = schedule[draw]
-            restore = costs[sale] + (fee if vendor else 0) + (2 * LOAN_FEE_ALLOWANCE if draw else 0)
-            row = dict(advance_cents=early, fee_cents=discount, invoice_balance_cents=invoice-early-discount,
-                          cash_cents=own, stable_cents=min(vendor, stable), surplus_cents=max(0, early-bill),
-                          draw_cents=draw, sale_cents=sale, pledge_lamports=pledge, repay_cents=repay,
-                          opening_lamports=restore + pledge + (rent if sale else 0),
-                          payday_cents=proceeds - repay - ceil_div(restore * high, LAMPORTS))
-            if chosen is None:
-                chosen = row
-            if draw == 0 and no_debt is None:
-                no_debt = row
-        if chosen is not None and no_debt is not None:
-            break
-    return dict(plan=chosen, without_loan=no_debt)
+            if restore + (rent if gap else 0) <= cap:
+                cost = ceil_div(restore * high, LAMPORTS)
+                key = (cost - proceeds, 0, early)
+                best_debt_free = key if best_debt_free is None else min(best_debt_free, key)
+                if cost <= allowance:
+                    if no_debt is None:
+                        no_debt = early
+                    if chosen is None:
+                        chosen = (early, 0)
+        first, last = max(1, gap - len(costs) + 1), min(gap, last_draw)
+        if first > last:
+            continue
+        draws = slice(first, last + 1)
+        sales = slice(gap - last, gap - first + 1)
+        funded = valid[draws] & (pledged[draws] + startup[sales][::-1] <= cap)
+        if not funded.any():
+            continue
+        cost = np.where(funded, repayments[draws] + buyback[sales][::-1], inf)
+        index = int(cost.argmin())
+        key = (int(cost[index]) - proceeds, first + index, early)
+        most_cash = key if most_cash is None else min(most_cash, key)
+        if chosen is None and cost[index] <= allowance:
+            chosen = (early, first + int((cost <= allowance).argmax()))
+    best = min((k for k in (most_cash, best_debt_free) if k is not None), default=None)
+    return dict(plan=describe(*chosen) if chosen else None,
+                without_loan=describe(no_debt, 0) if no_debt is not None else None,
+                most_cash=describe(best[2], best[1]) if best else None,
+                most_cash_without_loan=describe(best_debt_free[2], 0) if best_debt_free else None)
