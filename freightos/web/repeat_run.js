@@ -35,6 +35,12 @@ export function showRun(q) {
   const figure = n => n === null ? "Outside limits" : money(n);
   facts(el("series-totals"), [["Open on stop one", figure(s.open_cents)], ["Stay debt-free", figure(s.debt_free_cents)]]);
   el("series-verdict").textContent = verdict(s) + " Both totals use " + money(q.high_price_cents) + " per SOL on each payday.";
+  const openingPrice = s.prices.find(p => p.price_cents === q.reference_cents);
+  if (openingPrice && (s.choice === "open") !== (openingPrice.open_cents > openingPrice.debt_free_cents)) {
+    const gap = openingPrice.open_cents - openingPrice.debt_free_cents;
+    el("series-verdict").textContent += " At the recorded " + money(q.reference_cents) + " opening price, "
+      + (gap === 0 ? "the choices tie." : (gap > 0 ? "opening the loan" : "staying debt-free") + " leaves " + money(Math.abs(gap)) + " more.");
+  }
   el("series-funding-title").hidden = el("series-funding").hidden = !rows.length;
   const body = el("series-funding").querySelector("tbody");
   body.replaceChildren();
