@@ -2,6 +2,7 @@ import {el, facts, money, request, saveFile} from "./common.js";
 
 const form = el("stop-inputs"), verify = el("verify"), note = el("check-status");
 let focusMainnet = false, focusOffer = false, keepRoadCash = false;
+let originalCounter;
 let preference = "keep-cash";
 let revision = 0, timer, pending, last, undo;
 
@@ -11,6 +12,10 @@ function inputs() {
     const input = el(id);
     return [id, input.value === "" ? null : Math.round(input.valueAsNumber * 100)];
   }));
+  if (el("offer-menu").value === "counter") {
+    return {...amounts, offer_menu: "counter", offer_amount: Math.round(el("offer_amount").valueAsNumber * 100),
+      offer_fee: Math.round(el("flat_fee").valueAsNumber * 100)};
+  }
   return {...amounts, offer_fee: el("offer_fee").disabled ? 0 : Math.round(el("offer_fee").valueAsNumber * 100),
     offer_menu: el("offer-menu").value};
 }
@@ -78,11 +83,67 @@ function showPriceRoom(q) {
 }
 
 function chosenOffer(offer) {
-  return keepRoadCash ? offer.keep_cash : offer.smallest;
+  return offer.menu === "counter" ? offer.counter.plan : keepRoadCash ? offer.keep_cash : offer.smallest;
+}
+
+function paydayChange(delta) {
+  return delta === 0 ? "the same cash" : money(Math.abs(delta)) + (delta > 0 ? " more" : " less");
+}
+
+function showCounter(q, c) {
+  const row = c.plan;
+  el("offer-switch").hidden = el("offer-tradeoff").hidden = el("offer-fuel-only").hidden = true;
+  el("offer-preview").textContent = money(c.net_cents) + " early";
+  let verdict;
+  if (row) {
+    verdict = "Bring " + money(row.cash_cents) + ". The wallet could pay " + money(row.wallet_cents) + " and meet your payday target.";
+    if (c.surplus_cents) verdict += " Keep the " + money(c.surplus_cents) + " of unused customer money through payday.";
+  } else if (c.receipt_gap_cents) {
+    verdict = "The payment and discount exceed freight expected by payday by " + money(c.receipt_gap_cents) + ".";
+  } else if (c.fuel_gap_cents) {
+    verdict = money(c.fuel_gap_cents) + " of fuel would still be unpaid.";
+  } else {
+    verdict = "Fuel is covered. Even the best split falls " + money(c.payday_gap_cents) + " short of your payday target.";
+  }
+  el("offer-explain").textContent = "The customer sends " + money(c.net_cents) + " and keeps a flat " + money(c.flat_fee_cents) + ". " + verdict;
+  const fee = el("try-counter-fee"), net = el("try-counter-net");
+  fee.hidden = row !== null || c.fee_ceiling_cents === null || c.fee_ceiling_cents >= c.flat_fee_cents;
+  net.hidden = row !== null || c.nearest_net_cents === null || c.nearest_net_cents === c.net_cents;
+  if (!fee.hidden) fee.textContent = "Try a " + money(c.fee_ceiling_cents) + " fee";
+  if (!net.hidden) net.textContent = "Try " + money(c.nearest_net_cents) + " early";
+  el("undo-counter").hidden = !originalCounter;
+  const comparison = el("compare-wait"), wait = c.wait;
+  comparison.hidden = !wait;
+  if (wait) {
+    el("wait-result").textContent = "With the same " + money(row.cash_cents) + " from you, waiting needs a "
+      + money(wait.budget_cents) + " SOL budget to cover fuel. " + (wait.fits ? "At the tested high of " + money(q.high_price_cents)
+        + " per SOL, early pay leaves " + paydayChange(wait.stress_difference_cents) + " on payday." : "That exceeds the available SOL limit.");
+    el("wait-history").hidden = !wait.windows;
+    if (wait.windows) el("wait-history").textContent = "Across " + wait.windows + " recorded Gemini price moves, the least favorable result for early pay was "
+      + paydayChange(wait.lowest[0]) + " at " + money(wait.lowest[1]) + " per SOL. The most favorable was "
+      + paydayChange(wait.highest[0]) + " at " + money(wait.highest[1]) + ". Both figures compare payday cash with waiting.";
+  }
+  const limit = el("offer-bound");
+  limit.hidden = false;
+  limit.textContent = c.fee_ceiling_cents !== null ? "At " + money(c.net_cents) + " early, the highest flat fee that meets your limits is " + money(c.fee_ceiling_cents) + "."
+    : net.hidden ? "Changing just the early amount or just the fee cannot meet these limits." : "This comparison keeps the customer’s flat fee.";
 }
 
 function showOffer(q) {
   const offer = q.mainnet.early_freight, chosen = chosenOffer(offer);
+  const isCounter = offer.menu === "counter";
+  el("offer-ledger").hidden = !chosen;
+  el("offer-draft").hidden = !chosen?.advance_cents;
+  el("open-counter").hidden = isCounter || !chosen?.advance_cents;
+  el("counter-actions").hidden = !isCounter;
+  if (chosen) {
+    facts(el("offer-ledger"), [[chosen.sale_cents ? "Wallet pays, including " + money(chosen.sale_cents) + " from selling SOL" : "Wallet pays for fuel", money(chosen.wallet_cents)],
+      ["Cash kept at the stop", money(inputs().cash - chosen.cash_cents)],
+      ["Customer’s early-pay fee", money(chosen.fee_cents)], ["Freight still expected by payday", money(chosen.later_cents)],
+      ["Left after restoring funds at " + money(q.high_price_cents) + " per SOL", money(chosen.payday_cents)]]);
+  }
+  if (isCounter) { showCounter(q, offer.counter); return; }
+  el("compare-wait").hidden = true;
   const toggle = el("offer-switch");
   toggle.hidden = !(chosen && offer.smallest.advance_cents !== offer.keep_cash.advance_cents);
   toggle.textContent = keepRoadCash ? "See smallest request" : "Keep more cash at the stop";
@@ -94,17 +155,12 @@ function showOffer(q) {
       + money(offer.smallest.cash_cents - offer.keep_cash.cash_cents) + " more on the road "
       + (difference ? "for an extra " + money(difference) + " in fees." : "at the same fee.");
   }
-  el("offer-ledger").hidden = !chosen;
-  el("offer-draft").hidden = !chosen?.advance_cents;
   el("offer-preview").textContent = chosen?.advance_cents ? money(chosen.advance_cents) + " early" : "";
   if (chosen) {
     el("offer-explain").textContent = (chosen.advance_cents ? (keepRoadCash ? "To keep the most cash at the stop, ask for "
       : "The smallest workable request is ") + money(chosen.advance_cents) + " from the customer before fuel is due."
       : "Your plan already works without an early customer payment.") + " Bring " + money(chosen.cash_cents) + " of your own cash.";
-    facts(el("offer-ledger"), [[chosen.sale_cents ? "Wallet pays, including " + money(chosen.sale_cents) + " from selling SOL" : "Wallet pays for fuel", money(chosen.wallet_cents)],
-      ["Cash kept at the stop", money(inputs().cash - chosen.cash_cents)],
-      ["Customer’s early-pay fee", money(chosen.fee_cents)], ["Freight still expected by payday", money(chosen.later_cents)],
-      ["Left after restoring funds at " + money(q.high_price_cents) + " per SOL", money(chosen.payday_cents)]]);
+
   } else {
     el("offer-explain").textContent = (offer.menu === "none" ? "The customer pays on regular terms." : "No allowed advance covers fuel and your payday target within your limits.")
       + (offer.minimum_cash_cents !== null ? " These terms require at least " + money(offer.minimum_cash_cents) + " of your own cash." : "");
@@ -248,6 +304,31 @@ el("review-offer").onclick = () => {
     el("mainnet-check").querySelector("summary").focus();
   }
 };
+function updateOfferFields() {
+  const menu = el("offer-menu").value, exact = menu === "counter";
+  el("counter-fields").hidden = el("counter-fields").disabled = !exact;
+  el("scaled-terms").hidden = exact;
+  el("offer_fee").disabled = exact || menu === "none";
+}
+function compareCounter(field, cents) {
+  originalCounter ??= [el("offer_amount").value, el("flat_fee").value];
+  el(field).value = (cents / 100).toFixed(2);
+  focusOffer = true; estimate();
+}
+el("try-counter-fee").onclick = () => compareCounter("flat_fee", last.mainnet.early_freight.counter.fee_ceiling_cents);
+el("try-counter-net").onclick = () => compareCounter("offer_amount", last.mainnet.early_freight.counter.nearest_net_cents);
+el("undo-counter").onclick = () => {
+  [el("offer_amount").value, el("flat_fee").value] = originalCounter;
+  originalCounter = null; focusOffer = true; estimate();
+};
+el("open-counter").onclick = () => {
+  const row = chosenOffer(last.mainnet.early_freight);
+  el("offer-menu").value = "counter";
+  el("offer_amount").value = (row.advance_cents / 100).toFixed(2);
+  el("flat_fee").value = (row.fee_cents / 100).toFixed(2);
+  updateOfferFields(); el("offer-inputs").open = true; el("offer_amount").focus();
+  estimate();
+};
 el("edit-offer").onclick = () => {
   el("offer-inputs").open = true;
   el("offer-menu").focus();
@@ -284,7 +365,7 @@ document.querySelector(".stop-edit").onclick = event => {
   event.preventDefault();
   el("cash").focus();
 };
-form.oninput = () => { undo = null; keepRoadCash = false; el("offer_fee").disabled = el("offer-menu").value === "none"; estimate(140); };
+form.oninput = () => { undo = null; keepRoadCash = false; originalCounter = null; updateOfferFields(); estimate(140); };
 form.onsubmit = event => { event.preventDefault(); estimate(); };
 verify.onclick = () => {
   const current = inputs(); if (!current) return;
@@ -296,13 +377,13 @@ function openPreset() {
   const preset = new URLSearchParams(location.hash.slice(1));
   form.reset();
   keepRoadCash = false;
-  el("offer-menu").value = ["none", "both"].includes(preset.get("terms")) ? preset.get("terms") : "partial";
-  el("offer_fee").disabled = el("offer-menu").value === "none";
+  el("offer-menu").value = ["none", "both", "counter"].includes(preset.get("terms")) ? preset.get("terms") : "partial";
+  originalCounter = null; updateOfferFields();
   preference = preset.get("preference") === "price-room" ? "price-room" : "keep-cash";
   undo = null;
   for (const input of form.querySelectorAll("input")) {
     const value = preset.get(input.id);
-    if (value !== null && /^\d{1,7}(?:\.\d{1,2})?$/.test(value) && Number(value) <= Number(input.max))
+    if (value !== null && /^\d{1,7}(?:\.\d{1,2})?$/.test(value) && Number(value) <= Number(input.max) && Number(value) >= Number(input.min))
       input.value = Number(value).toFixed(2);
   }
   el("price-room").open = preset.has("preference");

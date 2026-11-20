@@ -83,7 +83,12 @@ def sale_table(bill):
     return split_costs(saved()[1], bill)
 
 
-def validate_offer(menu, fee):
+def validate_offer(menu, fee, amount=None):
+    if menu == "counter":
+        if not integer(amount, "net amount the customer offers", reserve_credit.INVOICE_CENTS):
+            raise ValueError("Enter a positive early payment")
+        integer(fee, "flat early-payment discount", reserve_credit.INVOICE_CENTS)
+        return
     if menu not in ("partial", "both", "none"):
         raise ValueError("Choose the amounts the customer offers")
     integer(fee, "fee per $99 of early freight cash", 10000)
@@ -142,7 +147,44 @@ def early_freight(bill, stable, received, target, cash, wallet_cap, price, menu,
             "max_fee_per_99_cents": max_fee if smallest is None or smallest[0] else None}
 
 
-def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="partial", offer_fee=100):
+def counteroffer(bill, stable, received, target, cash, wallet_cap, price, net, fee):
+    first_outside = best_payday = ceiling = nearest = selected = None
+    used = min(net, bill)
+    for outside in range(bill + 1):
+        quote = price(outside)
+        if quote is None or quote[0] > wallet_cap:
+            continue
+        if first_outside is None:
+            first_outside = outside
+        room = quote[1] - target
+        own = outside - used
+        if 0 <= own <= cash:
+            allowance = min(room, received - net)
+            if allowance >= 0:
+                ceiling = allowance if ceiling is None else max(ceiling, allowance)
+            payday = quote[1] - fee
+            best_payday = payday if best_payday is None else max(best_payday, payday)
+            if selected is None and allowance >= fee:
+                wallet = bill - outside
+                selected = {"advance_cents": net, "cash_cents": own, "fee_cents": fee,
+                            "wallet_cents": wallet, "sale_cents": max(0, wallet - stable),
+                            "later_cents": received - net - fee, "payday_cents": payday,
+                            "invoice_balance_cents": reserve_credit.INVOICE_CENTS - net - fee}
+        lower = max(1, outside - cash)
+        upper = received - fee if outside == bill else min(outside, received - fee)
+        if room >= fee and lower <= upper:
+            amount = min(max(net, lower), upper)
+            candidate = (abs(amount - net), amount)
+            if nearest is None or candidate < nearest:
+                nearest = candidate
+    return {"net_cents": net, "flat_fee_cents": fee, "plan": selected, "surplus_cents": net - used,
+            "receipt_gap_cents": max(0, net + fee - received),
+            "fuel_gap_cents": max(0, first_outside - cash - used),
+            "payday_gap_cents": None if best_payday is None else max(0, target - best_payday),
+            "fee_ceiling_cents": ceiling, "nearest_net_cents": nearest[1] if nearest else None}
+
+
+def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="partial", offer_fee=100, offer_amount=None, history_prices=()):
     data, pools = saved() if evidence is None else verify(evidence)
     bill, reference = plan["bill_cents"], plan["reference_cents"]
     costs, second_legs = sale_table(bill) if evidence is None else split_costs(pools, bill)
@@ -153,14 +195,14 @@ def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="pa
     fee = market["fee_lamports"]
     rent = data["rent"]
 
-    def price(separate):
+    def price(separate, buyback=high):
         vendor = bill - separate
         sale = max(0, vendor - stable)
         if sale >= len(costs):
             return None
         restore = costs[sale] + (fee if vendor else 0)
         opening = restore + (rent if sale else 0)
-        payday = received - bill + sale - fuel_floor.ceil_div(restore * high, LAMPORTS)
+        payday = received - bill + sale - fuel_floor.ceil_div(restore * buyback, LAMPORTS)
         return opening, payday
 
     first = preserving = best_payday = None
@@ -188,7 +230,27 @@ def compare(plan, market, native, budget, cash, evidence=None, *, offer_menu="pa
                       "cash_fits": original <= cash}
     target_sale = None if preserving is None else max(0, bill - preserving - stable)
     covered_range = len(costs) > max(0, bill - stable)
-    offer = early_freight(bill, stable, received, target, cash, wallet_cap, price, offer_menu, offer_fee)
+    if offer_menu == "counter":
+        counter = counteroffer(bill, stable, received, target, cash, wallet_cap, price, offer_amount, offer_fee)
+        row = counter["plan"]
+        counter["wait"] = None
+        if row:
+            own = row["cash_cents"]
+            waiting = price(own)
+            if waiting is not None:
+                wait = {"budget_cents": fuel_floor.ceil_div(waiting[0] * reference, LAMPORTS),
+                        "fits": waiting[0] <= wallet_cap}
+                if wait["fits"]:
+                    wait["stress_difference_cents"] = row["payday_cents"] - waiting[1]
+                    accepted_outside = bill - row["wallet_cents"]
+                    differences = [(price(accepted_outside, level)[1] - offer_fee - price(own, level)[1], level)
+                                   for level in history_prices]
+                    if differences:
+                        wait.update(windows=len(differences), lowest=min(differences), highest=max(differences))
+                counter["wait"] = wait
+        offer = {"menu": "counter", "counter": counter}
+    else:
+        offer = early_freight(bill, stable, received, target, cash, wallet_cap, price, offer_menu, offer_fee)
     return {"early_freight": offer, "slot": data["accounts"]["context"]["slot"], "date": datetime.fromtimestamp(data["block_time"], timezone.utc).isoformat(),
             "covers_full_range": covered_range, "original": comparable, "first_cash_cents": first,
             "fuel_short_cents": max(0, first - cash), "target_cash_cents": preserving,

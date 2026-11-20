@@ -107,3 +107,67 @@ def test_customer_offer_reconciles_each_cent_and_has_a_binding_negotiation_ceili
     for menu, fee in (("wrong",10),("both",-1),("partial",False)):
         with pytest.raises(ValueError):
             compare(menu, fee)
+
+
+def test_exact_counteroffer_repairs_and_cent_boundaries():
+    def check(net, fee, received=20000):
+        return road_cash.evaluate(8000, 7500, received, 300, 15000, offer_menu="counter",
+                                  offer_amount=net, offer_fee=fee)["mainnet"]["early_freight"]["counter"]
+    q = check(9000, 300)
+    assert q["plan"] is None and (q["fuel_gap_cents"], q["payday_gap_cents"]) == (0, 94)
+    assert (q["fee_ceiling_cents"], q["nearest_net_cents"]) == (206, 9087)
+    for net, fee, vendor, later in ((9000, 206, 2500, 10794), (9087, 300, 2413, 10613)):
+        plan = check(net, fee)["plan"]
+        assert plan["payday_cents"] == 300 and plan["wallet_cents"] == vendor
+        assert plan["cash_cents"] + net + vendor == 19000 and plan["later_cents"] == later
+    assert check(9000, 207)["payday_gap_cents"] == check(9086, 300)["payday_gap_cents"] == 1
+    assert check(19500, 200)["plan"]["payday_cents"] == 800
+    assert check(20000, 50)["nearest_net_cents"] == 19950
+    assert check(20000, 50)["receipt_gap_cents"] == 50
+    assert check(9000, 300, 7000)["plan"] is None
+    for net, fee in ((None, 0), (0, 0), (20001, 0), (100, False), (20000, -1)):
+        with pytest.raises(ValueError):
+            check(net, fee)
+
+
+def test_counteroffer_bounds_against_independent_cash_and_term_enumeration():
+    bill, received, cash, target, cap = 24, 28, 8, 4, 20
+    def price(outside):
+        return 2 * (bill - outside), outside - 10 + outside % 3
+    def splits(net, fee):
+        if net + fee > received:
+            return []
+        possible = []
+        for own in range(min(cash, bill - min(bill, net)) + 1):
+            opening, ending = price(min(bill, net) + own)
+            if opening <= cap and ending - fee >= target:
+                possible.append(own)
+        return possible
+    for net in range(1, received + 3):
+        for fee in (0, 1, 7, 20, 30):
+            q = mainnet_stop.counteroffer(bill, 3, received, target, cash, cap, price, net, fee)
+            own = splits(net, fee)
+            assert (q["plan"]["cash_cents"] if q["plan"] else None) == min(own, default=None)
+            assert q["fee_ceiling_cents"] == max((f for f in range(received + 1) if splits(net, f)), default=None)
+            candidates = [n for n in range(1, received + 1) if splits(n, fee)]
+            assert q["nearest_net_cents"] == min(candidates, key=lambda n: (abs(net - n), n), default=None)
+
+
+def test_same_cash_comparison_requires_an_affordable_wait_and_reprices_each_gemini_window():
+    def offer(budget):
+        return road_cash.evaluate(budget, 7500, 20000, 300, 15000, offer_menu="counter",
+                                  offer_amount=9000, offer_fee=206)["mainnet"]["early_freight"]["counter"]
+    assert offer(8000)["wait"] == {"budget_cents": 9559, "fits": False}
+    richer = offer(15000)
+    assert richer["plan"]["cash_cents"] == 7500
+    wait = richer["wait"]
+    assert wait["fits"] and wait["windows"] == 9
+    costs = mainnet_stop.sale_table(19000)[0]
+    def change(price):
+        waiting_sale, early_sale = 9457, 457
+        def replacement(sale):
+            return fuel_floor.ceil_div((costs[sale] + 5000) * price, 10**9)
+        return early_sale - waiting_sale - 206 + replacement(waiting_sale) - replacement(early_sale)
+    assert wait["stress_difference_cents"] == change(15000) == 9510
+    assert wait["lowest"] == (change(4984), 4984) == (-2987, 4984)
+    assert wait["highest"] == (change(10735), 10735) == (4188, 10735)
