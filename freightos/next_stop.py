@@ -66,7 +66,7 @@ def reserve_budget(first, second, rpc):
     return {**budget, "first_shares_raw": original, "offer_shares_raw": offer}
 
 
-def preview(first, second, fuel_cents, road_cents, rpc, *, holdback=None):
+def preview(first, second, fuel_cents, road_cents, rpc, *, holdback=None, keep_shares=False):
     amounts(fuel_cents, road_cents)
     plan = payment()
     budget = reserve_budget(first, second, rpc)
@@ -82,6 +82,8 @@ def preview(first, second, fuel_cents, road_cents, rpc, *, holdback=None):
     if holdback is None:
         if result["shortfall_raw"]:
             return result
+        if keep_shares:
+            return {**result, **check_split(plan, budget, fuel, road, rpc)}
         payment_check, _, _ = check_payment(plan, budget, fuel, road, rpc)
         return {**result, **payment_check}
 
@@ -109,7 +111,7 @@ def check_split(plan, budget, upper, road, rpc):
     check, instructions, initial = check_payment(plan, sized, upper, road, rpc)
     leftover = budget["eligible_shares_raw"] - sized["shares_used_raw"]
     if not leftover:
-        raise ValueError("No remaining shares for the later fuel stop")
+        return {**check, "retained_raw": 0, "retained_shares_raw": 0}
     remaining = devnet.vault_instruction(plan.route, plan.payer, plan.cash, plan.shares, leftover, venue=devnet.VENUE)
     slot, keys, value = devnet.simulate_instructions(plan, [*instructions, remaining], check["slot"], rpc, trace=True)
     final = balances(plan, keys, value)

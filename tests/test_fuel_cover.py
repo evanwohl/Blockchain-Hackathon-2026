@@ -16,7 +16,7 @@ def test_cash_deadline_changes_which_option_is_cheaper():
     p = result["position"]
     assert (result["cash_only_cents"], result["below_strike_cents"]) == (1051, 0)
     assert p == {"quantity": "10.50", "payout_cents": 1050, "premium_cents": 21, "fee_cents": 2,
-                 "upfront_cents": 23, "residual_cents": 1, "usable_first_cents": 24, "fuel_first_cents": 1074}
+                 "upfront_cents": 23, "residual_cents": 1, "late_payout_gap_cents": 1050, "usable_first_cents": 24, "fuel_first_cents": 1074}
     fuel = fuel_cover.fuel_update.saved()
     gaps = []
     for cents in range(7500, 9301):
@@ -35,6 +35,7 @@ def test_expensive_second_price_level_and_limited_capacity_change_quantity_and_c
     snap["book"]["levels"]["asks"].pop()
     p = fuel_cover.analyze(snap)["position"]
     assert p["quantity"] == "5.00" and p["usable_first_cents"] == 562
+    assert p["late_payout_gap_cents"] == p["fuel_first_cents"] - p["usable_first_cents"] == 500
 
 
 @pytest.mark.parametrize("change", ["empty", "stale", "different ask", "expired"])

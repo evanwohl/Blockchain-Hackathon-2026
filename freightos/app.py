@@ -888,6 +888,9 @@ class Handler(BaseHTTPRequestHandler):
             if self.path in ("/api/next-stop", "/api/two-stops"):
                 fuel, road = data.get("fuel_cents"), data.get("road_cents")
                 next_stop.amounts(fuel, road)
+                keep_shares = data.get("keep_shares", False)
+                if type(keep_shares) is not bool or (keep_shares and self.path != "/api/next-stop"):
+                    raise ValueError("Choose how to handle unused shares for one fuel stop")
                 gallons = data.get("gallons") if self.path == "/api/two-stops" else None
                 pump_mills, oil_rise = data.get("pump_mills"), data.get("oil_rise", False)
                 if self.path == "/api/two-stops":
@@ -898,7 +901,7 @@ class Handler(BaseHTTPRequestHandler):
                         market = self.server.offer_fuel.read() if pump_mills is None or oil_rise else fuel_update.saved()
                         holdback = next_stop.fuel_holdback(gallons, market, pump_mills=pump_mills, oil_rise=oil_rise)
                     result = next_stop.preview(self.server.public_payment.read(), self.server.public_offer.read(),
-                                               fuel, road, devnet.request, holdback=holdback)
+                                               fuel, road, devnet.request, holdback=holdback, keep_shares=keep_shares)
                     self.respond(200, next_stop.observed(result))
                 except (OSError, ValueError, KeyError, TypeError, RuntimeError):
                     self.respond(503, {"error": "The market and reserve checks could not confirm this preview. Try again."})

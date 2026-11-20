@@ -83,6 +83,7 @@ def analyze(snapshot):
         if required < best:
             result["position"] = {"quantity": str(quantity), "payout_cents": lots, "premium_cents": premium,
                                   "fee_cents": fee, "upfront_cents": upfront, "residual_cents": residual,
+                                  "late_payout_gap_cents": gap - residual,
                                   "usable_first_cents": required, "fuel_first_cents": upfront + gap}
             best = required
     return result

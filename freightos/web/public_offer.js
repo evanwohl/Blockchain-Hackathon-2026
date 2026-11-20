@@ -125,6 +125,8 @@ function renderCover() {
   const buffer = money(cover.cash_only_cents);
   el("cover-range").textContent = "Suppose the next trip has the same " + money(cover.fuel_budget_cents)
     + " budget. See how much extra cash it would need if oil closes as high as $" + cover.ceiling + " a barrel.";
+  const relyingOnPayout = Boolean(position && !fuelFirst);
+  const backup = relyingOnPayout ? position.late_payout_gap_cents : cover.cash_only_cents;
   const rows = [["Cash buffer alone", buffer]];
   if (position) rows.push(["With the oil contract", money(fuelFirst ? position.fuel_first_cents : position.usable_first_cents)]);
   facts(el("cover-facts"), rows);
@@ -133,8 +135,9 @@ function renderCover() {
     : "A matching fresh offer with available quantity could not be verified. Budget from the cash-only figure.")
     : fuelFirst ? "Set aside " + buffer + ". Buying the contract would also use " + money(position.upfront_cents)
       + " before the stop. A later payout cannot pay a bill due now."
-    : "Only if a winning payout reaches the driver in time, the modeled extra cash falls to " + money(position.usable_first_cents)
-      + ". If the transfer is delayed, the full " + buffer + " fuel buffer is still needed.";
+    : "Of the " + money(position.usable_first_cents) + ", " + money(position.upfront_cents) + " buys the contract including fees and "
+      + money(position.residual_cents) + " stays available for diesel. If the winning payout is late at $" + cover.ceiling
+      + " oil, you need another " + money(backup) + " at the pump.";
   el("cover-model").textContent = "The contract pays $1 per unit if Gemini’s oil index closes at $" + cover.threshold
     + " or higher on " + utc(cover.expiry) + ". The comparison tests fuel costs through $" + cover.ceiling
     + ", the highest strike in the trip’s original market. Higher oil or a different local diesel price can leave a larger bill.";
@@ -144,9 +147,10 @@ function renderCover() {
     + " of the higher fuel cost to pay. The model assumes the shown fills and zero transfer cost. The demo holds no contracts."
     : "The demo holds no contracts. The comparison credits no unverified sale or payout.";
   const reserve = el("cover-reserve");
-  reserve.hidden = !cover.cash_only_cents;
-  reserve.href = "/next-stop#fuel-buffer=" + cover.cash_only_cents;
-  reserve.textContent = "Check the " + buffer + " cash buffer on Solana";
+  reserve.hidden = !backup;
+  reserve.href = "/next-stop#fuel-buffer=" + backup + "&keep-shares";
+  reserve.textContent = relyingOnPayout ? "Check whether my reserve covers the " + money(backup) + " gap"
+    : "Check the " + buffer + " cash buffer on Solana";
 }
 
 async function checkCover(live) {

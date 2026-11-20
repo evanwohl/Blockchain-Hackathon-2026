@@ -116,6 +116,23 @@ def test_later_fuel_must_be_spendable_after_the_first_withdrawal(proofs, change)
         next_stop.preview(*proofs, 1500, 500, captured(calls), holdback=held)
 
 
+def test_sized_single_payment_keeps_the_unspent_shares(proofs):
+    calls = two_stop_calls()
+    result = next_stop.preview(*proofs, 1492, 500, captured(calls), keep_shares=True)
+    assert not calls
+    assert result["vendor_raw"] == 149200 and result["wallet_increase_raw"] == 50000
+    assert result["retained_shares_raw"] == result["retained_raw"] == 101000
+    assert result["available_raw"] == 300200
+
+
+def test_sized_payment_can_use_the_entire_eligible_balance(proofs):
+    calls = transcript()
+    result = next_stop.preview(*proofs, 2000, 1002, captured(calls), keep_shares=True)
+    assert not calls
+    assert result["retained_raw"] == result["retained_shares_raw"] == 0
+    assert result["wallet_increase_raw"] == 100200
+
+
 def test_no_first_fill_when_cash_and_future_fuel_exceed_the_available_balance(proofs):
     held = next_stop.fuel_holdback(10, next_stop.fuel_update.saved())
     calls = two_stop_calls()[:2]

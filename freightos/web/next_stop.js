@@ -10,18 +10,21 @@ const pumpPrice = mills => "$" + (mills / 1000).toFixed(3);
 
 function singleStop(data, model) {
   const fits = data.shortfall_raw === 0;
-  el("stop-verdict").textContent = fits ? "The reserve covers both." : money(Math.ceil(data.shortfall_raw / data.raw_units_per_cent)) + " more needed.";
+  el("stop-verdict").textContent = fits ? (data.road_cents ? "The reserve covers both." : "The reserve covers this fuel payment.") : money(Math.ceil(data.shortfall_raw / data.raw_units_per_cent)) + " more needed.";
   facts(el("stop-breakdown"), [
     ["Available from the reserve", model(data.available_raw)],
     ...(fits ? [["To the fuel company", model(data.vendor_raw)], ["Back to the driver’s wallet", model(data.wallet_increase_raw)]]
-      : [["Fuel and road cash requested", money(data.fuel_cents + data.road_cents)]])
+      : [["Fuel and road cash requested", money(data.fuel_cents + data.road_cents)]]),
+    ...(data.retained_shares_raw == null ? [] : [["Still available from the reserve", model(data.retained_raw)]])
   ]);
   result.dataset.covered = String(fits);
   el("stop-network").textContent = "At slot " + data.slot.toLocaleString("en-US") + ", the simulated withdrawal released "
-    + tokenUnits(data.available_raw) + " test USDC. " + (fits
+    + tokenUnits(fits ? data.vendor_raw + data.wallet_increase_raw : data.available_raw) + " test USDC. " + (fits
       ? "A single transaction preview credited " + tokenUnits(data.vendor_raw) + " to the vendor and added "
         + tokenUnits(data.wallet_increase_raw) + " to the driver’s wallet. The quoted fee was " + data.network_fee_lamports / 1e9 + " test SOL."
       : "That falls short of the two requested amounts. Reduce either amount to check a smaller stop.");
+  if (data.retained_shares_raw > 0) el("stop-network").textContent += " A second simulation redeemed the "
+    + tokenUnits(data.retained_shares_raw) + " remaining shares to verify their value.";
   if (!data.eligible_shares_raw) el("stop-network").textContent = "The driver held no eligible shares at slot " + data.slot.toLocaleString("en-US") + ".";
 }
 
@@ -102,6 +105,7 @@ async function check(live) {
   try {
     const body = live ? { fuel_cents: Math.round(el("stop-fuel").valueAsNumber * 100), road_cents: Math.round(el("stop-road").valueAsNumber * 100) } : undefined;
     const later = el("keep-fuel").checked;
+    if (live && !later) body.keep_shares = el("keep-shares").checked;
     if (live && later) {
       body.gallons = el("stop-gallons").valueAsNumber;
       body.oil_rise = el("stop-rise").checked;
@@ -120,8 +124,9 @@ async function check(live) {
 }
 function updateMode() {
   const later = el("keep-fuel").checked;
-  el("stop-fuel-label").textContent = later ? "Planned fill now" : "Fuel bill";
+  el("stop-fuel-label").textContent = later ? "Planned fill now" : buffer?.[3] ? "Additional fuel cash needed" : "Fuel bill";
   el("stop-later").hidden = !later;
+  el("keep-shares").disabled = el("keep-shares-label").hidden = later;
   for (const id of ["stop-gallons", "stop-rise", "stop-pump"]) el(id).disabled = !later;
 }
 form.oninput = () => {
@@ -137,8 +142,9 @@ if (location.hash === "#two-stops") {
   el("stop-fuel").value = "15.00";
   el("stop-road").value = "5.00";
 }
-const buffer = /^#fuel-buffer=([1-9][0-9]{0,8})(?:&road=([0-9]{1,9}))?$/.exec(location.hash);
+const buffer = /^#fuel-buffer=([1-9][0-9]{0,8})(?:&road=([0-9]{1,9}))?(&keep-shares)?$/.exec(location.hash);
 if (buffer) {
+  el("keep-shares").checked = Boolean(buffer[3]);
   el("stop-fuel").value = (Number(buffer[1]) / 100).toFixed(2);
   el("stop-road").value = (Number(buffer[2] || 0) / 100).toFixed(2);
 }

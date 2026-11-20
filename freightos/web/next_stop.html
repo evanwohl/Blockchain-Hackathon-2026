@@ -31,6 +31,7 @@
           <label><span id="stop-fuel-label">Fuel bill</span><span class="expense-input"><span aria-hidden="true">$</span><input id="stop-fuel" type="number" inputmode="decimal" min=".01" max="10000000000" step=".01" value="20.00" required></span></label>
           <label>Minimum cash back<span class="expense-input"><span aria-hidden="true">$</span><input id="stop-road" type="number" inputmode="decimal" min="0" max="10000000000" step=".01" value="10.00" required></span></label>
         </div>
+        <label class="stop-choice" id="keep-shares-label"><input type="checkbox" id="keep-shares"> Leave unused shares in my reserve</label>
         <label class="stop-choice"><input type="checkbox" id="keep-fuel"> Keep fuel money for a later stop</label>
         <div id="stop-later" hidden><label>Gallons for later<span class="expense-input"><input id="stop-gallons" type="number" inputmode="numeric" min="1" max="100000" step="1" value="3" disabled required></span></label>
         <details id="stop-pricing"><summary>Adjust the diesel estimate</summary>

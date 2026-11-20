@@ -18,7 +18,7 @@ Allow two minutes. Use one narrator and one person at the keyboard. The other tw
 
 ### Questions worth rehearsing
 
-- **Where is the edge?** The engine checks dated cash flows across six Gemini fuel budgets and compares contract terms against spendable reserve proceeds. A hedge that pays after diesel is due cannot cover today’s gap. The payment approval binds the chosen terms and vendor.
+- **Where is the edge?** The engine checks dated cash flows across six Gemini fuel budgets and compares contract terms against spendable reserve proceeds. In the 24-cent plan, 23 cents buys the contract including fees and one cent stays for diesel. If the payout is late at $93 oil, the reserve preview checks the missing $10.50. The payment approval binds the chosen terms and vendor.
 - **How real is it?** Both parties used sponsored Devnet funds. The settlement is signed. The $4.96 difference is a modeled fee comparison for this load. The next-trip example prices a hypothetical hedge from recorded offers. No Gemini order was placed.
 - **Would borrowing help?** Open `/fuel-credit#reserve-first` only if asked. At a 6.100 SOL pledge limit, the smaller loan fits the recorded 23-day, 40% stress case. The driver uses $19.44 of existing reserves and borrows $170.56. Those two payment legs are separate simulations.
 
