@@ -10,8 +10,8 @@ def test_full_size_plan_and_limited_or_exact_customer_terms():
         return q["mainnet"]["secured_loan"]["combined"]
     m = mix()
     r = m["plan"]
-    assert (r["advance_cents"], r["draw_cents"], r["repay_cents"], r["pledge_lamports"]) == (5369, 3523, 3554, 1018500000)
-    assert (r["invoice_balance_cents"], r["payday_cents"], m["without_loan"]["advance_cents"]) == (14576, 300, 8893)
+    assert (r["advance_cents"], r["draw_cents"], r["repay_cents"], r["pledge_lamports"]) == (5501, 3391, 3421, 1018500000)
+    assert (r["invoice_balance_cents"], r["payday_cents"], m["without_loan"]["advance_cents"]) == (14443, 300, 8893)
     assert sum(r[k] for k in ("cash_cents", "stable_cents", "advance_cents", "draw_cents", "sale_cents")) == 19000
     assert r["advance_cents"] + r["fee_cents"] + r["invoice_balance_cents"] == 20000
     assert mix("both")["plan"]["advance_cents"] == 9900

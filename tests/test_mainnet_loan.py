@@ -11,7 +11,7 @@ def test_minimum_budget_and_minimum_debt_on_the_fuel_stop():
     q = quote(8000)
     assert q["selected"] is q["best_funded"] is None
     minimum = q["minimum"]["opening_cents"]
-    assert minimum == 19293 and quote(minimum - 1)["selected"] is None
+    assert minimum == 20023 and quote(minimum - 1)["selected"] is None
     r = quote(minimum)["selected"]
     assert r == q["minimum"] and r["high_payday_cents"] == 300
     assert r["draw_cents"] == 8884 and r["repay_cents"] == 8962

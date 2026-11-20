@@ -95,3 +95,10 @@
 #mix-sources dd { margin: 0; font-variant-numeric: tabular-nums; }
 #mix-risk { color: var(--muted); font-size: .82rem; }
 .funding-slip button { margin-block: .25rem; }
+
+.pledge-figure { margin: 1rem 0; padding: .8rem; background: #fbfaf5; border: 1px solid var(--line); }
+.pledge-figure figcaption { font-size: .85rem; font-weight: 650; }
+.pledge-limit { margin-top: .75rem; color: #815036; font-size: .78rem; text-align: end; }
+.pledge-figure svg { width: 100%; display: block; fill: #405c44; border-block: 1px solid var(--line); border-top: 1px dashed #956445; }
+.pledge-dates { display: flex; justify-content: space-between; font-size: .78rem; margin-top: .25rem; }
+#mix-path a { display: block; margin-block: .5rem; }

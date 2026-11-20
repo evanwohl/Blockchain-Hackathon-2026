@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from solders.pubkey import Pubkey
 
-from freightos import customer_credit, freight_credit as credit, reserve, reserve_credit
+from freightos import collateral_path, customer_credit, freight_credit as credit, reserve, reserve_credit
 from freightos.fuel_floor import ceil_div
 
 EVIDENCE = Path(__file__).with_name("artifacts") / "mainnet_fuel" / "lending.json"
@@ -61,7 +61,7 @@ def saved():
     return verify(EVIDENCE.read_bytes())
 
 
-def loan_schedule(limit, low, lending):
+def loan_schedule(limit, low, lending, marks=()):
     rate = lending["apr"]
     accrual = (2 * rate * 30 / 365).exp()
     coin = lending["usd_price"] * lending["factor"] / 100
@@ -83,6 +83,9 @@ def loan_schedule(limit, low, lending):
         if draw:
             opening = debt / Decimal(10**6) * coin * 100 / (lending["sol_price"] * lending["initial"])
             stressed = payoff / Decimal(10**6) * coin * 100 / (downside * (lending["liquidation"] - 10))
+            if marks:
+                peak, _ = collateral_path.peak(debt, marks)
+                stressed = max(stressed, peak * coin / (100 * (lending["liquidation"] - 10)))
             pledge = credit.ceiling(max(opening, stressed) * 10_000) * 100_000
         if pledge > lending["deposit_room"]:
             yield None
@@ -90,14 +93,15 @@ def loan_schedule(limit, low, lending):
         yield pledge, ceil_div(payoff, RAW_PER_CENT)
 
 
-def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None):
+def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, lending, history=(), *, offer_terms=None, path=None):
     bill, reference = plan["bill_cents"], plan["reference_cents"]
     low, high = plan["low_price_cents"], plan["high_price_cents"]
     own = min(bill, cash)
     vendor = bill - own
     gap = max(0, vendor - stable)
     rate = lending["apr"]
-    schedule = list(loan_schedule(gap, low, lending))
+    marks = collateral_path.barriers(path, lending["sol_price"], rate * 2) if path else []
+    schedule = list(loan_schedule(gap, low, lending, marks))
     target = plan["floor_cents"]
     baseline = chosen = minimum = best = None
     for draw, terms in enumerate(schedule):
@@ -131,7 +135,15 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
     combined = None
     if offer_terms is not None:
         combined = customer_mix(plan, costs, schedule, stable, cash, wallet_cap, fee, rent, *offer_terms)
-    return dict(combined=combined, history=history_result, selected=chosen, best_funded=best, minimum=minimum, sell_only=baseline, cash_cents=own,
+    if path:
+        for row in (chosen, minimum, combined and combined["plan"]):
+            if not row or not row["draw_cents"]:
+                continue
+            raw = row["draw_cents"] * RAW_PER_CENT
+            debt = raw + ceil_div(raw * lending["origination"], 2**60)
+            row["path_check"] = collateral_path.replay(path, marks, debt, row["pledge_lamports"], lending)
+    coverage = {key: path[key] for key in ("windows", "observations", "omitted", "max_gap_hours")} if path else None
+    return dict(path_coverage=coverage, combined=combined, history=history_result, selected=chosen, best_funded=best, minimum=minimum, sell_only=baseline, cash_cents=own,
                 stable_cents=min(stable, vendor), slot=lending["slot"], apr_bps=credit.ceiling(rate * 10000),
                 stressed_apr_bps=credit.ceiling(2 * rate * 10000), liquidation_pct=lending["liquidation"],
                 low_cents=low, high_cents=high)

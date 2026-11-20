@@ -248,6 +248,33 @@ function showOffer(q) {
   el("offer-bound").hidden = ceiling === null;
 }
 
+function pathVerdict(check, loan) {
+  const cents = (check.peak_ltv_bps / 100).toLocaleString("en-US", {maximumFractionDigits: 2});
+  return "The closest call came " + (check.hours / 24) + " days into the replay starting " + check.start
+    + ". At " + money(check.price_cents) + " per SOL, the debt reached " + cents
+    + "¢ per dollar pledged. Kamino’s forced-sale threshold was " + loan.liquidation_pct + "¢.";
+}
+
+function showPath(check, loan) {
+  el("mix-path").hidden = !check;
+  if (!check) return;
+  el("path-verdict").textContent = pathVerdict(check, loan);
+  el("path-limit").textContent = loan.liquidation_pct + "¢ forced-sale threshold";
+  const group = el("path-dots");
+  group.replaceChildren(...check.samples.map(mark => {
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("cx", 3 + 354 * mark.hours / 720);
+    dot.setAttribute("cy", 85 - 85 * mark.ltv_bps / (loan.liquidation_pct * 100));
+    dot.setAttribute("r", mark.hours === check.hours ? 3.2 : 1.8);
+    return dot;
+  }));
+  const c = loan.path_coverage;
+  el("path-scope").textContent = "Each dot applies a Gemini price move to the starting collateral price. We checked "
+    + c.observations + " distinct settlements across " + c.windows + " overlapping 30-day periods. " + c.omitted
+    + " scheduled observations were excluded. Prices can fall between checks, up to " + c.max_gap_hours + " hours apart in this sample.";
+  el("path-event").href = "https://api.gemini.com/v1/prediction-markets/events/" + encodeURIComponent(check.ticker);
+}
+
 function showMix(q) {
   const options = q.mainnet?.secured_loan?.combined;
   el("mix").hidden = !options;
@@ -259,6 +286,7 @@ function showMix(q) {
   if (!options) return;
   const key = el("mix-priority").value, r = options[key];
   el("mix-figures").hidden = !r;
+  showPath(r?.path_check, q.mainnet.secured_loan);
   el("mix-request").hidden = !r?.advance_cents;
   if (!r) {
     el("mix-preview").textContent = "Outside these terms";
@@ -309,6 +337,8 @@ function showLoan(q) {
     + ". The observed annual borrowing rate was about " + (loan.apr_bps / 100).toFixed(2)
     + "%. We price 30 days at twice that rate and keep stressed debt at least 10 percentage points below the "
     + loan.liquidation_pct + "% liquidation threshold. Orca sale prices come from a separate observation.";
+  const check = (row || minimum)?.path_check;
+  if (check) el("loan-terms").textContent += " " + pathVerdict(check, loan) + " Prices between sampled settlements can be lower.";
   if (!row) {
     el("loan-verdict").textContent = "With " + money(loan.cash_cents) + " of your cash and no early freight pay, "
       + (loan.best_funded ? "fuel clears, but the best tested split leaves " + balance(loan.best_funded.high_payday_cents)

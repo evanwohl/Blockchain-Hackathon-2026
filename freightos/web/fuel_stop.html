@@ -57,6 +57,22 @@
             <div id="mix-figures">
               <dl id="mix-sources"></dl>
               <p id="mix-payday"></p><p id="mix-risk"></p>
+              <details id="mix-path" hidden>
+                <summary>Could the lender sell my SOL before payday?</summary>
+                <p id="path-verdict"></p>
+                <figure class="pledge-figure">
+                  <figcaption>Debt per dollar of collateral</figcaption>
+                  <div class="pledge-limit" id="path-limit"></div>
+                  <svg viewBox="0 0 360 88" role="img" aria-labelledby="path-chart-title">
+                    <title id="path-chart-title">Debt share through the tightest recorded 30-day price path</title>
+                    <g id="path-dots"></g>
+                  </svg>
+                  <div class="pledge-dates"><span>Loan opens</span><span>Day 30</span></div>
+                </figure>
+                <p id="path-scope"></p>
+                <a id="path-event" target="_blank" rel="noopener">Inspect the Gemini settlement ↗</a>
+                <a href="/evidence/gemini-collateral-paths" download="FreightOS-collateral-paths.json">Download the price evidence</a>
+              </details>
               <details><summary>How this estimate was priced</summary><p id="mix-assumptions"></p></details>
             </div>
           </div>

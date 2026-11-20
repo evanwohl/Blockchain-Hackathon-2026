@@ -5,7 +5,7 @@ from functools import cache
 from pathlib import Path
 from typing import NamedTuple
 
-from freightos import atomic_fuel, devnet, freight_credit, fuel_floor, mainnet_loan, mainnet_stop, payday_policy, reserve_credit
+from freightos import atomic_fuel, collateral_path, devnet, freight_credit, fuel_floor, mainnet_loan, mainnet_stop, payday_policy, reserve_credit
 from hedging.quick_pay import integer
 
 
@@ -183,7 +183,10 @@ if __name__ == "__main__":
     parser.add_argument("--gemini-evidence", type=Path, help="Downloaded Gemini settlement history")
     parser.add_argument("--mainnet-evidence", type=Path, help="Downloaded full-size mainnet pool evidence")
     parser.add_argument("--lending-evidence", type=Path, help="Verify the downloaded mainnet lending accounts used by the quote")
+    parser.add_argument("--path-evidence", type=Path, help="Verify the Gemini collateral path observations")
     args = parser.parse_args()
+    if args.path_evidence:
+        collateral_path.verify(args.path_evidence.read_bytes())
     if args.lending_evidence:
         mainnet_loan.verify(args.lending_evidence.read_bytes())
     if args.gemini_evidence:
