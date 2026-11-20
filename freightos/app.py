@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, diesel_model, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, reserve_return, trip_cover
+from freightos import bill, devnet, diesel_model, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -566,6 +566,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/evidence/diesel-model":
             self.reply(200, "application/json", gzip.decompress(diesel_model.AUDIT.read_bytes()), static=True)
+            return
+        if self.path == "/evidence/fill-prices":
+            self.reply(200, "application/json", gzip.decompress(replay_prices.SNAPSHOT.read_bytes()), static=True)
             return
         if self.path == "/evidence/regional-diesel":
             self.reply(200, "application/json", gzip.decompress(regional_diesel.SNAPSHOT.read_bytes()), static=True)
