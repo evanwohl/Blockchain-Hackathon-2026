@@ -36,6 +36,15 @@ function paint() {
     if (wallet) parts.push(money(wallet) + " from the wallet");
     el("desk-split").textContent = parts.length ? "The plan uses " + parts.join(" and ") + "." : "Your separate cash covers the full fuel bill.";
   }
+  const priority = el("mix-priority").value;
+  const suffix = el("payday-allow").checked ? "" : "_without_loan";
+  const options = quote.mainnet.secured_loan.combined;
+  const liquid = options["keep_sol" + suffix], payday = options["most_cash" + suffix];
+  const extra = liquid && payday ? liquid.available_sol_value_cents - payday.available_sol_value_cents : 0;
+  const shortcut = el("desk-liquidity");
+  const missedTarget = priority === "keep_sol" && !liquid && payday;
+  shortcut.hidden = priority === "plan" || (!extra && !missedTarget);
+  shortcut.textContent = priority === "keep_sol" ? "Compare the highest payday balance" : "Compare keeping " + money(extra) + " more in SOL today";
   el("desk-save").hidden = !row || row.payday_cents < current.inputs.target;
 }
 
@@ -44,7 +53,7 @@ function price(delay, focus) {
   clearTimeout(timer); controller?.abort();
   current = null;
   el("plan-heading").textContent = "Your payment plan";
-  el("desk-split").hidden = el("desk-stress-range").hidden = true;
+  el("desk-split").hidden = el("desk-stress-range").hidden = el("desk-liquidity").hidden = true;
   el("mix").hidden = el("desk-retry").hidden = true;
   const exact = el("terms").value === "counter", flexible = el("terms").value === "partial";
   el("fixed-offer").hidden = el("advance").disabled = el("discount").disabled = !exact;
@@ -65,7 +74,7 @@ function price(delay, focus) {
   el("desk-status").textContent = "Pricing the fuel bill…";
   timer = setTimeout(async () => {
     const active = new AbortController(); controller = active;
-    const timeout = setTimeout(() => active.abort(), 20000);
+    const timeout = setTimeout(() => active.abort(), 45000);
     try {
       const quote = await request("/api/fuel-desk", inputs, active.signal);
       if (revision !== id) return;
@@ -106,6 +115,7 @@ function fundingSheet() {
     "Request before the stop: " + money(row.advance_cents), "Customer discount: " + money(row.fee_cents),
     "Early cash remaining after fuel: " + money(row.surplus_cents), "Invoice still owed: " + money(row.invoice_balance_cents),
     "SOL locked until repayment: " + (row.pledge_lamports / 1e9).toFixed(4),
+    "SOL still available after funding: " + (row.available_lamports / 1e9).toFixed(9) + " SOL (worth " + money(row.available_sol_value_cents) + " at the recorded Kamino price)",
     "Estimated Kamino payoff: " + money(row.repay_cents),
     "After restoring balances at " + money(quote.high_price_cents) + "/SOL: " + money(row.payday_cents), "",
     ...(loan.combined.switch_prices && el("mix-priority").value === "most_cash"
@@ -128,6 +138,11 @@ form.onreset = () => {
   setTimeout(() => price(0, false), 0);
 };
 form.onsubmit = event => { event.preventDefault(); price(0, true); };
+el("desk-liquidity").onclick = () => {
+  el("mix-priority").value = el("mix-priority").value === "keep_sol" ? "most_cash" : "keep_sol";
+  paint();
+  el("mix-priority").focus();
+};
 el("desk-retry").onclick = () => price(0, false);
 el("desk-save").onclick = fundingSheet;
 el("mix-request").onclick = () => downloadOffer(selected(), el("trip-ref").value.trim());

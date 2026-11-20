@@ -29,7 +29,7 @@ def test_prices_every_valid_split_against_an_independent_exhaustive_calendar():
     for budget, received, target, price, fee in product((0, 900000, 2300000, 6000000), (19, 29), (0, 3), (7000, 15000), (0, 1900)):
         policy = {"bill_cents": bill, "receipt_cents": received, "high_price_cents": price, "floor_cents": target}
         m = mainnet_loan.customer_mix(policy, costs, schedule, stable, cash, budget, network, rent, "partial", fee, None)
-        candidates, funded = [], []
+        candidates, funded, wallets = [], [], []
         for advance in range(received + 1):
             discount = customer_credit.customer_fee(advance, fee)
             own = min(cash, max(0, bill - advance))
@@ -48,6 +48,11 @@ def test_prices_every_valid_split_against_an_independent_exhaustive_calendar():
                     funded.append((advance, draw, payday))
                     if payday >= target:
                         candidates.append((advance, draw, payday))
+                        wallets.append((opening, -payday, draw, advance))
+        for key, group in (("keep_sol", wallets), ("keep_sol_without_loan", [k for k in wallets if k[2] == 0])):
+            row = m[key]
+            got = (row["opening_lamports"], -row["payday_cents"], row["draw_cents"], row["advance_cents"]) if row else None
+            assert got == min(group, default=None)
         for key, eligible in (("plan", candidates), ("without_loan", [c for c in candidates if c[1] == 0])):
             row = m[key]
             got = (row["advance_cents"], row["draw_cents"], row["payday_cents"]) if row else None
@@ -75,3 +80,24 @@ def test_maximum_payday_cash_compares_identical_customer_terms_and_keeps_below_t
     high_fee = mix(1000, 300)
     assert high_fee["plan"] is None and high_fee["most_cash"]["payday_cents"] == -8
     assert high_fee["most_cash_without_loan"]["payday_cents"] == -494
+
+
+def test_certified_boundaries_match_all_draws_at_rent_discontinuity_and_payday_ties(monkeypatch):
+    bill, base, network, rent = 320, 10**7, 5000, 9_000_000
+    costs = [s * base for s in range(bill + 1)]
+    schedule = [(0, 0), None] + [(d * (base + 1000), d + d // 23) for d in range(2, bill + 1)]
+    def mix(cap, floor):
+        policy = dict(bill_cents=bill, receipt_cents=820, high_price_cents=200, floor_cents=floor)
+        return mainnet_loan.customer_mix(policy, costs, schedule, 0, 0, cap, network, rent, "partial", 1000, None)
+    cases = list(product((base * 20, base * 300, base * 320 + 600000, base * 340), (0, 473, 482, 494, 499)))
+    original = mainnet_loan._boundary_draws
+    used = []
+    def observe(*args):
+        result = original(*args)
+        used.append(len(result))
+        return result
+    monkeypatch.setattr(mainnet_loan, "_boundary_draws", observe)
+    actual = [mix(*case) for case in cases]
+    assert used and max(used) <= 3
+    monkeypatch.setattr(mainnet_loan, "_ordered_draws", lambda *args: None)
+    assert actual == [mix(*case) for case in cases]

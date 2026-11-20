@@ -1,4 +1,5 @@
 """Compare a protected SOL sale with a USDC draw against SOL for the same fuel bill."""
+from bisect import bisect_left
 import hashlib
 import json
 from decimal import Decimal
@@ -137,6 +138,11 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
     combined = None
     if offer_terms is not None:
         combined = customer_mix(plan, costs, schedule, stable, cash, wallet_cap, fee, rent, *offer_terms)
+        for row in combined.values():
+            if row:
+                remaining = wallet_cap - row["opening_lamports"]
+                row["available_lamports"] = remaining
+                row["available_sol_value_cents"] = int(remaining * lending["sol_price"] * 100 / LAMPORTS)
         payday_plan, debt_free = combined["most_cash"], combined["most_cash_without_loan"]
         if payday_plan and debt_free:
             def balances(price):
@@ -159,7 +165,7 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
                                        ahead=sum(v["allowed_cents"] > v["debt_free_cents"] for v in observations),
                                        ties=sum(v["allowed_cents"] == v["debt_free_cents"] for v in observations))
     if path:
-        for row in (chosen, minimum, combined and combined["plan"], combined and combined["most_cash"]):
+        for row in (chosen, minimum, combined and combined["plan"], combined and combined["most_cash"], combined and combined["keep_sol"]):
             if not row or not row["draw_cents"]:
                 continue
             raw = row["draw_cents"] * RAW_PER_CENT
@@ -170,6 +176,35 @@ def compare(plan, costs, stable, cash, wallet_cap, native_available, fee, rent, 
                 stable_cents=min(stable, vendor), slot=lending["slot"], apr_bps=credit.ceiling(rate * 10000),
                 stressed_apr_bps=credit.ceiling(2 * rate * 10000), liquidation_pct=lending["liquidation"],
                 low_cents=low, high_cents=high)
+
+
+def _ordered_draws(valid, pledged, repayments, startup, buyback):
+    positive = np.flatnonzero(valid[1:]) + 1
+    if len(positive) < 2 or len(startup) < 3 or positive[-1] - positive[0] + 1 != len(positive):
+        return None
+    block = slice(positive[0], positive[-1] + 1)
+    if np.diff(pledged[block]).min() <= np.diff(startup[1:]).max():
+        return None
+    if np.diff(repayments[block]).max() > np.diff(buyback[1:]).min():
+        return None
+    return int(positive[0])
+
+
+def _boundary_draws(first, last, gap, cap, allowance, pledged, repayments, startup, buyback):
+    # For positive sales, opening SOL strictly increases and payoff plus buyback never increases.
+    # The zero-sale endpoint drops refundable rent and must be compared separately.
+    candidates = [gap] if gap == last else []
+    span = range(first, min(last, gap - 1) + 1)
+    end = bisect_left(span, True, key=lambda d: pledged[d] + startup[gap - d] > cap)
+    if end:
+        funded = span[:end]
+        def cost(draw):
+            return repayments[draw] + buyback[gap - draw]
+        best = cost(funded[-1])
+        candidates.append(funded[bisect_left(funded, True, key=lambda d: cost(d) <= best)])
+        if best <= allowance:
+            candidates.append(funded[bisect_left(funded, True, key=lambda d: cost(d) <= allowance)])
+    return np.array(sorted(set(candidates)), dtype=np.intp)
 
 
 def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offer_fee, amount):
@@ -190,7 +225,9 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
     with_loan = [c + fee + 2 * LOAN_FEE_ALLOWANCE for c in costs]
     startup = np.array([c + (rent if s else 0) for s, c in enumerate(with_loan)], dtype=np.int64)
     buyback = np.array([ceil_div(c * high, LAMPORTS) for c in with_loan], dtype=np.int64)
+    ordered_from = _ordered_draws(valid, pledged, repayments, startup, buyback)
     chosen = no_debt = most_cash = best_debt_free = None
+    least_opening = least_debt_free = None
     inf = np.iinfo(np.int64).max
 
     def describe(net, draw):
@@ -217,11 +254,15 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
         allowance = proceeds - plan["floor_cents"]
         if gap < len(costs):
             restore = costs[gap] + (fee if vendor else 0)
-            if restore + (rent if gap else 0) <= cap:
+            opening = restore + (rent if gap else 0)
+            if opening <= cap:
                 cost = ceil_div(restore * high, LAMPORTS)
                 key = (cost - proceeds, 0, early)
                 best_debt_free = key if best_debt_free is None else min(best_debt_free, key)
                 if cost <= allowance:
+                    wallet_key = (opening, *key)
+                    if least_debt_free is None or wallet_key < least_debt_free:
+                        least_debt_free = wallet_key
                     if no_debt is None:
                         no_debt = early
                     if chosen is None:
@@ -229,19 +270,38 @@ def customer_mix(plan, costs, schedule, stable, cash, cap, fee, rent, menu, offe
         first, last = max(1, gap - len(costs) + 1), min(gap, last_draw)
         if first > last:
             continue
-        draws = slice(first, last + 1)
-        sales = slice(gap - last, gap - first + 1)
-        funded = valid[draws] & (pledged[draws] + startup[sales][::-1] <= cap)
+        if ordered_from is not None and last - first > 32:
+            draws = _boundary_draws(max(first, ordered_from), last, gap, cap, allowance, pledged, repayments, startup, buyback)
+            sales = gap - draws
+            numbers = draws
+        else:
+            draws = slice(first, last + 1)
+            sales = slice(gap - first, gap - last - 1 if gap > last else None, -1)
+            numbers = range(first, last + 1)
+        opening = pledged[draws] + startup[sales]
+        funded = valid[draws] & (opening <= cap)
         if not funded.any():
             continue
-        cost = np.where(funded, repayments[draws] + buyback[sales][::-1], inf)
+        cost = np.where(funded, repayments[draws] + buyback[sales], inf)
         index = int(cost.argmin())
-        key = (int(cost[index]) - proceeds, first + index, early)
+        key = (int(cost[index]) - proceeds, int(numbers[index]), early)
         most_cash = key if most_cash is None else min(most_cash, key)
-        if chosen is None and cost[index] <= allowance:
-            chosen = (early, first + int((cost <= allowance).argmax()))
+        if cost[index] <= allowance:
+            fits = cost <= allowance
+            if chosen is None:
+                chosen = (early, int(numbers[fits.argmax()]))
+            minimum = int(np.min(opening, where=fits, initial=inf))
+            if least_opening is None or minimum <= least_opening[0]:
+                tied = np.flatnonzero(fits & (opening == minimum))
+                best_index = int(tied[cost[tied].argmin()])
+                wallet_key = (minimum, int(cost[best_index]) - proceeds, int(numbers[best_index]), early)
+                if least_opening is None or wallet_key < least_opening:
+                    least_opening = wallet_key
     best = min((k for k in (most_cash, best_debt_free) if k is not None), default=None)
-    return dict(plan=describe(*chosen) if chosen else None,
+    wallet = min((k for k in (least_opening, least_debt_free) if k is not None), default=None)
+    return dict(keep_sol=describe(wallet[3], wallet[2]) if wallet else None,
+                keep_sol_without_loan=describe(least_debt_free[3], 0) if least_debt_free else None,
+                plan=describe(*chosen) if chosen else None,
                 without_loan=describe(no_debt, 0) if no_debt is not None else None,
                 most_cash=describe(best[2], best[1]) if best else None,
                 most_cash_without_loan=describe(best_debt_free[2], 0) if best_debt_free else None)

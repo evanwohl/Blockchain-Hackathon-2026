@@ -30,7 +30,7 @@ function showPath(check, loan) {
 export function mixKey() {
   const priority = el("mix-priority").value;
   if (el("payday-allow").checked) return priority;
-  return priority === "most_cash" ? "most_cash_without_loan" : "without_loan";
+  return priority === "plan" ? "without_loan" : priority + "_without_loan";
 }
 
 function paydayBalance(cents) {
@@ -83,28 +83,51 @@ export function showMix(q) {
   const options = q.mainnet?.secured_loan?.combined;
   el("mix").hidden = !options;
   if (!options) return;
-  const payday = el("mix-priority").value === "most_cash";
-  el("funding-comparison-label").textContent = payday ? "Lowest cash left across tested prices" : "Customer cash needed before the stop";
-  el("payday-with").textContent = payday ? paydayBalance(options.most_cash?.payday_cents)
-    : options.plan ? money(options.plan.advance_cents) : "Outside limits";
-  el("payday-without").textContent = payday ? paydayBalance(options.most_cash_without_loan?.payday_cents)
-    : options.without_loan ? money(options.without_loan.advance_cents) : "Outside limits";
+  const priority = el("mix-priority").value;
+  const payday = priority === "most_cash", keepSol = priority === "keep_sol";
+  const credit = options[priority], debtFree = options[priority === "plan" ? "without_loan" : priority + "_without_loan"];
+  el("funding-comparison-label").textContent = payday ? "Lowest cash left across tested prices"
+    : keepSol ? "Value of SOL still available after funding" : "Customer cash needed before the stop";
+  function figure(row, bestPayday) {
+    if (payday) return paydayBalance(row?.payday_cents);
+    if (keepSol && !row) return bestPayday ? "Target missed" : "Fuel short";
+    return row ? money(keepSol ? row.available_sol_value_cents : row.advance_cents) : "Outside limits";
+  }
+  el("payday-with").textContent = figure(credit, options.most_cash);
+  el("payday-without").textContent = figure(debtFree, options.most_cash_without_loan);
   const key = mixKey(), r = options[key];
   el("mix-figures").hidden = !r;
   showPath(r?.path_check, q.mainnet.secured_loan);
   showPaydayPrices(options, payday);
   el("mix-request").hidden = !r?.advance_cents || r.payday_cents < q.floor_cents;
   if (!r) {
+    const bestPayday = el("payday-allow").checked ? options.most_cash : options.most_cash_without_loan;
     el("mix-preview").textContent = "Outside these terms";
     el("mix-title").textContent = "This choice falls short";
     el("mix-reason").textContent = payday ? "These sources cannot cover the full fuel bill within your wallet and cash limits."
-      : key === "without_loan" && options.plan
-      ? "With your current limits, covering fuel and keeping " + money(q.floor_cents) + " on payday takes a loan. Switch priorities to see that plan."
+      : keepSol && bestPayday ? "Fuel clears. The best payday outcome with this choice is " + paydayBalance(bestPayday.payday_cents)
+        + ", which misses your target by " + money(q.floor_cents - bestPayday.payday_cents) + "."
+      : !el("payday-allow").checked && credit
+      ? "With your current limits, covering fuel and keeping " + money(q.floor_cents) + " on payday takes a loan. Choose Borrowing allowed to see that plan."
       : "The available early payment, cash and wallet budget cannot cover fuel and keep " + money(q.floor_cents) + " at the highest tested SOL price.";
     return;
   }
   if (payday) {
     showPaydayChoice(q, options, r);
+  } else if (keepSol) {
+    const bestPayday = el("payday-allow").checked ? options.most_cash : options.most_cash_without_loan;
+    const extra = r.available_sol_value_cents - bestPayday.available_sol_value_cents;
+    const tradeoff = bestPayday.payday_cents - r.payday_cents;
+    el("mix-preview").textContent = money(r.available_sol_value_cents) + " in SOL available";
+    const actions = [];
+    if (r.draw_cents) actions.push("borrow " + money(r.draw_cents));
+    if (r.sale_cents) actions.push("sell SOL for " + money(r.sale_cents));
+    const action = actions.join(" and ");
+    el("mix-title").textContent = action ? action[0].toUpperCase() + action.slice(1) + "." : "Cover fuel without a loan or sale.";
+    el("mix-reason").textContent = "You asked for " + money(q.floor_cents) + " on payday. This plan leaves " + money(r.payday_cents)
+      + " at " + money(q.high_price_cents) + " per SOL. " + (extra || tradeoff ? "Compared with maximizing payday cash, this leaves "
+        + money(extra) + " more in SOL available today for " + money(tradeoff) + " less in the lowest payday outcome."
+        : "This also matches the best payday balance under these terms.");
   } else {
     el("mix-preview").textContent = r.advance_cents ? money(r.advance_cents) + " early" : "No early pay needed";
     el("mix-title").textContent = r.advance_cents ? "Ask for " + money(r.advance_cents) + " early." : "Keep your invoice on regular terms.";
@@ -130,6 +153,7 @@ export function showMix(q) {
   el("mix-risk").hidden = !r.draw_cents && !r.advance_cents;
   el("mix-assumptions").textContent = "We use your available cash first. Orca pool prices tell us what a sale would cost. Kamino supplies the borrowing terms. Settled Gemini prediction markets and the extra SOL price set the payday range."
     + (r.draw_cents ? " The 30-day payoff assumes an existing lending account and twice the recorded variable rate. We include borrowing and repayment fee allowances." : "")
+    + (keepSol ? " We keep as much of your SOL budget available as possible after sales, fees, account rent and collateral, while meeting your payday target. Its dollar value uses the recorded Kamino price. It remains SOL." : "")
     + (payday ? " We maximize the smallest payday balance across tested prices. Ties favor less debt, then a smaller advance." : "")
     + " This is a mainnet estimate. Reviewing it moves no funds.";
 }

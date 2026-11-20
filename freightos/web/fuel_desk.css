@@ -77,3 +77,5 @@
 .driver-desk #payday-choices { display: flex; flex-wrap: wrap; min-inline-size: 0; }
 .driver-desk #payday-choices label { flex: 1 1 7.5rem; }
 .driver-desk #payday-prices { overflow-x: auto; }
+
+.driver-desk #desk-liquidity { margin-block-start: .3rem; padding: .4rem 0; border: 0; text-align: start; color: #3b5c3d; text-decoration: underline; text-underline-offset: .22em; }

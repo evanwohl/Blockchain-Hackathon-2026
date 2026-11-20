@@ -5,6 +5,8 @@
 
 **Show when borrowing earns its keep.** Under **Your funding terms**, enter a $745 stop, $3,100 invoice, $250 early for $5, $250 cash, $600 of SOL, and $150 spendable wallet dollars. Open the payday price comparison. The last $95 can come from selling SOL or borrowing against it. Selling leaves 40¢ more at the recorded opening price. Borrowing leaves more from $72.79/SOL and adds $101.69 at $150/SOL if the pledge survives until payday. Point to the $95.83 payoff and the 2.8534 SOL locked. This is a conditional funding decision. The separate Devnet receipt shows execution.
 
+**Show why combining DeFi products matters.** On the default funding desk, choose **Compare keeping $4.18 more in SOL today**. FreightOS borrows $0.91, sells enough SOL for $3.66 and still leaves the requested $3 on payday in the highest tested price scenario. For the $745 stop above, set the payday target to $2,300. The blended plan leaves $53.66 more of the driver's SOL available today and $49.12 less cash on payday than borrowing the full $95. Pure sale misses the payday target by $52.56. These amounts compare modeled plans.
+
 Allow two minutes. Use one narrator and one person at the keyboard. The other two teammates can cover the funding model and settlement questions after the demo.
 
 | Time | Show | Say |

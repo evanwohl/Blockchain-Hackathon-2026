@@ -79,3 +79,21 @@ def test_wallet_limit_uses_the_unrounded_collateral_mark():
         return driver_desk.quote(dict(case, budget=budget))["mainnet"]["secured_loan"]["combined"]["most_cash_without_loan"]
     assert debt_free(262) is None
     assert debt_free(263)["sale_cents"] == 250
+
+
+def test_keep_more_sol_splits_the_sale_and_loan_while_meeting_the_payday_floor():
+    mix = driver_desk.quote(dict(CASE, target=230000))["mainnet"]["secured_loan"]["combined"]
+    row = mix["keep_sol"]
+    assert (row["sale_cents"], row["draw_cents"], row["repay_cents"]) == (4588, 4912, 4955)
+    assert (row["available_sol_value_cents"], row["payday_cents"]) == (44685, 230001)
+    assert row["pledge_lamports"] == 1475400000 and row["path_check"]["peak_ltv_bps"] <= 7000
+    best = mix["most_cash"]
+    assert best["available_sol_value_cents"] == 39319
+    assert row["available_lamports"] - best["available_lamports"] == best["opening_lamports"] - row["opening_lamports"]
+    assert mix["keep_sol_without_loan"] is None and mix["most_cash_without_loan"]["payday_cents"] == 224744
+
+
+@pytest.mark.parametrize(("floor", "expected"), [(224744, (0, 9500)), (224745, (5, 9495)), (234913, (9500, 0)), (234914, None)])
+def test_wallet_frontier_changes_at_exact_payday_floors(floor, expected):
+    row = driver_desk.quote(dict(CASE, target=floor))["mainnet"]["secured_loan"]["combined"]["keep_sol"]
+    assert ((row["draw_cents"], row["sale_cents"]) if row else None) == expected
