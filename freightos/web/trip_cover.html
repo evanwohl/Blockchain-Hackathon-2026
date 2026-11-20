@@ -20,7 +20,12 @@
           <label>Gallons to buy<input id="trip-gallons" type="number" inputmode="numeric" min="1" max="10000" step="1" value="100" required></label>
           <label>Diesel price ($/gal)<input id="trip-pump" type="number" inputmode="decimal" min=".001" max="99.999" step=".001" value="3.999" required></label>
           <label>Fuel budget ($)<input id="trip-budget" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="400.00" required></label>
+          <label>Where will you fill up?<select id="trip-region" aria-describedby="region-help">
+            <option value="">Oil estimate only</option><option value="east">East Coast</option><option value="midwest">Midwest</option>
+            <option value="gulf">Gulf Coast</option><option value="rockies">Rocky Mountain</option><option value="west">West Coast</option>
+          </select></label>
         </div>
+        <p id="region-help">Choose a region to allow for weekly diesel price changes that oil alone can miss.</p>
         <label class="trip-reserve-choice"><input id="use-trip-reserve" type="checkbox"> Include my demo fuel reserve</label>
         <div id="trip-road-fields" hidden>
           <label>Keep for tolls and repairs ($)<input id="trip-road" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="25.00" required disabled></label>
@@ -43,6 +48,10 @@
         </fieldset>
         <dl id="trip-options" class="facts"></dl><p id="reserve-observation" hidden></p>
         <a id="trip-reserve" class="ledger-back">Check the cash buffer on Solana →</a>
+        <details id="regional-evidence" hidden><summary>How much can diesel move on its own?</summary>
+          <p id="regional-test"></p><p id="regional-limit"></p>
+          <a href="/evidence/regional-diesel" download="FreightOS-regional-diesel.json">Download weekly prices and EIA sources</a>
+        </details>
         <details><summary>Which oil contracts were compared?</summary>
           <p id="trip-method"></p><dl id="trip-legs" class="facts"></dl><p id="trip-fees"></p>
           <a href="/evidence/trip-cover" download="FreightOS-recorded-trip-books.json">Download the recorded oil markets</a>

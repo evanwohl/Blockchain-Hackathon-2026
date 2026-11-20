@@ -18,6 +18,7 @@ function generalBudget(d, later) {
   const rows = [["Diesel at the entered price", money(d.pump_bill_cents)], ["Extra cash without a hedge", money(d.cash_only_cents)]];
   if (later && d.offers) rows.push(["With the best single oil contract", money(d.best_single_cents)], ["With the lowest-cost mix", money(plan.cash_cents)]);
   if (!later && hasCover) rows.push(["With contracts bought before the stop", money(beforeCost)]);
+  if (d.regional) rows.splice(1, 0, regionalCost(d.regional));
   facts(el("trip-options"), rows);
   const link = el("trip-reserve");
   link.hidden = !d.cash_only_cents;
@@ -29,14 +30,18 @@ function generalBudget(d, later) {
 function reserveBudget(d, later) {
   const reserve = d.reserve;
   const plan = later ? reserve.plan : null;
+  const split = later ? reserve.split : null;
   const roadShort = Math.max(0, reserve.road_cents - reserve.available_cents);
   const fullBuffer = money(d.cash_only_cents);
-  el("trip-bound").textContent = plan ? "Cost of oil protection on Gemini" : "Additional cash for the cash-only plan";
-  el("trip-cash").textContent = money(plan ? plan.upfront_cents : reserve.before_shortfall_cents);
+  el("trip-bound").textContent = split ? "Extra money needed outside the reserve" : plan ? "Cost of oil protection on Gemini" : "Additional cash for the cash-only plan";
+  el("trip-cash").textContent = money(split ? split.outside_total_cents : plan ? plan.upfront_cents : reserve.before_shortfall_cents);
   let why;
   if (roadShort) why = "The reserve is " + money(roadShort) + " below your road-cash target before buying fuel.";
   else if (plan?.legs.length) why = "Pay this from separate Gemini funds. With payouts spendable by the fill, the reserve can cover the rest through $" + d.ceiling + " oil.";
   else if (plan) why = "The reserve can cover extra fuel and leave your road cash available. Buying protection would add a fee.";
+  else if (split) why = "Keep " + money(reserve.road_cents) + " for the road. You would need "
+    + money(split.upfront_cents) + " in Gemini and another " + money(split.outside_fuel_cents)
+    + " available for fuel. This assumes the payout is ready at the stop.";
   else if (later) why = "The available oil contracts cannot cover the modeled bill within this reserve limit. This is the cash-only backup.";
   else why = "Until payouts are spendable, budget the full " + fullBuffer + " for extra fuel. Keep " + money(reserve.road_cents) + " for the road.";
   el("trip-why").textContent = why;
@@ -44,16 +49,24 @@ function reserveBudget(d, later) {
     ["Reserve available for extra fuel", money(reserve.fuel_cash_cents)]];
   if (plan?.legs.length) rows.push(["Maximum fuel still due after payouts", money(plan.residual_cents)],
     ["Protection plus remaining fuel", money(plan.cash_cents)]);
+  else if (split) rows.push(["Oil contracts including fees", money(split.upfront_cents)],
+    ["Fuel to cover separately after payouts", money(split.outside_fuel_cents)],
+    ["Extra money with cash alone", money(reserve.before_shortfall_cents)]);
   else rows.push(["Extra fuel in the cash-only plan", fullBuffer]);
+  if (d.regional) rows.push(regionalCost(d.regional));
   facts(el("trip-options"), rows);
-  const fuel = plan ? plan.residual_cents : d.cash_only_cents;
+  const fuel = split ? split.reserve_cents : plan ? plan.residual_cents : d.cash_only_cents;
   const link = el("trip-reserve");
   link.hidden = !fuel;
   link.href = "/next-stop#fuel-buffer=" + fuel + "&road=" + reserve.road_cents;
   link.textContent = "Check the " + money(fuel) + " fuel payment and road cash →";
   el("reserve-observation").textContent = (d.source === "live" ? "Public Devnet check" : "Recorded Devnet check")
     + " · slot " + reserve.slot.toLocaleString("en-US") + ". The reserve funds the fuel payment. Buying contracts would require a separate funded Gemini account.";
-  return plan;
+  return split ? d.combined : plan;
+}
+
+function regionalCost(region) {
+  return [region.name + " pump allowance included in estimate", money(region.allowance_cents)];
 }
 
 function render() {
@@ -61,6 +74,17 @@ function render() {
   const later = document.querySelector('input[name="timing"]:checked').value === "after";
   el("reserve-observation").hidden = !d.reserve;
   const plan = d.reserve ? reserveBudget(d, later) : generalBudget(d, later);
+  const region = d.regional;
+  el("regional-evidence").hidden = !region;
+  if (region) {
+    el("regional-test").textContent = "We added " + region.cents_per_gallon + "¢ per gallon for the " + region.name
+      + ". That allowance came from the 90th percentile of weekly diesel changes left unexplained by oil across "
+      + region.training_weeks + " earlier weeks.";
+    el("regional-limit").textContent = "Using the oil move that actually happened, the regional pump price finished above the oil estimate in "
+      + region.oil_only_misses + " of " + region.test_weeks + " later weeks. With the allowance, it exceeded the estimate in "
+      + region.allowance_misses + ". The largest remaining gap was about " + region.worst_miss_cents + "¢ per gallon. "
+      + "The check uses weekly EIA diesel and WTI spot prices through " + region.test_end + ". Your station price and the time until you fill up can differ.";
+  }
   const legs = plan?.legs || [];
   el("trip-method").textContent = "The model starts from your diesel price and Gemini’s $" + Number(d.anchor).toFixed(2)
     + " oil close. It uses the sample trip’s diesel sensitivity and tests closes through $" + d.ceiling
@@ -89,6 +113,7 @@ async function compare(source) {
   try {
     const body = source ? { source, gallons: el("trip-gallons").valueAsNumber, pump_mills: Math.round(el("trip-pump").valueAsNumber * 1000),
       budget_cents: Math.round(el("trip-budget").valueAsNumber * 100) } : undefined;
+    if (body && el("trip-region").value) body.region = el("trip-region").value;
     if (body && includeReserve) body.road_cents = Math.round(el("trip-road").valueAsNumber * 100);
     const data = await request("/api/trip-cover", body, AbortSignal.timeout(45000));
     if (attempt !== revision) return;
@@ -117,8 +142,20 @@ form.oninput = () => {
 form.onsubmit = event => { event.preventDefault(); compare("live"); };
 el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded"); };
 document.querySelector(".trip-timing").onchange = () => { if (current) render(); };
-if (location.hash === "#road-cash") {
-  el("use-trip-reserve").checked = true;
-  el("trip-road").disabled = el("trip-road-fields").hidden = false;
-  compare("recorded");
-} else compare();
+function openExample() {
+  form.reset();
+  const example = new URLSearchParams(location.hash.slice(1));
+  const region = example.get("region");
+  const includeReserve = example.has("road-cash");
+  if ([...el("trip-region").options].some(option => option.value === region)) el("trip-region").value = region;
+  el("use-trip-reserve").checked = includeReserve;
+  el("trip-road").disabled = el("trip-road-fields").hidden = !includeReserve;
+  document.querySelector('input[name="timing"][value="before"]').checked = true;
+  current = null;
+  result.hidden = el("trip-recorded").hidden = true;
+  el("trip-pending").hidden = true;
+  el("trip-status").textContent = "Opening the sample trip…";
+  compare(el("trip-region").value || includeReserve ? "recorded" : undefined);
+}
+window.addEventListener("hashchange", openExample);
+openExample();

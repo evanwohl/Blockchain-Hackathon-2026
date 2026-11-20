@@ -77,3 +77,38 @@ def test_separate_market_cash_and_road_cash_reconcile_to_the_recorded_reserve():
 def test_road_cash_alone_can_exhaust_the_reserve():
     result = tc.analyze(tc.recorded(), tc.EXAMPLE, reserve={"available_cents": 3002, "road_cents": 3100, "slot": 1})
     assert result["reserve"]["plan"] is None and result["reserve"]["before_shortfall_cents"] == 2430
+
+
+def test_regional_price_gap_changes_the_portfolio_and_reserve_decision():
+    reserve = {"available_cents": 3002, "road_cents": 2500}
+    plan = tc.analyze(tc.recorded(), {**tc.EXAMPLE, "region": "midwest"}, reserve=reserve)
+    regional = plan["regional"]
+    assert (regional["training_weeks"], regional["test_weeks"]) == (97, 78)
+    assert (regional["allowance_cents"], regional["oil_only_misses"], regional["allowance_misses"]) == (1100, 37, 16)
+    assert plan["pump_bill_cents"] == 39990 and plan["cash_only_cents"] == 3432
+    assert plan["reserve"]["before_shortfall_cents"] == 2930
+    assert plan["reserve"]["plan"] is None
+    split = plan["reserve"]["split"]
+    assert split["outside_total_cents"] == 1003 < plan["reserve"]["before_shortfall_cents"]
+    assert split["reserve_cents"] + split["outside_fuel_cents"] == plan["combined"]["residual_cents"]
+    assert split["outside_total_cents"] + split["reserve_cents"] == plan["combined"]["cash_cents"]
+    assert 469 < plan["combined"]["cash_cents"] < plan["best_single_cents"] <= 3432
+
+
+@pytest.mark.parametrize("region", ["", "unknown", [], None])
+def test_unknown_diesel_region_is_rejected(region):
+    with pytest.raises(ValueError):
+        tc.validate({**tc.EXAMPLE, "region": region})
+
+
+def test_diesel_allowance_uses_only_prior_complete_weeks():
+    from fractions import Fraction
+    from freightos.regional_diesel import measure
+
+    points = [("2024-12-09", 3000), ("2024-12-16", 3021), ("2024-12-30", 9000),
+              ("2025-01-06", 4000), ("2025-01-13", 4700)]
+    rows = [{"date": day, "diesel_mills": {"east": price}, "oil_cents": 7000} for day, price in points]
+    stats = measure(rows, "east", Fraction(1))
+    assert (stats["training_weeks"], stats["test_weeks"]) == (1, 1)
+    assert stats["cents_per_gallon"] == 3
+    assert stats["allowance_misses"] == 1 and stats["worst_miss_cents"] == 67
