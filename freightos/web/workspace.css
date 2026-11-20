@@ -123,10 +123,23 @@
   #load-map { --columns: 8; }
 }
 
+#credit-jump { padding: .65rem 0; background: transparent; border: 0; text-align: start; text-decoration: underline; }
+@media (min-width: 761px) { #credit-jump { display: none; } }
 #credit-check { width: 100%; background: var(--citron); color: var(--ink); }
 #credit-status, .public-cover .credit-scope { margin-top: .8rem; font-size: .86rem; }
 #credit-result .spending-result { margin-block: 1.2rem; }
-#credit-result details p { margin-block: .7rem; }
+.fuel-source-strip { display: flex; height: .45rem; margin-top: .8rem; background: repeating-linear-gradient(115deg,#aa9ab6 0 2px,#ddd3e3 2px 5px); }
+.fuel-source-strip i { background: #798b49; border-inline-end: 2px solid #fff; }
+#credit-form > .trip-fields label { grid-column: 1 / -1; }
+.fuel-credit .facts dd { flex-shrink: 0; max-width: 50%; overflow-wrap: normal; }
+.fuel-credit .public-slip .facts > div { align-items: baseline; }
+#credit-terms { border-block: 1px solid var(--paper-hairline); }
+#credit-terms summary { cursor: pointer; padding-block: .75rem; }
+#credit-terms[open] { padding-bottom: .85rem; }
+#credit-terms .trip-fields { margin-block: .25rem 1rem; }
+#split-limit .trip-fields { grid-template-columns: 1fr; margin-block: .5rem; }
+#split-limit input { max-width: 12rem; }
+#split-result details p, #credit-result details p { margin-block: .7rem; }
 .protection-choice { margin: 1rem 0; padding: 1rem 0; border-block: 1px solid var(--paper-hairline); }
 .protection-choice h3 { margin: 0; font: 600 1.5rem/1.15 var(--display); }
 .protection-choice > dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); margin: .9rem 0; }

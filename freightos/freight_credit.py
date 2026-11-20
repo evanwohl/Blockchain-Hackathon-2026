@@ -105,8 +105,8 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor
         raise ValueError("Kamino declined this collateralized payment")
     collateral = run["collateral"]
     tx = transaction(collateral, run["block"], advance, destination=destination)
-    if destination == "wallet" and base64.b64decode(run["wire"], validate=True) != bytes(tx):
-        raise ValueError("Wallet draw differs from the simulated transaction")
+    if (destination == "wallet" or "wire" in run) and base64.b64decode(run["wire"], validate=True) != bytes(tx):
+        raise ValueError("Loan draw differs from the simulated transaction")
     keys = list(tx.message.account_keys)
     proof = json.loads(devnet.SAMPLE.read_text())
     vendor = Pubkey.from_string(proof["decision"]["vendor"])
@@ -126,11 +126,11 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor
             or debt[128:160] != bytes(devnet.MINT) or backing[128:160] != bytes(SOL)
             or value["preBalances"][keys.index(Pubkey.from_string(route()["obligation"]))] != 0):
         raise ValueError("Loan market, obligation, or assets differ from the sample")
-    if destination == "wallet":
+    if destination == "wallet" or "wire" in run:
         authority, _ = Pubkey.find_program_address([b"lma", market], KLEND)
         supplied = -change(Pubkey.from_bytes(debt[160:192]), authority)
         fee_gain = change(Pubkey.from_bytes(debt[192:224]), authority)
-        if vendor in keys or fee_gain < 0 or supplied != retained + fee_gain:
+        if (destination == "wallet" and vendor in keys) or fee_gain < 0 or supplied != advance + fee_gain:
             raise ValueError("Lending reserve and wallet proceeds do not reconcile")
     price = Decimal(uint(backing, 248)) / UNIT
     stable_price = Decimal(uint(debt, 248)) / UNIT
@@ -160,6 +160,7 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor
             "current_ltv_bps": ceiling(10000 * principal / 10**6 * stable_price * factor / pledged),
             "stress_ltv_bps": ceiling(10000 * adjusted_debt / stressed), "liquidation_pct": liquidation,
             "remaining_liquidity_raw": uint(debt, 224, 8),
+            "initial_debt_raw": str(principal), "annual_rate": str(apr),
             "repayment_factor": str(repayment / advance), "rate_bps": ceiling(apr * 10000), "repay_cents": ceiling(repayment / scale), "cost_cents": cost,
             "advance_cents": advance // scale, **({"fee_headroom_cents": 1000 - cost} if advance == ADVANCE else {}),
             "liquidation_price_cents": ceiling(100 * adjusted_debt * price / (pledged * liquidation / 100)),
@@ -177,16 +178,19 @@ def simulate(collateral, rpc, min_slot=0, advance=ADVANCE, *, destination="vendo
     return {"response": response, "collateral": collateral, "block": block, "wire": wire, "checked_at": datetime.now(timezone.utc).isoformat()}
 
 
-def capture(drop, days, rpc=devnet.request):
+def capture(drop, days, rpc=devnet.request, *, advance=ADVANCE, min_slot=0, step=STEP):
     terms(drop, days)
     if rpc("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("This sample requires public Solana Devnet")
-    observation = simulate(SEED_COLLATERAL, rpc)
+    observation = simulate(SEED_COLLATERAL, rpc, min_slot, advance)
     for _ in range(3):
-        quote = evaluate(observation, drop, days)
+        quote = evaluate(observation, drop, days, advance, step=step)
+        if quote["slot"] < min_slot:
+            raise ValueError("Loan observation predates the reserve check")
         if quote["minimum_lamports"] == quote["collateral_lamports"]:
             return observation
-        observation = simulate(quote["minimum_lamports"], rpc, quote["slot"])
+        min_slot = quote["slot"]
+        observation = simulate(quote["minimum_lamports"], rpc, min_slot, advance)
     raise ValueError("Collateral price moved during the simulation")
 
 

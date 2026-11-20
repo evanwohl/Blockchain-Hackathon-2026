@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, credit_exit, devnet, diesel_model, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_return, trip_cover
+from freightos import bill, credit_exit, devnet, diesel_model, forward, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, replay_prices, reserve_credit, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -626,6 +626,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/credit-exits":
             self.reply(200, "application/json", gzip.decompress(credit_exit.SNAPSHOT.read_bytes()), static=True)
             return
+        if self.path == "/evidence/reserve-credit":
+            self.reply(200, "application/json", gzip.decompress(reserve_credit.SNAPSHOT.read_bytes()), static=True)
+            return
         if self.path == "/evidence/fuel-credit":
             self.reply(200, "application/json", gzip.decompress((freight_credit.DATA / "credit_examples.json.gz").read_bytes()), static=True)
             return
@@ -814,14 +817,18 @@ class Handler(BaseHTTPRequestHandler):
                     if source == "live":
                         self.server.trip_credit_lock.release()
                 return
-            if self.path == "/api/fuel-credit":
+            if self.path in ("/api/fuel-credit", "/api/reserve-credit"):
                 drop, days, source = data.get("drop"), data.get("days"), data.get("source")
                 freight_credit.terms(drop, days)
                 if source not in ("live", "recorded"):
                     raise ValueError("Choose a supported credit preview")
                 try:
-                    run = self.server.credit_checks[drop, days].read() if source == "live" else freight_credit.saved(drop, days)
-                    self.respond(200, {**freight_credit.evaluate(run, drop, days), "source": source})
+                    if self.path == "/api/reserve-credit":
+                        quote = self.server.reserve_credit_checks[drop, days].read() if source == "live" else reserve_credit.saved(drop, days)
+                    else:
+                        run = self.server.credit_checks[drop, days].read() if source == "live" else freight_credit.saved(drop, days)
+                        quote = freight_credit.evaluate(run, drop, days)
+                    self.respond(200, {**quote, "source": source})
                 except (OSError, ValueError, KeyError, IndexError, TypeError, ArithmeticError, RuntimeError):
                     self.respond(503, {"error": "The public network could not confirm the loan and fuel payment."})
                 return
@@ -936,6 +943,8 @@ def main():
     server.trip_credit_lock = Lock()
     server.credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: freight_credit.capture(d, t))
                             for drop in (20, 40, 60) for days in (23, 30)}
+    server.reserve_credit_checks = {(drop, days): PublicCheck(lambda d=drop, t=days: reserve_credit.live(d, t))
+                                  for drop, days in server.credit_checks}
     server.forward_check = PublicCheck(forward.ResultCheck().read)
     server.trip_books = PublicCheck(trip_cover.capture)
     server.fuel_cover = PublicCheck(fuel_cover.live)
