@@ -3,11 +3,12 @@ import {el, facts, money, request} from "./common.js";
 const minSol = raw => (Math.floor(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const maxSol = raw => (Math.ceil(raw / 1000) / 1e6).toFixed(6) + " SOL";
 const initialView = new URLSearchParams(location.search).get("view");
-let jumpToPayoff = ["payoff", "cash-budget", "midtrip", "downside"].includes(initialView);
-const openMidtrip = ["midtrip", "downside"].includes(initialView);
-if (initialView === "downside") el("midtrip-drop").value = "3000";
+let jumpToPayoff = ["payoff", "cash-budget", "midtrip", "downside", "pledge"].includes(initialView);
+const openMidtrip = ["midtrip", "downside", "pledge"].includes(initialView);
+if (initialView === "pledge") el("midtrip-topup").value = "250000000";
+if (["downside", "pledge"].includes(initialView)) el("midtrip-drop").value = "3000";
 if (openMidtrip) el("midtrip").open = true;
-if (["midtrip", "downside", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
+if (["midtrip", "downside", "pledge", "cash-budget"].includes(initialView)) el("exit-keep").value = "cash";
 
 let focusMidtrip = openMidtrip;
 let budgetResult, pending, budgetRevision = 0;
@@ -30,7 +31,7 @@ function budgetQuote(row) {
 const checkpoint = el("midtrip-price");
 const percent = bps => (bps / 100).toFixed(2) + "%";
 
-function showEarlyPayment(q) {
+function showEarlyPayment(q, row, inputs) {
   const amounts = el("midtrip-amounts"), verdict = el("midtrip-verdict"), risk = el("midtrip-risk");
   el("midtrip-intro").textContent = cashInput.validity.valid
     ? "If your " + money(budgetCents()) + " is available halfway through the trip, see how much to put toward the fuel loan."
@@ -67,7 +68,8 @@ function showEarlyPayment(q) {
       ? " With all eligible cash paid early, " + money(q.cash_floor_cents) + " is the lowest whole-cent SOL price the pledge can sustain through payday at the modeled rate."
       : " The available cash can repay the entire modeled loan early.";
   }
-  setDownsideProof(q);
+  setDownsideProof(q, row, inputs);
+  el("pledge-compare").hidden = el("pledge-tradeoff").hidden = true;
   amounts.hidden = !q?.eligible;
   risk.textContent = "";
   if (!q) {
@@ -86,11 +88,45 @@ function showEarlyPayment(q) {
   risk.textContent = "Without an early payment, debt reaches " + percent(q.wait_peak_bps) + " of the pledge’s value across the "
     + q.windows + " historical paths" + (q.downside ? " and your extra fall" : "") + ". With " + money(q.payment_cents) + " paid, the peak is " + percent(q.paid_peak_bps)
     + ". At " + percent(q.limit_bps) + ", Kamino can sell pledged SOL.";
+  if (q.topup?.eligible) showPledge(q);
+  else if (q.topup) {
+    verdict.textContent = "The recorded collateral shares place the loan at the liquidation limit. Check the open loan before adding SOL.";
+    amounts.hidden = true;
+  }
 }
 
-function showBudget(row, low) {
+const pledgedSol = raw => (raw / 1e9).toLocaleString("en-US", {maximumFractionDigits: 4}) + " SOL";
+
+function showPledge(q) {
+  const t = q.topup, table = el("pledge-compare");
+  table.hidden = el("pledge-tradeoff").hidden = false;
+  el("midtrip-amounts").hidden = el("downside-cost").hidden = true;
+  const values = [[money(q.payment_cents), money(t.payment_cents)], [money(q.unused_cents), money(t.unused_cents)],
+    ["0 SOL", pledgedSol(t.deposit_limit_lamports)], [money(q.payday_cents), money(t.payday_cents)]];
+  Array.from(table.tBodies[0].rows).forEach((row, i) => {
+    row.cells[1].textContent = values[i][0];
+    row.cells[2].textContent = values[i][1];
+  });
+  el("midtrip-verdict").textContent = t.short_cents ? "Even with extra SOL, the tested cushion needs " + money(t.short_cents) + " more cash."
+    : t.deposit_limit_lamports ? "Keep " + money(t.unused_cents) + " for the road. Pledge up to " + pledgedSol(t.deposit_limit_lamports)
+      + (t.payment_cents ? " and pay " + money(t.payment_cents) + " on day 15." : " with no early cash payment.")
+     : t.max_lots ? "No extra SOL needs to be pledged for this plan." : "No spare SOL is available under these limits.";
+  el("pledge-tradeoff").textContent = (t.deposit_limit_lamports ? "The added SOL is worth about "
+    + money(Math.round(t.deposit_limit_lamports * q.price_cents / 1e9)) + " at the assumed price. It stays locked and can be liquidated. " : "")
+    + (t.max_lots * t.lot_lamports < t.cap_lamports ? "The funding wallet and reserve terms limit how much more SOL can be used. " : "")
+    + "Network fees are separate.";
+  el("midtrip-risk").textContent = "On the same tested prices, debt peaks at " + percent(q.paid_peak_bps) + " of the pledge with cash alone and "
+    + percent(t.peak_bps) + " with the spare SOL option. The liquidation limit is " + percent(q.limit_bps) + ".";
+  el("midtrip-trigger").textContent = "For the cash-only alternative: " + el("midtrip-trigger").textContent;
+  const trials = t.later_trials;
+  el("midtrip-audit").textContent = "With the spare SOL option, earlier-only sizing missed the cushion in "
+    + trials.filter(r => r.missed).length + " of " + trials.length + " later cases. Cash alone missed it in "
+    + q.later_trials.filter(r => r.missed).length + ". Each replay fixes the earlier cash payment and pledge before seeing the later prices. The histories can overlap.";
+}
+
+function showBudget(row, low, inputs) {
   const o = budgetQuote(row);
-  showEarlyPayment(o?.midtrip);
+  showEarlyPayment(o?.midtrip, row, inputs);
   el("exit-amounts").hidden = el("exit-how").hidden = el("exit-price").hidden = !o;
   el("cash-exit-quarter").hidden = !o || o.three_quarter_cash_cents <= o.budget_cents;
   el("exit-retained").hidden = !o;
@@ -143,7 +179,7 @@ export function showExit(rows, low, inputs) {
     el("cash-exit-check").disabled = el("midtrip-check").disabled = !!pending;
     selectProof(custom());
     if (custom()) {
-      showBudget(row, low);
+      showBudget(row, low, inputs);
       return;
     }
     el("exit-amounts").hidden = el("exit-how").hidden = false;
@@ -165,6 +201,7 @@ export function showExit(rows, low, inputs) {
     const params = {...inputs, payoff_cash: cents};
     if (checkpoint.validity.valid) {
       params.midtrip_price = Math.round(checkpoint.valueAsNumber * 100);
+      params.midtrip_topup_lamports = Number(el("midtrip-topup").value);
       params.midtrip_drop_bps = Number(el("midtrip-drop").value);
     }
     clearExit();
@@ -211,7 +248,7 @@ export function showExit(rows, low, inputs) {
     update();
   };
   checkpoint.onkeydown = cashInput.onkeydown = event => { if (event.key === "Enter") { event.preventDefault(); checkBudget(); } };
-  el("midtrip-drop").onchange = checkBudget;
+  el("midtrip-topup").onchange = el("midtrip-drop").onchange = checkBudget;
   el("midtrip-check").onclick = el("cash-exit-check").onclick = checkBudget;
   stage.onchange = update;
   el("exit-keep").onchange = () => {
@@ -296,11 +333,15 @@ function earlyPaymentLine(q) {
     + " with zero payment or " + money(q.budget_price_cents) + " with this budget, assuming an intact pledge.";
   const downside = q.downside ? " Additional " + percent(q.downside.drop_bps) + " fall to " + money(q.downside.floor_cents) + "/SOL." : "";
   if (!q.eligible) return begin + downside + "Loan may already be eligible for liquidation." + thresholds;
+  const t = q.topup;
+  const spare = t?.eligible ? " Spare SOL alternative: pledge up to " + t.deposit_limit_lamports + " lamports and pay "
+    + money(t.payment_cents) + " on day 15. Cash left: " + money(t.unused_cents) + ". Due day 30: " + money(t.payday_cents)
+    + ". Missing cash for the tested cushion: " + money(t.short_cents) + ". Network fees are separate." : "";
   return begin + "Pay " + money(q.payment_cents) + " early, keep " + money(q.unused_cents) + " cash, still owe "
     + money(q.payday_cents) + " on day 30. Additional cash needed for the tested cushion: " + money(q.short_cents)
     + ". Worst modeled debt as a share of collateral: " + percent(q.paid_peak_bps) + " across " + q.windows + " Gemini paths" + (q.downside ? " plus driver stress." : ".") + downside + thresholds
     + (q.downside ? " History alone requires " + money(q.downside.history_needed_cents) + " early. Minimum price through payday with available cash: " + money(q.cash_floor_cents) + "/SOL." : "")
-    + " Earlier-only sizing missed the cushion in " + q.later_trials.filter(t => t.missed).length + " of " + q.later_trials.length + " eligible later cases.";
+    + " Earlier-only sizing missed the cushion in " + q.later_trials.filter(t => t.missed).length + " of " + q.later_trials.length + " eligible later cases." + spare;
 }
 
 function partialSummary(q, live) {
@@ -330,10 +371,13 @@ el("midtrip-live").onclick = () => showPartialReceipt(true);
 
 let downsideProof, proofKey = "", lastDownside = "";
 
-function setDownsideProof(q) {
-  const d = q?.downside;
+function setDownsideProof(q, row, inputs) {
+  const t = q?.topup, d = t?.preview ? t : q?.downside;
   const panel = el("downside-proof");
-  const requestData = d?.preview_raw ? {price_cents: q.price_cents, budget_cents: budgetCents(), drop_bps: d.drop_bps, payment_cents: q.payment_cents} : null;
+  const requestData = t?.preview ? {plan: {...inputs, payoff_cash: budgetCents(), midtrip_price: q.price_cents,
+    midtrip_drop_bps: q.downside?.drop_bps || 0, midtrip_topup_lamports: t.cap_lamports},
+    opening_lamports: row.opening_lamports, added_lamports: t.preview.added_lamports, payment_cents: t.payment_cents}
+    : d?.preview_raw ? {price_cents: q.price_cents, budget_cents: budgetCents(), drop_bps: d.drop_bps, payment_cents: q.payment_cents} : null;
   const key = JSON.stringify(requestData);
   el("midtrip-proof").hidden = !!requestData;
   panel.hidden = !requestData;
@@ -344,7 +388,7 @@ function setDownsideProof(q) {
   el("downside-live").disabled = false;
   el("downside-receipt").textContent = "";
   if (!requestData) return;
-  el("downside-proof-title").textContent = "Verify the " + money(q.payment_cents) + " early payment";
+  el("downside-proof-title").textContent = t?.preview ? "Verify the extra pledge on Devnet" : "Verify the " + money(q.payment_cents) + " early payment";
   const link = el("downside-evidence");
   link.hidden = !d.evidence;
   if (link.hidden) {
@@ -364,8 +408,11 @@ async function checkDownside(live) {
   try {
     const p = await request("/api/midtrip-payment/preview", {...current, source: live ? "live" : "recorded"});
     if (current !== downsideProof) return;
-    if (p.payment_raw !== current.payment_cents * 100) throw new Error("Payment differs from quote");
-    lastDownside = partialSummary(p, live);
+    if (p.payment_raw !== current.payment_cents * 100 || (p.added_lamports || 0) !== (current.added_lamports || 0)) throw new Error("Payment differs from quote");
+    lastDownside = p.added_lamports ? (live ? "Public" : "Saved") + " Devnet simulation at slot " + p.slot
+      + ". The borrower added " + (p.added_lamports / 1e9) + " test SOL and paid " + (p.payment_raw / 1e6).toFixed(4)
+      + " test USDC. Kamino records " + (p.pledge_lamports / 1e9) + " test SOL pledged and " + (p.remaining_raw / 1e6).toFixed(4)
+      + " test USDC owed. The vendor received " + (p.vendor_raw / 1e6).toFixed(4) + ". No transaction was submitted." : partialSummary(p, live);
     status.textContent = lastDownside;
   } catch {
     if (current === downsideProof) status.textContent = "Check unavailable. " + (lastDownside || "The modeled plan is still available.");

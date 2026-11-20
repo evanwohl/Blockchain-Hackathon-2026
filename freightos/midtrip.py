@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from fractions import Fraction
 from math import ceil, floor
 
-from freightos import collateral_path, mainnet_loan
+from freightos import collateral_path, mainnet_loan, pledge_topup
 
 CENT = mainnet_loan.RAW_PER_CENT
 MIDPOINT = 30
@@ -47,7 +47,7 @@ def prior_windows(path, price, annual_rate):
     return folds
 
 
-def quote(row, budget, marks, windows, terms, folds=(), drop_bps=0):
+def quote(row, budget, marks, windows, terms, folds=(), drop_bps=0, *, topup_limit=0, wallet_spare=0):
     pledge = row["pledge_lamports"]
     principal = row["draw_cents"] * CENT
     opening = principal + ceil(Fraction(principal * terms["origination"], 2**60))
@@ -92,14 +92,14 @@ def quote(row, budget, marks, windows, terms, folds=(), drop_bps=0):
         return base
 
     # Invert the rounded debt limit at every checkpoint, then keep the binding limit.
-    def payment_for(scenario):
-        limit, index = min((floor(floor(target * price / conversion) / growth), i)
+    def payment_for(scenario, backing=pledge):
+        limit, index = min((floor(floor(target * price * backing / (conversion * pledge)) / growth), i)
                            for i, (_, price, _, growth, _) in enumerate(scenario))
         required = max(0, ceil(Fraction(debt - limit, CENT)))
         return (full_payoff if required > partial_limit else required), index
 
-    def peak(raw, scenario):
-        return max(ceil(raw * growth) * conversion / price for _, price, _, growth, _ in scenario)
+    def peak(raw, scenario, backing=pledge):
+        return max(ceil(raw * growth) * conversion * pledge / (price * backing) for _, price, _, growth, _ in scenario)
 
     needed, binding = payment_for(marks)
     paid = min(needed, spendable)
@@ -126,6 +126,27 @@ def quote(row, budget, marks, windows, terms, folds=(), drop_bps=0):
         base["downside"].update(history_needed_cents=history_need, history_payment_cents=min(history_need, spendable))
     remaining = max(0, debt - spendable * CENT)
     base["cash_floor_cents"] = ceil(ceil(remaining * maturity_growth) * conversion / target)
+    if topup_limit:
+        minimum_opening = floor(debt * conversion * pledge / (threshold * current_price)) + 1
+        def allocate(scenario):
+            return pledge_topup.allocate(pledge, topup_limit, wallet_spare, terms, minimum_opening, spendable,
+                                         lambda backing: payment_for(scenario, backing)[0])
+        topup = allocate(marks)
+        base["topup"] = topup
+        if topup["eligible"]:
+            cash = topup["payment_cents"]
+            residual = max(0, debt - cash * CENT)
+            topup.update(unused_cents=budget-cash, short_cents=max(0, topup["needed_cents"]-budget),
+                         cash_kept_cents=paid-cash, peak_bps=ceil(peak(residual, marks, topup["represented_lamports"])),
+                         payday_cents=ceil(Fraction(ceil(residual * maturity_growth), CENT)))
+            later_trials = []
+            for test_start, _, _, training, later in folds:
+                early = allocate([*training, *extra])
+                early_cash = early["payment_cents"]
+                later_peak = peak(max(0, debt-early_cash*CENT), later, early["represented_lamports"])
+                later_trials.append(dict(start=test_start, payment_cents=early_cash, deposit_lamports=early["deposit_lamports"],
+                                         missed=later_peak > target, reached_liquidation=later_peak >= threshold))
+            topup["later_trials"] = later_trials
     return {**base, "needed_cents": needed, "payment_cents": paid, "unused_cents": budget-paid,
             "short_cents": max(0, needed-budget), "payday_cents": ceil(Fraction(ceil(left * marks[-1][3]), CENT)),
             "wait_peak_bps": ceil(peak(debt, marks)), "paid_peak_bps": ceil(peak(left, marks)), "later_trials": trials, "binding_hours": step*12,

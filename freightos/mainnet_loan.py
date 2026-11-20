@@ -49,7 +49,11 @@ def verify(raw):
     room = min(uint(usd, 224, 8), uint(usd, 5024, 8) - borrowed,
                uint(usd, 5504, 8) - uint(usd, 6704, 8), daily_cap - max(0, drawn_today))
     sol_supply_upper = uint(sol, 224, 8) + credit.ceiling(Decimal(uint(sol, 232)) / credit.UNIT)
-    return dict(slot=data["accounts"]["context"]["slot"], collateral_farm=str(Pubkey.from_bytes(sol[64:96])),
+    collateral_shares = uint(sol, 2592, 8)
+    collateral_supply_sf = (uint(sol, 224, 8) << 60) + uint(sol, 232) - sum(uint(sol, offset) for offset in (344, 360, 376))
+    if min(collateral_supply_sf, collateral_shares) <= 0:
+        raise ValueError("The recorded collateral exchange rate is unavailable")
+    return dict(collateral_supply_sf=collateral_supply_sf, collateral_shares=collateral_shares, slot=data["accounts"]["context"]["slot"], collateral_farm=str(Pubkey.from_bytes(sol[64:96])),
                 debt_farm=str(Pubkey.from_bytes(usd[96:128])), apr=credit.configured_rate(usd),
                 min_value=Decimal(uint(market, 3224)) / credit.UNIT, max_value=uint(market, 152, 8),
                 sol_price=Decimal(uint(sol, 248)) / credit.UNIT, usd_price=Decimal(uint(usd, 248)) / credit.UNIT,

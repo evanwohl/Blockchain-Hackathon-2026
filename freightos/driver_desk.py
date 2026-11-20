@@ -1,4 +1,6 @@
 """Price a driver's own single-stop bill using the recorded mainnet funding sources."""
+from copy import deepcopy
+from functools import lru_cache
 from decimal import ROUND_HALF_UP
 from fractions import Fraction
 
@@ -46,15 +48,18 @@ def quote(data):
         if budget is None or not midprice:
             raise ValueError("Enter a cash budget and a positive day-15 SOL price")
     drop = integer(data.get("midtrip_drop_bps", 0), "additional price fall", 9999)
-    if drop and midprice is None:
+    topup = integer(data.get("midtrip_topup_lamports", 0), "spare SOL limit", 1_000_000_000)
+    if (drop or topup) and midprice is None:
         raise ValueError("Enter a day-15 SOL price to check a further fall")
     try:
-        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance, budget, midprice, drop)
+        return _price(bill, invoice, values, stress, (menu, fee, amount), state, stops, booked, balance, budget, midprice, drop, topup)
     except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError) as exc:
         raise RuntimeError("Recorded funding terms could not be verified") from exc
 
 
-def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, budget, midprice, drop):
+@lru_cache(maxsize=16)
+def _opening(bill, invoice, funding, stress, offer, state, stops, booked, balance):
+    values = dict(funding)
     lending = mainnet_loan.saved()
     reference = int((lending["sol_price"] * 100).to_integral_value(rounding=ROUND_HALF_UP))
     cases, _ = payday_policy.price_cases(reference, stress)
@@ -105,24 +110,62 @@ def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, 
         fee_sf = lending["flash_fee_sf"]
         limit = 0 if fee_sf == collateral_exit.FLASH_DISABLED else collateral_exit.sale_cents(max_debt, fee_sf)
         exit_costs = costs if len(costs) > limit else mainnet_stop.split_costs(pools, limit)[0]
-        if midprice is not None:
-            marks, windows = midtrip.checkpoints(path, midprice, lending["apr"] * 2)
-            folds = midtrip.prior_windows(path, midprice, lending["apr"] * 2)
         for row in debt_rows:
             row["payoff_options"] = collateral_exit.options(row, exit_costs, lending, min(prices))
-            if budget is not None:
-                row["cash_payoff"] = payoff_budget.quote(row, budget, pools, lending, prices)
-            if midprice is not None:
-                decision = midtrip.quote(row, budget, marks, windows, lending, folds, drop)
-                row["cash_payoff"]["midtrip"] = decision
-                if drop:
-                    amount = partial_payment.matching_payment(row, decision)
-                    if amount:
-                        decision["downside"]["preview_raw"] = amount
-                        if amount in (partial_payment.PAYMENT, partial_payment.DOWNSIDE_PAYMENT):
-                            decision["downside"]["evidence"] = "/evidence/" + (
-                                "midtrip-payment" if amount == partial_payment.PAYMENT else "downside-payment")
+    return result, debt_rows, cap, prices
+
+
+def _price(bill, invoice, values, stress, offer, state, stops, booked, balance, budget, midprice, drop, topup):
+    lending = mainnet_loan.saved()
+    observation, pools = mainnet_stop.saved()
+    path = collateral_path.saved()
+    result, rows, cap, prices = deepcopy(_opening(bill, invoice, tuple(values.items()), stress, offer, state, stops, booked, balance))
+    if budget is None or not rows:
+        return result
+    if midprice is not None:
+        marks, windows = midtrip.checkpoints(path, midprice, lending["apr"] * 2)
+        folds = midtrip.prior_windows(path, midprice, lending["apr"] * 2)
+    for row in rows:
+        row["cash_payoff"] = payoff_budget.quote(row, budget, pools, lending, prices)
+        if midprice is not None:
+            spare = max(0, cap - row["opening_lamports"] - mainnet_loan.LOAN_FEE_ALLOWANCE - observation["rent"])
+            decision = midtrip.quote(row, budget, marks, windows, lending, folds, drop,
+                                     topup_limit=topup, wallet_spare=spare)
+            row["cash_payoff"]["midtrip"] = decision
+            alternative = decision.get("topup", {})
+            if alternative.get("deposit_limit_lamports") and partial_payment.matches_opening(row):
+                payment = alternative["payment_cents"] * partial_payment.SCALE
+                added = alternative["deposit_limit_lamports"] // partial_payment.SCALE
+                if payment < row["draw_cents"] * partial_payment.SCALE:
+                    alternative["preview"] = dict(payment_raw=payment, added_lamports=added)
+                    record = partial_payment.RECORDS.get((payment, added))
+                    if record:
+                        alternative["evidence"] = "/evidence/" + record[0]
+            if drop:
+                amount = partial_payment.matching_payment(row, decision)
+                if amount:
+                    decision["downside"]["preview_raw"] = amount
+                    if amount in (partial_payment.PAYMENT, partial_payment.DOWNSIDE_PAYMENT):
+                        decision["downside"]["evidence"] = "/evidence/" + (
+                            "midtrip-payment" if amount == partial_payment.PAYMENT else "downside-payment")
     return result
+
+
+def selected_topup(data):
+    plan = data.get("plan")
+    if not isinstance(plan, dict) or not plan.get("midtrip_topup_lamports"):
+        raise ValueError("Choose a funding plan and a spare SOL limit")
+    payment = integer(data.get("payment_cents"), "early cash payment", 7298) * partial_payment.SCALE
+    added = integer(data.get("added_lamports"), "scaled test pledge", 10_000_000)
+    opening = integer(data.get("opening_lamports"), "original wallet requirement", 10**15)
+    result = quote(plan)
+    rows = result.get("series") or result["mainnet"]["secured_loan"]["combined"]
+    for row in rows.values():
+        if isinstance(row, dict) and row.get("opening_lamports") == opening:
+            alternative = row.get("cash_payoff", {}).get("midtrip", {}).get("topup", {})
+            if alternative.get("preview") == dict(payment_raw=payment, added_lamports=added):
+                return payment, added
+    raise ValueError("The cash or collateral amount differs from the selected plan")
 
 
 def recurring_plan(first, later, outside, count, plan):

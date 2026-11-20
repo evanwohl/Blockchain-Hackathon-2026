@@ -627,8 +627,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/trip-cover":
             self.respond(200, {**trip_cover.saved(), "source": "recorded"})
             return
-        if self.path in ("/evidence/midtrip-payment", "/evidence/downside-payment"):
-            sample = partial_payment.DOWNSIDE_SAMPLE if self.path.endswith("downside-payment") else partial_payment.SAMPLE
+        if self.path in partial_payment.EVIDENCE:
+            sample = partial_payment.EVIDENCE[self.path]
             self.reply(200, "application/json", gzip.decompress(sample.read_bytes()), static=True)
             return
         if self.path in ("/api/midtrip-payment", "/api/midtrip-payment/simulate"):
@@ -1031,12 +1031,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(200, calendar)
                 return
             if self.path == "/api/midtrip-payment/preview":
-                amount = partial_payment.selected_payment(data)
+                try:
+                    amount, added = driver_desk.selected_topup(data) if "plan" in data else (partial_payment.selected_payment(data), 0)
+                except RuntimeError:
+                    self.respond(503, {"error": "The opening wallet or loan terms could not be verified."})
+                    return
                 source = data.get("source")
                 if source not in ("recorded", "live"):
                     raise ValueError("Choose saved evidence or a public simulation")
                 try:
-                    result = (self.server.partial_previews(amount).read() if source == "live" else partial_payment.saved(amount))
+                    result = (self.server.partial_previews(amount, added).read() if source == "live" else partial_payment.saved(amount, added))
                 except (OSError, ValueError, KeyError, TypeError, RuntimeError):
                     self.respond(503, {"error": "The selected partial payment could not be verified."})
                     return
@@ -1244,8 +1248,8 @@ def main():
     server.policy_checks = {menu: PublicCheck(lambda m=menu: payday_policy.quotes(m, True)) for menu in customer_credit.MENUS}
     server.swap_checks = {net: PublicCheck(lambda n=net: fuel_swap.capture(n)[0]) for net in customer_credit.ADVANCES}
     server.customer_credit = PublicCheck(lambda: customer_credit.replay(customer_credit.capture()))
-    server.partial_previews = lru_cache(maxsize=32)(lambda amount: PublicCheck(
-        lambda: partial_payment.simulate(payment=amount), wait_seconds=8))
+    server.partial_previews = lru_cache(maxsize=32)(lambda amount, added: PublicCheck(
+        lambda: partial_payment.simulate(payment=amount, extra_pledge=added), wait_seconds=8))
     server.midtrip_payment = PublicCheck(partial_payment.simulate, wait_seconds=8)
     server.cash_exit = PublicCheck(lambda: flash_exit.simulate(cash_raw=flash_exit.SAMPLE_CASH))
     server.flash_exit = PublicCheck(flash_exit.simulate)

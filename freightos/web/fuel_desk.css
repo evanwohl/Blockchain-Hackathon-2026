@@ -137,3 +137,10 @@
 #exit-retained-bar::-webkit-progress-value { background: #386046; }
 #exit-retained-bar::-moz-progress-bar { background: #386046; }
 #cash-exit-quarter { margin-bottom: .8rem; }
+
+#pledge-compare:not([hidden]) { width: 100%; border-collapse: collapse; margin: .75rem 0; font-variant-numeric: tabular-nums; }
+#pledge-compare th, #pledge-compare td { padding: .5rem .35rem; text-align: right; border-bottom: 1px solid var(--line); line-height: 1.3; }
+#pledge-compare th:first-child { text-align: left; font-weight: 450; }
+#pledge-compare tr > :last-child { background: #e8eedb; color: #243d2b; }
+#pledge-compare thead { font-size: .8rem; }
+#pledge-compare tbody tr:nth-child(2) { font-weight: 700; }
