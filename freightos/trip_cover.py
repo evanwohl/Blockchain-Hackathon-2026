@@ -25,6 +25,8 @@ def validate(trip):
     integer(trip.get("budget_cents"), "fuel budget", 100_000_000)
     if "spend_limit_cents" in trip:
         integer(trip["spend_limit_cents"], "oil protection limit", 100_000_000)
+    if "pump_cash_cents" in trip:
+        integer(trip["pump_cash_cents"], "extra cash at the pump", 100_000_000)
     if "region" in trip and (not isinstance(trip["region"], str) or trip["region"] not in regional_diesel.REGIONS):
         raise ValueError("Choose a supported diesel region")
 
@@ -90,19 +92,24 @@ def cost(lots, offer):
     return (lots * p + 99) // 100, (lots * 7 * p * (100 - p) + 999999) // 1000000
 
 
-def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None):
+def residual_floor(offers, gaps):
+    floor = gaps[0]
+    payout = 0
+    for offer, need in zip(offers, gaps[1:]):
+        payout += offer["depth"]
+        floor = max(floor, need - payout)
+    return floor
+
+
+def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residual=False):
     gap = gaps[-1]
     empty = {"cash_cents": gap, "upfront_cents": 0, "residual_cents": gap, "legs": []}
     n = len(offers)
     if fuel_cash is not None:
         if gap <= fuel_cash:
             return empty
-        paid = 0
-        for i, need in enumerate(gaps):
-            if need > paid + fuel_cash:
-                return None
-            if i < n:
-                paid += offers[i]["depth"]
+        if residual_floor(offers, gaps) > fuel_cash:
+            return None
     if not n or not gap or spend_limit == 0:
         return empty if fuel_cash is None or gap <= fuel_cash else None
     # Variables are hundredths of a contract, premium cents, fee cents, and unhedged cash cents.
@@ -129,6 +136,8 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None):
     if fuel_cash is not None:
         caps[-1] = min(gap, fuel_cash)
         objective[-1] = 0
+    if minimize_residual:
+        objective = [0]*(3*n) + [1]
     constraints = LinearConstraint(rows, -np.inf, bounds)
     sol = milp(objective, integrality=np.ones(3*n + 1), bounds=Bounds(0, caps), constraints=constraints,
                options={"mip_rel_gap": 0, "time_limit": 3})
@@ -153,9 +162,34 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None):
         raise ValueError("Repriced contracts exceed the spending limit")
     total = residual + upfront
     measured = total if fuel_cash is None else upfront
+    if minimize_residual:
+        measured = residual
     if abs(measured - sol.fun) > .001 or (fuel_cash is not None and residual > fuel_cash):
         raise ValueError("Rounded position does not reconcile with the optimum")
-    return {"cash_cents": total, "upfront_cents": upfront, "residual_cents": residual, "legs": legs} if fuel_cash is not None or total < gap else empty
+    return {"cash_cents": total, "upfront_cents": upfront, "residual_cents": residual, "legs": legs} if minimize_residual or fuel_cash is not None or total < gap else empty
+
+
+def pump_target(offers, gaps, pump_cash, reserve_cash, spend_limit):
+    capacity = reserve_cash + pump_cash
+    floor = residual_floor(offers, gaps)
+    plan = portfolio(offers, gaps, fuel_cash=max(capacity, floor))
+    minimum = plan["upfront_cents"] if floor <= capacity else None
+    if spend_limit is not None and plan["upfront_cents"] > spend_limit:
+        best = portfolio(offers, gaps, spend_limit=spend_limit, minimize_residual=True)
+        plan = portfolio(offers, gaps, fuel_cash=best["residual_cents"], spend_limit=spend_limit)
+        if plan is None:
+            raise ValueError("Could not reconcile the nearest attainable pump budget")
+
+    def at_stop(residual):
+        draw = min(reserve_cash, residual)
+        outside = residual - draw
+        return {"reserve_cents": draw, "outside_cents": outside, "short_cents": max(0, outside - pump_cash)}
+
+    lots = max(0, gaps[-1] - capacity)
+    single = min((sum(cost(lots, offer)) for offer, gap in zip(offers, gaps)
+                  if gap <= capacity and offer["depth"] >= lots), default=None) if lots else 0
+    return {"before": at_stop(gaps[-1]), "after": at_stop(plan["residual_cents"]), "single_spend_cents": single,
+            "plan": plan, "minimum_spend_cents": minimum}
 
 
 def analyze(snapshot, trip, *, reserve=None):
@@ -212,6 +246,8 @@ def analyze(snapshot, trip, *, reserve=None):
         result["limit_comparison"] = {"unrestricted_upfront_cents": benchmark["upfront_cents"],
                                       "kept_upfront_cents": benchmark["upfront_cents"] - selected["upfront_cents"],
                                       "outside_change_cents": after - before}
+    if "pump_cash_cents" in trip:
+        result["pump_target"] = pump_target(offers, gaps, trip["pump_cash_cents"], fuel_cash, limit)
     return result
 
 

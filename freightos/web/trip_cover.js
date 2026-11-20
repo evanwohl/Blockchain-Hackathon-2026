@@ -62,9 +62,43 @@ function reserveBudget(d, later) {
   link.hidden = !fuel;
   link.href = "/next-stop#fuel-buffer=" + fuel + "&road=" + reserve.road_cents;
   link.textContent = "Check the " + money(fuel) + " fuel payment and road cash →";
-  el("reserve-observation").textContent = (d.source === "live" ? "Public Devnet check" : "Recorded Devnet check")
-    + " · slot " + reserve.slot.toLocaleString("en-US") + ". The reserve funds the fuel payment. Buying contracts would require a separate funded Gemini account.";
   return split ? d.combined : plan;
+}
+
+function targetBudget(d, later) {
+  const target = d.pump_target;
+  const payment = later ? target.after : target.before;
+  const cost = later ? target.plan.upfront_cents : 0;
+  const reserve = d.reserve;
+  const roadShort = reserve ? Math.max(0, reserve.road_cents - reserve.available_cents) : 0;
+  const missing = payment.short_cents + roadShort;
+  el("trip-bound").textContent = missing ? (roadShort ? "Still needed for fuel and road cash" : "Short at the pump") : "Least to spend on oil protection";
+  el("trip-cash").textContent = money(missing || cost);
+  let why = cost ? "Spend " + money(cost) + " on Gemini. " : "Use cash for this fill. ";
+  why += "Allow " + money(payment.outside_cents) + " beyond your fuel budget at the pump";
+  why += payment.reserve_cents ? ", plus " + money(payment.reserve_cents) + " from your reserve." : ".";
+  if (roadShort) why += " Your reserve also needs " + money(roadShort) + " to reach your road-cash target.";
+  else if (!later && missing) why += " Oil payouts arrive after this stop.";
+  else if (later && payment.short_cents && target.minimum_spend_cents !== null) {
+    why += " Meeting your pump limit would require " + money(target.minimum_spend_cents) + " in Gemini.";
+  } else if (later && payment.short_cents) why += " This is the closest the available contracts can get to your pump limit.";
+  el("trip-why").textContent = why;
+  const rows = [["Extra pump cash you have", money(d.trip.pump_cash_cents)], ["Extra pump cash needed", money(payment.outside_cents)]];
+  if (reserve) rows.push(["Reserve payment for fuel", money(payment.reserve_cents)], ["Money kept for the road", money(Math.min(reserve.road_cents, reserve.available_cents))]);
+  if (later && target.minimum_spend_cents > 0) {
+    rows.push(["Minimum for this pump limit using one oil threshold",
+      target.single_spend_cents === null ? "Out of reach" : money(target.single_spend_cents)]);
+  }
+  if (d.trip.spend_limit_cents !== undefined) rows.push(["Gemini spending limit", money(d.trip.spend_limit_cents)]);
+  if (d.regional) rows.push(regionalCost(d.regional));
+  facts(el("trip-options"), rows);
+  const link = el("trip-reserve");
+  link.hidden = !payment.reserve_cents;
+  if (reserve) {
+    link.href = "/next-stop#fuel-buffer=" + payment.reserve_cents + "&road=" + reserve.road_cents;
+    link.textContent = "Preview the " + money(payment.reserve_cents) + " reserve payment →";
+  }
+  return later ? target.plan : null;
 }
 
 function regionalCost(region) {
@@ -96,8 +130,18 @@ function render() {
   const d = current;
   const later = document.querySelector('input[name="timing"]:checked').value === "after";
   el("reserve-observation").hidden = !d.reserve;
-  const plan = d.reserve ? reserveBudget(d, later) : generalBudget(d, later);
-  showSpendingLimit(d, later);
+  if (d.reserve) {
+    el("reserve-observation").textContent = (d.source === "live" ? "Public Devnet check" : "Recorded Devnet check")
+      + " · slot " + d.reserve.slot.toLocaleString("en-US") + ". The reserve amount comes from simulating a withdrawal of your Kamino vault shares. Oil protection uses separate Gemini funds.";
+  }
+  let plan;
+  if (d.pump_target) {
+    plan = targetBudget(d, later);
+    el("spending-result").hidden = true;
+  } else {
+    plan = d.reserve ? reserveBudget(d, later) : generalBudget(d, later);
+    showSpendingLimit(d, later);
+  }
   const region = d.regional;
   el("regional-evidence").hidden = !region;
   if (region) {
@@ -139,6 +183,7 @@ async function compare(source, submitted = false) {
       budget_cents: Math.round(el("trip-budget").valueAsNumber * 100) } : undefined;
     if (body && el("trip-region").value) body.region = el("trip-region").value;
     if (body && el("trip-limit").value !== "") body.spend_limit_cents = Math.round(el("trip-limit").valueAsNumber * 100);
+    if (body && el("pump-cash").value !== "") body.pump_cash_cents = Math.round(el("pump-cash").valueAsNumber * 100);
     if (body && includeReserve) body.road_cents = Math.round(el("trip-road").valueAsNumber * 100);
     const data = await request("/api/trip-cover", body, AbortSignal.timeout(45000));
     if (attempt !== revision) return;
@@ -176,10 +221,14 @@ function openExample() {
   const region = example.get("region");
   const includeReserve = example.has("road-cash");
   if ([...el("trip-region").options].some(option => option.value === region)) el("trip-region").value = region;
-  const limit = example.get("limit");
-  const hasLimit = limit !== null && /^\d{1,7}(\.\d{1,2})?$/.test(limit) && Number(limit) <= 1000000;
+  for (const [key, field] of [["limit", "trip-limit"], ["pump", "pump-cash"]]) {
+    const amount = example.get(key);
+    if (amount !== null && /^\d{1,7}(\.\d{1,2})?$/.test(amount) && Number(amount) <= 1000000) {
+      el(field).value = Number(amount).toFixed(2);
+    }
+  }
+  const hasLimit = el("trip-limit").value !== "" || el("pump-cash").value !== "";
   el("protection-limit").open = hasLimit;
-  if (hasLimit) el("trip-limit").value = Number(limit).toFixed(2);
   el("use-trip-reserve").checked = includeReserve;
   el("trip-road").disabled = el("trip-road-fields").hidden = !includeReserve;
   document.querySelector('input[name="timing"][value="before"]').checked = true;
