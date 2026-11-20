@@ -89,6 +89,8 @@ For a fresh public run use a dedicated Devnet payer holding at least 5.7001 Circ
 
 ## Presenting to a first-time judge
 
+Use [the two-minute judge walkthrough](PRESENTATION.md) for the team presentation. It pairs a funding decision and Gemini payout-timing interaction with the finalized public vendor receipt. The practice walkthrough below is available for follow-up questions.
+
 Open Overview on a fresh demo. Point out the $745 fuel bill, the 23-day gap and the two fee amounts on the slip. Early pay on the smaller $200 return-trip invoice yields $190. That lets the driver cover the rest from the reserve while collecting the full $3,000 main invoice later. Walk through this bill opens the actual approval flow. For a quick proof without changing the bill, Verify sample payment replays a **different** completed load, SYN-004, and checks that its vendor received $541.68 in test dollars. The 128-load comparison measures modeled fees under synthetic terms. The signed receipts establish what the reserve actually transferred on the fork.
 
 ## How to evaluate the decision engine

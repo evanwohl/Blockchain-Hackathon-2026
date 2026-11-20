@@ -1,5 +1,7 @@
 # FreightOS
 
+For the two-minute live demo, use the [judge walkthrough and rehearsal checklist](PRESENTATION.md).
+
 ## Public payment demo
 
 Open **See a full bill paid on Solana** on Overview. For a $745 sample fuel bill the demo customer pays 1.75 test USDC through the driver, and Kamino supplies 5.70 test USDC. The customer and driver signed the same transaction. The vendor received all 7.45 test USDC on public devnet. Each test cent represents one modeled dollar. [View the finalized settlement on Solana Explorer](https://explorer.solana.com/tx/2MAefNg3M2xFj27U82XEg2bwBQDhnmSUD24Ta4s7o47nN4hu5T1dMTKwyhAtHRZR9TQpFa2rAVa1yrNPx1QTGzvc?cluster=devnet)
