@@ -45,6 +45,23 @@ A vault balance alone does not establish how much a driver can send. Shares are 
 
 **Atomic funding simulation.** On a separate $190 stop, the plan keeps $10.58 of reserve capacity for a later fill, redeems $19.44 from the vault, and borrows $170.56 from Kamino Lend. In the scaled public Devnet simulation, both sources fund one previously empty token account. The transaction sends the fixed amount to the vendor, returns any quoted change, and closes the staging account. Raising the payment by one raw USDC unit triggers a failure. The verifier checks that balances rolled back apart from the attempted network fee. The separate $7 loan on the settled-loan screen has finalized opening and repayment signatures. [Combined route and rollback verifier](freightos/atomic_fuel.py) · [Settled loan verifier](freightos/load_credit.py)
 
+## Program IDs and accounts
+
+| Network | Role | Address |
+| --- | --- | --- |
+| Devnet | FreightOS settlement program (public payment demo) | `6UQBiPuy7YZcFBtGZFHTQ39CyViKnA6FYMjEWgYQtrMq` |
+| Devnet | Kamino vault program | `devkRngFnfp4gBc5a3LsadgbQKdPo8MSZ4prFiNSVmY` |
+| Devnet | Kamino vault | `7uib8xGAwkaPz4ZGCA6t8sSEid5Yp9ty13PHUweTypx` |
+| Devnet | Test USDC mint | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
+| Local fork | FreightOS settlement program (browser bill flow) | `AZKLs8psiN3C72oBWGSJyG7hpR23xLCGw8me4YPgnSRt` |
+| Mainnet (forked at slot 471210845) | Kamino vault program | `KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd` |
+| Mainnet (forked) | Kamino USDC vault | `HDsayqAsDWy3QvANGqh2yNraqcD8Fnjgh73Mhb3WRS5E` |
+| Mainnet | Kamino Lend | `KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD` |
+| Mainnet | Orca Whirlpools | `whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc` |
+| All | SPL Token, Associated Token, Memo | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA`, `ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL`, `MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr` |
+
+The addresses are defined in [devnet.py](freightos/devnet.py), [bill.py](freightos/bill.py), [reserve.py](freightos/reserve.py), [capture.py](freightos/capture.py), [freight_credit.py](freightos/freight_credit.py) and [fuel_swap.py](freightos/fuel_swap.py).
+
 ## How we evaluated the engine
 
 The same-access comparison gives both strategies the same synthetic offers and deadlines. The baseline chooses the cheaper of a conventional funding mix and a reserve-plus-invoices plan. FreightOS can also combine the reserve with credit. Across 128 loads, that flexibility lowered modeled fees on **41**, tied on **87**, and saved **$738.82** in total. Median savings were **$0**. Fifty selected reserve payments also executed and replayed on the bundled Solana fork. The trial measures funding costs under generated commercial terms. The signed receipts establish the amounts transferred in the test environments. [Trial data and per-load receipts](freightos/artifacts/quick_pay/carrier_trial.json)
