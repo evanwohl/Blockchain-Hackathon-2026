@@ -1,6 +1,7 @@
 import {el, facts, money, request} from "./common.js";
 
 const form = el("stop-inputs"), verify = el("verify"), note = el("check-status");
+let focusMainnet = false;
 let preference = "keep-cash";
 let revision = 0, timer, pending, last, undo;
 
@@ -10,6 +11,14 @@ function inputs() {
     const input = el(id);
     return [id, input.value === "" ? null : Math.round(input.valueAsNumber * 100)];
   }));
+}
+
+function tryAmount(id, cents) {
+  const field = el(id);
+  undo = {field, value: field.value};
+  if (id === "received") field.closest("details").open = true;
+  field.value = (cents / 100).toFixed(2);
+  estimate();
 }
 
 function repairs(q) {
@@ -22,11 +31,7 @@ function repairs(q) {
   for (const fix of q.repairs) {
     const name = {cash: "cash", budget: "wallet limit", received: "freight by payday"}[fix.input];
     button("Try " + money(fix.amount_cents) + " " + name + " (+" + money(fix.increase_cents) + ")", () => {
-      const field = el(fix.input);
-      undo = {field, value: field.value};
-      if (fix.input === "received") field.closest("details").open = true;
-      field.value = (fix.amount_cents / 100).toFixed(2);
-      estimate(); el("decision").focus({preventScroll: true});
+      tryAmount(fix.input, fix.amount_cents); el("decision").focus({preventScroll: true});
     });
   }
   if (undo) button("Undo comparison", () => {
@@ -70,6 +75,40 @@ function showPriceRoom(q) {
     + " from the demo starting price. Future prices can go higher." : "The comparison uses the entered prices.";
 }
 
+function showMainnet(q) {
+  const m = q.mainnet, button = el("mainnet-try");
+  el("mainnet-check").hidden = false;
+  el("mainnet-quoted").hidden = !m;
+  if (!m) {
+    el("mainnet-status").textContent = "Unavailable";
+    el("mainnet-result").textContent = "The saved production pool accounts could not be verified. The fuel plan above uses Devnet.";
+    return;
+  }
+  const missing = m.fuel_short_cents, payday = m.payday_gap_cents;
+  el("mainnet-status").textContent = missing ? money(missing) + " unpaid" : payday ? money(payday) + " short on payday" : "Fuel and payday covered";
+  el("mainnet-result").textContent = "We repriced the full " + money(q.bill_cents) + " bill using two recorded Orca markets. "
+    + (missing ? "Your current limits leave " + money(missing) + " of fuel unpaid." : "Your current limits cover the fuel bill.");
+  const rows = [["Cash needed at the stop", money(m.first_cash_cents)],
+    ["Cash needed for fuel and the " + money(q.floor_cents) + " payday target", m.target_cash_cents === null ? "Outside these terms" : money(m.target_cash_cents)]];
+  if (m.original) rows.push(["SOL budget needed for the demo’s wallet payment", money(m.original.wallet_limit_cents)]);
+  facts(el("mainnet-ledger"), rows);
+  const targetPlan = el("mainnet-plan");
+  targetPlan.hidden = m.target_cash_cents === null;
+  if (!targetPlan.hidden) {
+    const wallet = q.bill_cents - m.target_cash_cents;
+    targetPlan.textContent = "With " + money(m.target_cash_cents) + " in separate cash, the wallet pays "
+      + money(wallet) + (m.target_sale_cents ? ", including " + money(m.target_sale_cents) + " from selling SOL" : "") + ". "
+      + money(m.target_plan_payday_cents) + " remains on payday at the highest tested buyback price of " + money(q.high_price_cents) + ".";
+  }
+  const cash = inputs().cash;
+  button.hidden = m.target_cash_cents === null || m.target_cash_cents <= cash;
+  if (!button.hidden) button.textContent = "Compare with " + money(m.target_cash_cents) + " available";
+  el("mainnet-terms").textContent = "Pool prices were " + m.spot_cents.map(money).join(" and ") + " per SOL at finalized slot "
+    + m.slot.toLocaleString("en-US") + " on " + m.date.slice(0,10) + " UTC. The estimate assumes the same cash, reserve and freight terms at full size. "
+    + "It includes pool fees, a 0.5% swap allowance, temporary account rent and one base network fee. Mainnet pricing only."
+    + (m.covers_full_range ? "" : " Routes are limited to the observed liquidity ranges.");
+}
+
 function render(q) {
   last = q;
   const fuelShort = q.status === "fuel_short", paydayShort = q.status === "payday_short";
@@ -98,7 +137,11 @@ function render(q) {
   el("proof").textContent = (q.source === "live" ? "Public" : "Recorded") + " pool accounts at slot " + q.curve_slot.toLocaleString("en-US") + ". "
     + (q.payment_slot ? "The exact wallet transfer was simulated at slot " + q.payment_slot.toLocaleString("en-US") + "."
       : q.wallet_cents ? "This exact transfer is priced from the pool accounts." : "This split uses no wallet transfer.");
-  repairs(q); showPriceRoom(q);
+  repairs(q); showPriceRoom(q); showMainnet(q);
+  if (focusMainnet) {
+    el("mainnet-check").querySelector("summary").focus({preventScroll: true});
+    focusMainnet = false;
+  }
   note.textContent = q.source === "live" ? (q.payment_slot ? "Wallet payment checked on Devnet. No money moved." : "Public pool prices checked. No money moved.")
     : "Planning estimate from saved public data. Editing moves no money.";
 }
@@ -131,7 +174,7 @@ async function price(source, current, id) {
 function estimate(delay = 0) {
   const id = ++revision;
   clearTimeout(timer); pending?.abort(); last = null;
-  verify.disabled = true; el("fixes").replaceChildren(); el("changes").hidden = el("price-room").hidden = true;
+  verify.disabled = true; el("fixes").replaceChildren(); el("changes").hidden = el("mainnet-check").hidden = el("price-room").hidden = true;
   const current = inputs();
   if (!current) {
     el("decision").textContent = "Check your amounts";
@@ -143,6 +186,12 @@ function estimate(delay = 0) {
   timer = setTimeout(() => price("recorded", current, id), delay);
 }
 
+el("mainnet-try").onclick = () => {
+  if (last?.mainnet?.target_cash_cents != null) {
+    focusMainnet = true;
+    tryAmount("cash", last.mainnet.target_cash_cents);
+  }
+};
 el("price-choice").onclick = () => {
   preference = preference === "keep-cash" ? "price-room" : "keep-cash";
   estimate(); el("decision").focus();
@@ -170,6 +219,7 @@ function openPreset() {
       input.value = Number(value).toFixed(2);
   }
   el("price-room").open = preset.has("preference");
+  el("mainnet-check").open = preset.get("market") === "mainnet";
   estimate();
 }
 window.addEventListener("hashchange", openPreset);

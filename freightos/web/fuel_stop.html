@@ -32,13 +32,21 @@
         <dl class="stop-totals"><div><dt>Cash kept at the stop</dt><dd id="kept"></dd></div><div><dt>Left on payday, weakest case</dt><dd id="payday"></dd></div></dl></div>
       </article>
       <div id="changes" hidden><h3 id="change-heading">Ways to cover fuel and protect payday</h3><div id="fixes"></div></div>
+      <details id="mainnet-check" class="stop-details" hidden>
+        <summary><span>Same bill at mainnet prices</span> <strong id="mainnet-status"></strong></summary>
+        <p id="mainnet-result"></p><div id="mainnet-quoted"><dl id="mainnet-ledger"></dl>
+        <p id="mainnet-plan"></p>
+        <button type="button" id="mainnet-try" hidden></button>
+        <p id="mainnet-terms"></p>
+        <a href="/evidence/mainnet-fuel-pools" download="FreightOS-mainnet-fuel-pools.json">Download the two pool observations</a></div>
+      </details>
       <details id="price-room" class="stop-details" hidden>
         <summary>What if SOL costs more on payday?</summary>
         <p id="price-limit"></p><p id="price-comparison"></p>
         <button id="price-choice" type="button" hidden></button>
         <p id="price-history"></p>
       </details>
-      <div class="stop-check"><button type="button" id="verify" disabled>Check payment on public Solana</button><p id="check-status" role="status"></p></div>
+      <div class="stop-check"><button type="button" id="verify" disabled>Check demo payment on Solana Devnet</button><p id="check-status" role="status"></p></div>
       <details class="stop-details" id="sources" hidden><summary>Where the wallet money comes from</summary><dl id="wallet-parts"></dl><p id="math"></p><p id="proof"></p><div class="stop-links"><a href="/evidence/fuel-floor" download="FreightOS-fuel-pool-checks.json">Saved pool checks</a><a href="/evidence/sol-payday" download="FreightOS-Gemini-prices.json">Gemini prices</a><a href="/public-offer">See a signed demo bill →</a></div></details>
     </section>
   </div>

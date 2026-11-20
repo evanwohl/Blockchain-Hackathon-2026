@@ -54,3 +54,9 @@
 .stop-outcome[aria-busy="true"] #funding, .stop-outcome[aria-busy="true"] #changes { opacity: .55; }
 .stop-totals dd { text-align: left; }
 #budget-help { display: block; margin-top: .25rem; color: var(--muted); font-size: .78rem; }
+
+#mainnet-check summary strong { display: inline-block; margin-inline-start: .4rem; font-weight: 500; color: #466045; }
+#mainnet-ledger > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding: .6rem 0; }
+#mainnet-ledger dt { font-size: .86rem; }
+#mainnet-ledger dd { margin: 0; text-align: end; font-weight: 600; font-variant-numeric: tabular-nums; }
+#mainnet-terms, #mainnet-quoted > a { font-size: .8rem; }

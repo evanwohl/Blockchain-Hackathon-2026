@@ -5,7 +5,7 @@ from functools import cache
 from pathlib import Path
 from typing import NamedTuple
 
-from freightos import atomic_fuel, devnet, freight_credit, fuel_floor, payday_policy, reserve_credit
+from freightos import atomic_fuel, devnet, freight_credit, fuel_floor, mainnet_stop, payday_policy, reserve_credit
 from hedging.quick_pay import integer
 
 
@@ -133,7 +133,7 @@ def model(quote, native, rows, budget, cash, received, target, reference, prices
             "effective_budget_cents": cap * reference // denominator, "low_price_cents": low, "high_price_cents": high, "receipt_cents": received, "floor_cents": target}
 
 
-def evaluate(budget, cash, received, target, stress, *, preference="keep-cash", live=False, evidence=None):
+def evaluate(budget, cash, received, target, stress, *, preference="keep-cash", live=False, evidence=None, mainnet_evidence=None):
     limits(budget, cash, received, target, stress, preference)
     reference = payday_policy.reference_price(payday_policy.recorded_menu()[0])
     cases, _ = payday_policy.price_cases(reference, stress)
@@ -153,7 +153,14 @@ def evaluate(budget, cash, received, target, stress, *, preference="keep-cash", 
     else:
         q, native, rows = recorded()
     history = [case["price_cents"] for case in cases if "start" in case]
-    return {**model(q, native, rows, budget, cash, received, target, reference, prices, preference),
+    result = model(q, native, rows, budget, cash, received, target, reference, prices, preference)
+    try:
+        production_prices = mainnet_stop.compare(result, q["market"], native, budget, cash, mainnet_evidence)
+    except (OSError, ValueError):
+        if mainnet_evidence is not None:
+            raise
+        production_prices = None
+    return {**result, "mainnet": production_prices,
             "gemini_windows": len(history), "gemini_high_cents": max(history) if history else None,
             "source": "live" if live else "recorded"}
 
@@ -168,8 +175,10 @@ if __name__ == "__main__":
     stress_group.add_argument("--historical-only", action="store_true", help="Use only the Gemini history and unchanged price")
     parser.add_argument("--evidence", type=Path, help="Downloaded Solana pool and wallet evidence")
     parser.add_argument("--gemini-evidence", type=Path, help="Downloaded Gemini settlement history")
+    parser.add_argument("--mainnet-evidence", type=Path, help="Downloaded full-size mainnet pool evidence")
     args = parser.parse_args()
     if args.gemini_evidence:
         payday_policy.verify_history(args.gemini_evidence.read_bytes())
     print(json.dumps(evaluate(args.budget, args.cash, args.received, args.target, None if args.historical_only else args.stress,
-                              preference=args.preference, evidence=json.loads(args.evidence.read_bytes()) if args.evidence else None), indent=2))
+                              preference=args.preference, mainnet_evidence=args.mainnet_evidence.read_bytes() if args.mainnet_evidence else None,
+                              evidence=json.loads(args.evidence.read_bytes()) if args.evidence else None), indent=2))
