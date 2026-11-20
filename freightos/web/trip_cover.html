@@ -73,8 +73,15 @@
           <button type="button" class="secondary" id="protection-try"></button>
         </section>
         <div id="fuel-floor" class="fuel-floor" hidden><p id="fuel-floor-note"></p><button id="floor-try" type="button" class="secondary"></button></div>
+        <details id="fill-history" hidden><summary>Would my fuel money have lasted in past weeks?</summary>
+          <p id="fill-history-answer"></p><dl class="facts" id="fill-history-facts"></dl>
+          <p id="fill-history-method"></p>
+          <div id="history-choice" hidden><p id="history-tradeoff"></p><details><summary>Does the result depend on one month?</summary><p id="history-sensitivity"></p></details><button type="button" id="history-switch" class="secondary"></button></div>
+          <button type="button" id="history-loan" class="secondary" hidden></button>
+        </details>
         <details id="gap-credit" hidden><summary id="gap-title">Check a fuel loan</summary>
           <p>If you already own SOL, see how much of this fuel gap it could cover. Kamino would hold your pledge until you repay the loan.</p>
+          <button type="button" id="usual-gap" class="secondary" hidden>Return to the trip estimate</button>
           <form id="gap-form"><div class="trip-fields">
             <label>Most SOL I would pledge<input id="gap-cap" type="number" min="0" max="1000" step=".001" value="1" required></label>
             <label>Time until I repay<select id="gap-days"><option value="23">23 days</option><option value="30">30 days</option></select></label>

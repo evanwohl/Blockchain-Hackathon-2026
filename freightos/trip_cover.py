@@ -13,7 +13,7 @@ from math import ceil
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from freightos import diesel_model, fuel_cover, fuel_update, regional_diesel
+from freightos import diesel_model, fill_replay, fuel_cover, fuel_update, regional_diesel
 from hedging.quick_pay import integer
 
 SNAPSHOT = fuel_cover.SNAPSHOT.with_name("trip_cover.json.gz")
@@ -148,12 +148,12 @@ def funding_risk_problem(offers, gaps, capacity, rows, bounds, caps):
     return rows, caps, objective, integrality
 
 
-def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residual=False, risk_capacity=None, risk_limit=None):
+def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residual=False, risk_capacity=None, risk_limit=None, tail_samples=None):
     gap = gaps[-1]
     empty = {"cash_cents": gap, "upfront_cents": 0, "residual_cents": gap, "legs": []}
     n = len(offers)
     if fuel_cash is not None:
-        if gap <= fuel_cash and risk_capacity is None:
+        if gap <= fuel_cash and risk_capacity is None and tail_samples is None:
             return empty
         if residual_floor(offers, gaps) > fuel_cash:
             return None
@@ -178,7 +178,8 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residu
         row[n:3*n] = 1
         rows.append(row)
         bounds.append(spend_limit)
-    caps = [min(o["depth"], gap) for o in offers] + [gap] * (2*n + 1)
+    lot_limit = max(gap, max((row[1] for row in tail_samples), default=0)) if tail_samples else gap
+    caps = [min(o["depth"], lot_limit) for o in offers] + [lot_limit] * (2*n) + [gap]
     objective = [0]*n + [1]*(2*n + 1)
     if fuel_cash is not None:
         caps[-1] = min(gap, fuel_cash)
@@ -193,10 +194,22 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residu
             bounds.append(risk_limit)
             objective = np.zeros(len(caps))
             objective[3*n] = 1
+    if tail_samples:
+        count = len(tail_samples)
+        eta = len(caps)
+        caps += [np.inf] * (count + 1)
+        rows = [np.pad(row, (0, count + 1)) for row in rows]
+        for i, (band, need, *_) in enumerate(tail_samples):
+            row = np.zeros(len(caps))
+            row[:band] = row[eta] = row[eta+1+i] = -1
+            rows.append(row)
+            bounds.append(-need)
+        objective = [0]*n + [count]*(2*n) + [0, count] + [10]*count
+        integrality = [1]*eta + [0]*(count + 1)
     constraints = LinearConstraint(rows, -np.inf, bounds)
     sol = milp(objective, integrality=integrality, bounds=Bounds(0, caps), constraints=constraints,
                options={"mip_rel_gap": 0, "time_limit": 3})
-    if risk_capacity is not None and sol.status == 1:
+    if (risk_capacity is not None or tail_samples) and sol.status == 1:
         return None
     if sol.status == 2 and fuel_cash is not None and spend_limit is not None:
         return None
@@ -226,6 +239,10 @@ def portfolio(offers, gaps, *, fuel_cash=None, spend_limit=None, minimize_residu
         if risk_limit is not None and weight > risk_limit:
             raise ValueError("Repriced hedge exceeds the funding risk limit")
         measured = weight if risk_limit is None else residual
+    if tail_samples:
+        payouts = list(accumulate(lots, initial=0))
+        misses = [max(0, need - payouts[band]) for band, need, *_ in tail_samples]
+        measured = upfront * len(misses) + fill_replay.tail_sum(misses)
     if abs(measured - sol.fun) > .001 or (fuel_cash is not None and residual > fuel_cash):
         raise ValueError("Rounded position does not reconcile with the optimum")
     return {"cash_cents": total, "upfront_cents": upfront, "residual_cents": residual, "legs": legs} if minimize_residual or fuel_cash is not None or total < gap else empty
@@ -341,6 +358,46 @@ def pump_target(offers, gaps, pump_cash, reserve_cash, spend_limit, gallon_cents
             "plan": plan, "minimum_spend_cents": minimum}
 
 
+def compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of):
+    early, later = fill_replay.fills(trip, anchor, offers, fuel_cash, as_of)
+    if not later:
+        return
+    base = target["plan"]
+    cash = fill_replay.summary(later, offers, {"legs": [], "upfront_cents": 0})
+
+    def replay(plan):
+        return {"before": cash, "after": fill_replay.summary(later, offers, plan)}
+
+    target["fill_replay"] = replay(base)
+    risk = target["funding_risk"]
+    if risk and "alternative" in risk:
+        other = risk["alternative"]
+        other["fill_replay"] = replay(other["plan"])
+    if not early or not base["legs"]:
+        return
+    residual_cap = base["residual_cents"] + trip["pump_mills"] // 10
+    candidate = portfolio(offers, gaps, fuel_cash=residual_cap, spend_limit=base["upfront_cents"], tail_samples=early)
+    if candidate is None:
+        return
+    original = fill_replay.summary(early, offers, base)["tail_cash_cents"]
+    fitted = fill_replay.summary(early, offers, candidate)["tail_cash_cents"]
+    if fitted >= original:
+        return
+    residual = candidate["residual_cents"]
+    draw = min(residual, fuel_cash)
+    short = max(0, residual - draw - trip["pump_cash_cents"])
+    capacity = fuel_cash + trip["pump_cash_cents"]
+    change = None
+    if short and target["minimum_spend_cents"] is not None:
+        loan_free = portfolio(offers, gaps, fuel_cash=capacity)
+        change = protection_change(offers, gaps, capacity, candidate, loan_free)
+    target["history_mix"] = {"plan": candidate, "training_weeks": len(early),
+                             "original_train_cents": original, "train_cents": fitted,
+                             "after": {"reserve_cents": draw, "outside_cents": residual - draw, "short_cents": short},
+                             "protection_change": change, "fill_replay": replay(candidate),
+                             "sensitivity": fill_replay.month_sensitivity(later, offers, base, candidate)}
+
+
 def analyze(snapshot, trip, *, reserve=None):
     validate(trip)
     market = snapshot["market"]
@@ -422,7 +479,12 @@ def analyze(snapshot, trip, *, reserve=None):
                                       "kept_upfront_cents": benchmark["upfront_cents"] - selected["upfront_cents"],
                                       "outside_change_cents": after - before}
     if "pump_cash_cents" in trip:
-        result["pump_target"] = pump_target(offers, gaps, trip["pump_cash_cents"], fuel_cash, limit, trip["pump_mills"] // 10)
+        target = pump_target(offers, gaps, trip["pump_cash_cents"], fuel_cash, limit, trip["pump_mills"] // 10)
+        result["pump_target"] = target
+        if regional:
+            as_of = datetime.fromisoformat(snapshot["checked_at"]).date()
+            compare_past_fills(target, offers, gaps, trip, anchor, fuel_cash, as_of)
+
     return result
 
 

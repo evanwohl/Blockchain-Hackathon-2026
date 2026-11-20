@@ -3,6 +3,7 @@ import { el, facts, money, request, tokenUnits } from "./common.js";
 let gap = 0;
 let revision = 0;
 let protection;
+let replayWeek;
 
 function clear() {
   revision++;
@@ -11,13 +12,16 @@ function clear() {
   el("gap-check").disabled = false;
 }
 
-export function setFuelGap(cents, alternative = null) {
+export function setFuelGap(cents, alternative = null, week = null) {
+  if (gap !== cents || week !== replayWeek) el("gap-offer").value = "";
+  replayWeek = week;
+  el("usual-gap").hidden = !week;
   protection = alternative;
   clear();
   gap = cents;
   el("gap-credit").hidden = !gap;
   if (!gap) el("gap-credit").open = false;
-  el("gap-title").textContent = "Could a loan cover the " + money(gap) + " fuel gap?";
+  el("gap-title").textContent = "Could a loan cover the " + money(gap) + (week ? " gap from the week ending " + week + "?" : " fuel gap?");
 }
 
 function show(data) {
@@ -89,6 +93,9 @@ async function check(source) {
   }
 }
 
-el("gap-form").oninput = clear;
+el("gap-form").oninput = event => {
+  if (event.target === el("gap-days")) el("gap-offer").value = "";
+  clear();
+};
 el("gap-form").onsubmit = event => { event.preventDefault(); check("live"); };
 el("gap-saved").onclick = () => check("recorded");
