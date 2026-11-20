@@ -142,11 +142,20 @@ form.oninput = () => {
 form.onsubmit = event => { event.preventDefault(); compare("live"); };
 el("trip-recorded").onclick = () => { if (form.reportValidity()) compare("recorded"); };
 document.querySelector(".trip-timing").onchange = () => { if (current) render(); };
-const example = new URLSearchParams(location.hash.slice(1));
-const region = example.get("region");
-if ([...el("trip-region").options].some(option => option.value === region)) el("trip-region").value = region;
-if (location.hash === "#road-cash" || example.has("road-cash")) {
-  el("use-trip-reserve").checked = true;
-  el("trip-road").disabled = el("trip-road-fields").hidden = false;
+function openExample() {
+  form.reset();
+  const example = new URLSearchParams(location.hash.slice(1));
+  const region = example.get("region");
+  const includeReserve = example.has("road-cash");
+  if ([...el("trip-region").options].some(option => option.value === region)) el("trip-region").value = region;
+  el("use-trip-reserve").checked = includeReserve;
+  el("trip-road").disabled = el("trip-road-fields").hidden = !includeReserve;
+  document.querySelector('input[name="timing"][value="before"]').checked = true;
+  current = null;
+  result.hidden = el("trip-recorded").hidden = true;
+  el("trip-pending").hidden = true;
+  el("trip-status").textContent = "Opening the sample trip…";
+  compare(el("trip-region").value || includeReserve ? "recorded" : undefined);
 }
-compare(el("trip-region").value || el("use-trip-reserve").checked ? "recorded" : undefined);
+window.addEventListener("hashchange", openExample);
+openExample();
