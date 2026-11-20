@@ -77,33 +77,58 @@ function displaySplit(d) {
   el("split-result").hidden = false;
 }
 
+function displayCombined(d) {
+  const reserve = money(d.reserve_raw / d.scale), debt = money(d.borrow_raw / d.scale);
+  el("credit-heading").textContent = "One fuel payment";
+  el("combined-wallet-link").href = "/load#combined?days=" + d.days + "&drop=" + d.drop;
+  el("combined-total").textContent = money(d.bill_cents);
+  el("combined-sources").textContent = reserve + " from your reserve and " + debt + " borrowed against SOL. Both sources pay the vendor together.";
+  el("combined-bar").style.width = (100 * d.reserve_raw / d.vendor_raw) + "%";
+  facts(el("combined-facts"), [["Still due on fuel if the payment succeeds", money(0)],
+    ["Kept in reserve for three more gallons", money(d.retained_raw / d.scale)],
+    ["Estimated loan payoff in " + d.days + " days", money(d.repay_cents)]]);
+  el("combined-failure").textContent = "If either source fails, your reserve stays put, no debt opens and you still owe the full bill. A submitted attempt can still cost a network fee.";
+  el("combined-terms").textContent = "At demo scale the pledge is " + sol(d.pledge_lamports) + " on Devnet. The payment needs "
+    + sol(d.setup_lamports) + " for loan account setup. Its network fee is " + sol(d.fee_lamports) + ".";
+  el("combined-comparison").textContent = "Taking the $200 freight invoice early costs " + money(d.early_pay_fee_cents)
+    + ". Borrowing costs an estimated " + money(d.interest_cents) + " plus " + money(d.missed_yield_cents)
+    + " in missed reserve earnings. " + (d.cost_room_cents > 0 ? "Other costs could reach " + money(d.cost_room_cents) + " before the two choices tie." : "The combined plan already reaches or exceeds the invoice fee.");
+  el("combined-risk").textContent = "The loan is sized for a " + d.drop + "% SOL drop. Falling collateral can be liquidated. The "
+    + money(d.interest_cents) + " projected borrowing cost assumes today’s rate through payday. The three-gallon target uses the recorded Gemini $" + d.holdback.threshold + " oil scenario.";
+  el("combined-proof").textContent = "Unsigned public Devnet simulation at slot " + d.slot.toLocaleString("en-US") + ". The vendor received "
+    + (d.vendor_raw / 1e6).toFixed(6) + " test USDC in one transfer. A second simulation tried to pay one token unit more than the available proceeds. All token balances stayed unchanged. A third simulation redeemed the remaining shares.";
+  el("combined-result").hidden = false;
+}
+
 async function compare(source) {
   const attempt = ++sequence;
-  const split = el("credit-route").value === "reserve";
+  const route = el("credit-route").value;
+  const split = route === "reserve", combined = route === "combined";
   const body = { drop: Number(el("credit-drop").value), days: Number(el("credit-days").value), source };
   const button = el("credit-check");
   button.disabled = true;
   el("credit-status").textContent = source === "live" ? "Checking collateral, loan and vendor payment on Devnet…" : "Opening the recorded simulation…";
   try {
-    const data = await request(split ? "/api/reserve-credit" : "/api/fuel-credit", body, AbortSignal.timeout(90000));
+    const data = await request(combined ? "/api/atomic-fuel" : split ? "/api/reserve-credit" : "/api/fuel-credit", body, AbortSignal.timeout(90000));
     if (attempt !== sequence) return;
-    if (split) displaySplit(data);
+    if (combined) displayCombined(data);
+    else if (split) displaySplit(data);
     else display(data);
-    el("credit-jump").textContent = split ? "See the " + money(data.borrow_cents) + " loan and " + money(data.reserve_cents) + " reserve payment ↓" : "See the " + money(data.cost_cents) + " financing estimate ↓";
+    el("credit-jump").textContent = combined ? "See the full fuel payment ↓" : split ? "See the " + money(data.borrow_cents) + " loan and " + money(data.reserve_cents) + " reserve payment ↓" : "See the " + money(data.cost_cents) + " financing estimate ↓";
     el("credit-jump").hidden = false;
     const time = new Date(data.checked_at).toLocaleString("en-US", { timeZone: "UTC", dateStyle: "medium", timeStyle: "short" });
-    el("credit-status").textContent = (source === "live" ? "Public Devnet check" : "Recorded Devnet check") + " · " + time + " UTC";
+    el("credit-status").textContent = (source === "live" ? "Public Devnet check" : "Recorded Devnet check") + (combined ? " · slot " + data.slot.toLocaleString("en-US") : " · " + time + " UTC");
     if (source === "live" && matchMedia("(max-width: 720px)").matches) el("credit-heading").focus();
   } catch {
     if (attempt !== sequence) return;
-    const previous = !el(split ? "split-result" : "credit-result").hidden;
+    const previous = !el(combined ? "combined-result" : split ? "split-result" : "credit-result").hidden;
     el("credit-status").textContent = previous ? "Live check unavailable. The previous quote for these terms is shown." : "Quote unavailable. Try checking again.";
   } finally {
     if (attempt === sequence) button.disabled = false;
   }
 }
 function changeTerms() {
-  el("credit-jump").hidden = el("credit-result").hidden = el("split-result").hidden = true;
+  el("credit-jump").hidden = el("combined-result").hidden = el("credit-result").hidden = el("split-result").hidden = true;
   el("credit-heading").textContent = "Your payment estimate";
   compare("recorded");
 }
@@ -111,5 +136,5 @@ el("credit-jump").onclick = () => el("credit-heading").focus();
 el("credit-form").onchange = changeTerms;
 el("credit-form").onsubmit = event => { event.preventDefault(); compare("live"); };
 el("credit-terms").open = matchMedia("(min-width: 761px)").matches;
-if (location.hash === "#reserve-first") el("credit-route").value = "reserve";
+el("credit-route").value = location.hash === "#one-payment" ? "combined" : location.hash === "#reserve-first" ? "reserve" : "loan";
 changeTerms();

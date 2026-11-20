@@ -111,7 +111,8 @@ def evaluate(run, drop, days, advance=ADVANCE, *, step=STEP, destination="vendor
                            OWNER, Pubkey.from_string(route()["obligation"]), "wire" in run)
 
 
-def evaluate_deltas(run, drop, days, advance, step, destination, keys, borrower, obligation_key, check_supply):
+def evaluate_deltas(run, drop, days, advance, step, destination, keys, borrower, obligation_key, check_supply,
+                    *, reserve_paid=0, change_returned=0):
     value = run["response"]["value"]
     collateral = run["collateral"]
     proof = json.loads(devnet.SAMPLE.read_text())
@@ -121,7 +122,9 @@ def evaluate_deltas(run, drop, days, advance, step, destination, keys, borrower,
         before, after = devnet.token_balances(value, keys, account, devnet.MINT, owner)
         return after - before
     retained = advance if destination == "wallet" else 0
-    if change(owner_cash, borrower) != retained or (destination == "vendor" and change(vendor, Pubkey.from_string(proof["vendor_owner"])) != advance):
+    wallet_delta = 0 if reserve_paid and owner_cash not in keys else change(owner_cash, borrower)
+    if (wallet_delta != retained + change_returned or
+            (destination == "vendor" and change(vendor, Pubkey.from_string(proof["vendor_owner"])) != advance + reserve_paid)):
         raise ValueError("Borrow proceeds and fuel payment do not reconcile")
     obligation, debt, backing = [read_program_account(a, disc, size) for a, disc, size in zip(value["accounts"],
                                  ("a8ce8d6a584caca7", "2bf2ccca1af73b7f", "2bf2ccca1af73b7f"), (3344, 8624, 8624))]

@@ -58,6 +58,7 @@ export function setupLoadCredit(inputs, form) {
     pending = undefined;
     send.hidden = true;
     el("credit-terms").hidden = true;
+    el("combined-review").replaceChildren();
     write("credit-msg", "");
     status("");
   }
@@ -114,6 +115,7 @@ export function setupLoadCredit(inputs, form) {
   showCycle(false);
 
   form.addEventListener("input", invalidate);
+  window.addEventListener("hashchange", invalidate);
   cap.oninput = invalidate;
   sig.oninput = invalidate;
   let savedFields;
@@ -140,7 +142,7 @@ export function setupLoadCredit(inputs, form) {
   function review(quote, kind) {
     if (!quote.transaction || !account || quote.address !== account.address) return;
     pending = {quote, kind, wallet, account};
-    send.textContent = kind === "borrow" ? "Approve loan and pay fuel vendor" : "Approve payoff and return collateral";
+    send.textContent = kind === "combined" ? "Approve both sources and pay the vendor" : kind === "borrow" ? "Approve loan and pay fuel vendor" : "Approve payoff and return collateral";
     send.hidden = false;
     el("credit-wallet").open = true;
   }
@@ -161,6 +163,27 @@ export function setupLoadCredit(inputs, form) {
       write("credit-msg", account ? "Review the amounts and approve in your wallet when ready." : "Read-only quote using a reference wallet. Connect your own Devnet wallet to check your terms.");
       review(q, "borrow");
     } catch (err) { if (revision === version) write("credit-msg", err.message); }
+  };
+  el("combined-prepare").onclick = async () => {
+    invalidate();
+    const version = revision;
+    if (!account) { status("Connect the demo carrier wallet to prepare this bill."); return; }
+    if (!wallet.features["solana:signAndSendTransaction"].supportedTransactionVersions?.includes(1)) {
+      status("This wallet does not report support for Solana v1 transactions. You can inspect the simulation without signing."); return;
+    }
+    const query = new URLSearchParams(location.hash.split("?")[1]);
+    const days = Number(query.get("days") || 23), drop = Number(query.get("drop") || 40);
+    status("Checking both funding sources on Devnet…");
+    try {
+      const q = await request("/api/atomic-fuel/prepare", {address: account.address, source: "live", days, drop}, AbortSignal.timeout(90000));
+      if (revision !== version || q.borrower !== account.address) return;
+      facts(el("combined-review"), [["Vendor receives", usdc(q.vendor_raw)], ["From reserve", usdc(q.reserve_raw)],
+        ["New debt principal", usdc(q.borrow_raw)], ["Test SOL pledged", sol(q.pledge_lamports)],
+        ["Loan account setup", sol(q.setup_lamports)], ["Network fee", sol(q.fee_lamports)],
+        ["Projected repayment in " + days + " days", money(q.repay_cents) + " at sample scale"], ["Vendor account", q.vendor]]);
+      status("Both sources must clear together. Review the amounts before approving.");
+      review({...q, address: q.borrower}, "combined");
+    } catch (err) { if (revision === version) status(err.message); }
   };
   payoff.onclick = async () => {
     invalidate();
@@ -183,7 +206,7 @@ export function setupLoadCredit(inputs, form) {
     const signer = action.wallet.accounts.find(a => a.address === action.account.address && a.chains.includes(chain));
     if (!signer || wallet !== action.wallet) { invalidate(); status("Wallet changed. Check the terms again."); return; }
     signing = true;
-    const controls = [form, cap, select, price, connect, payoff, sig, el("credit-example")];
+    const controls = [form, cap, select, price, connect, payoff, sig, el("credit-example"), el("combined-prepare")];
     controls.forEach(node => { node.inert = true; });
     status("Review the Devnet transaction in your wallet.");
     try {
@@ -192,11 +215,11 @@ export function setupLoadCredit(inputs, form) {
         options: {preflightCommitment: "confirmed", skipPreflight: false}
       });
       const signature = signatureText(result.signature);
-      if (action.kind === "borrow") {
+      if (action.kind !== "repay") {
         try { localStorage.setItem(storageKey(signer.address), signature); } catch {}
       }
       if (account?.address !== signer.address) return;
-      if (action.kind === "borrow") sig.value = signature;
+      if (action.kind !== "repay") sig.value = signature;
       el("credit-explorer").href = explorer(signature);
       el("credit-explorer").hidden = false;
       status("Submitted on Devnet. Open the transaction to check confirmation, then use Check payoff to check the debt.");

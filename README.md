@@ -4,6 +4,8 @@ For the two-minute live demo, use the [judge walkthrough and rehearsal checklist
 
 Open `/load#credit` to follow a finalized Kamino fuel loan from collateral to vendor payment to repayment. Both Explorer receipts and the saved evidence work without connecting a wallet. Run `uv run --locked python -m freightos.load_credit --live` to check the two transactions against public Devnet.
 
+Open `/fuel-credit#one-payment` to see a Kamino vault and a secured loan fund one vendor payment. A recorded public Devnet check verifies both the payment and the rollback when funds fall short. Run `uv run --locked python -m freightos.atomic_fuel` to replay the check independently.
+
 ## Public payment demo
 
 Open **See a full bill paid on Solana** on Overview. For a $745 sample fuel bill the demo customer pays 1.75 test USDC through the driver, and Kamino supplies 5.70 test USDC. The customer and driver signed the same transaction. The vendor received all 7.45 test USDC on public devnet. Each test cent represents one modeled dollar. [View the finalized settlement on Solana Explorer](https://explorer.solana.com/tx/2MAefNg3M2xFj27U82XEg2bwBQDhnmSUD24Ta4s7o47nN4hu5T1dMTKwyhAtHRZR9TQpFa2rAVa1yrNPx1QTGzvc?cluster=devnet)

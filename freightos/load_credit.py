@@ -7,14 +7,14 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from solders.hash import Hash
-from solders.message import Message
+from solders.message import Message, MessageV1
 from solders.signature import Signature
-from solders.transaction import Transaction
+from solders.transaction import Transaction, VersionedTransaction
 
 from solders.instruction import AccountMeta, Instruction
 from solders.pubkey import Pubkey
 
-from freightos import credit_exit, devnet, freight_credit as credit
+from freightos import atomic_fuel, credit_exit, devnet, freight_credit as credit
 from freightos.load_calendar import project
 from freightos.reserve import associated
 from hedging.quick_pay import integer
@@ -194,10 +194,15 @@ def opening(signature, owner, rpc):
     if not isinstance(signature, str) or not 64 <= len(signature) <= 88:
         raise ValueError("Enter the original Solana borrowing signature.")
     Signature.from_string(signature)
-    record = rpc("getTransaction", [signature, {"encoding":"base64","commitment":"finalized","maxSupportedTransactionVersion":0}])
+    record = rpc("getTransaction", [signature, {"encoding":"base64","commitment":"finalized","maxSupportedTransactionVersion":1}])
     if not record:
         raise ValueError("The borrowing transaction has not finalized on Devnet. Check again.")
-    tx = Transaction.from_bytes(base64.b64decode(record["transaction"][0], validate=True))
+    tx = VersionedTransaction.from_bytes(base64.b64decode(record["transaction"][0], validate=True))
+    if isinstance(tx.message, MessageV1):
+        if record["meta"]["err"] is not None or str(tx.signatures[0]) != signature or not all(tx.verify_with_results()):
+            raise ValueError("The signed combined payment could not be verified")
+        pledge, debt = atomic_fuel.opening_amounts(tx.message, record["meta"], owner)
+        return record["slot"], pledge, debt
     amounts = {}
     for ix in tx.message.instructions:
         if tx.message.account_keys[ix.program_id_index] == credit.KLEND and len(ix.data) == 16:

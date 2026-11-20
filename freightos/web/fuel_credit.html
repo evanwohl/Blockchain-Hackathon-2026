@@ -16,7 +16,7 @@
       <h1>Cover the <em>$190 bill.</em></h1>
       <p>Getting your $200 invoice early costs $10. If you own SOL, you can pledge it for a fuel loan and collect the full invoice later.</p>
       <form id="credit-form"><div class="trip-fields">
-        <label>How will you cover the bill?<select id="credit-route"><option value="loan">Borrow the full $190</option><option value="reserve">Use spare fuel money first</option></select></label>
+        <label>How will you cover the bill?<select id="credit-route"><option value="combined">Pay once from reserve and loan</option><option value="loan">Borrow the full $190</option><option value="reserve">Compare separate payments</option></select></label>
       </div><details id="credit-terms"><summary>Adjust terms and check live</summary><div class="trip-fields">
         <label>SOL price drop to allow for<select id="credit-drop"><option value="20">20%</option><option value="40" selected>40%</option><option value="60">60%</option></select></label>
         <label>When will the customer pay?<select id="credit-days"><option value="23">23 days</option><option value="30">30 days</option></select></label>
@@ -27,6 +27,14 @@
     </section>
     <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label">Secured loan · Kamino</p>
       <h2 id="credit-heading" tabindex="-1">What borrowing would cost</h2>
+      <div id="combined-result" hidden>
+        <div class="trip-outcome"><small>Fuel vendor would receive</small><strong id="combined-total"></strong><p id="combined-sources"></p><div class="fuel-source-strip" aria-hidden="true"><i id="combined-bar"></i></div></div>
+        <dl class="facts" id="combined-facts"></dl>
+        <section class="spending-result"><h3>If the money falls short</h3><p id="combined-failure"></p></section>
+        <p id="combined-comparison"></p><details><summary>Collateral, fees and next-stop assumptions</summary><p id="combined-terms"></p><p id="combined-risk"></p></details>
+        <details><summary>Inspect the Devnet checks</summary><p id="combined-proof"></p><a href="/evidence/atomic-fuel" download="FreightOS-combined-fuel.json">Download recorded evidence for all six cases</a></details>
+        <a class="ledger-back" id="combined-wallet-link" href="/load#combined">Review with the demo carrier wallet →</a>
+      </div>
       <div id="split-result" hidden>
         <div class="trip-outcome"><small>Borrow for this bill</small><strong id="split-borrow"></strong><p id="split-payment"></p><div class="fuel-source-strip" aria-hidden="true"><i id="split-reserve-bar"></i></div></div>
         <dl class="facts" id="split-facts"></dl>
