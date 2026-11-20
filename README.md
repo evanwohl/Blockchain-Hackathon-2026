@@ -1,7 +1,5 @@
 # FreightOS
 
-For the two-minute live demo, use the [judge walkthrough and rehearsal checklist](PRESENTATION.md).
-
 Open `/load#credit` to follow a finalized Kamino fuel loan from collateral to vendor payment to repayment. Both Explorer receipts and the saved evidence work without connecting a wallet. Run `uv run --locked python -m freightos.load_credit --live` to check the two transactions against public Devnet.
 
 Open `/fuel-credit#one-payment` to see a Kamino vault and a secured loan fund one vendor payment. A recorded public Devnet check verifies both the payment and the rollback when funds fall short. Run `uv run --locked python -m freightos.atomic_fuel` to replay the check independently.
