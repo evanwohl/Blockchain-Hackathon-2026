@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from freightos.capture import ROOT
 from freightos.fork import ReserveFork, VaultExecutionError
-from freightos import bill, devnet, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, reserve_return, trip_cover
+from freightos import bill, devnet, diesel_model, freight_credit, fuel_cover, fuel_update, next_stop, public_offer, regional_diesel, reserve_return, trip_cover
 from freightos.surcharge import larger_offer_budget, offer_decision, partial_offer, standard_terms_threshold, surcharge_plans
 from freightos.live import reserve_observation
 from freightos.funding import DATA, DELAY_DAYS, LOAD, demo_plans, funding_plan, next_trip_options, pairing_value, public_fuel_comparison, refill_cost
@@ -564,6 +564,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/evidence/fuel-credit":
             self.reply(200, "application/json", gzip.decompress((freight_credit.DATA / "credit_examples.json.gz").read_bytes()), static=True)
             return
+        if self.path == "/evidence/diesel-model":
+            self.reply(200, "application/json", gzip.decompress(diesel_model.AUDIT.read_bytes()), static=True)
+            return
         if self.path == "/evidence/regional-diesel":
             self.reply(200, "application/json", gzip.decompress(regional_diesel.SNAPSHOT.read_bytes()), static=True)
             return
@@ -719,7 +722,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if self.path == "/api/trip-cover":
                 trip = {key: data.get(key) for key in trip_cover.EXAMPLE}
-                trip.update({key: data[key] for key in ("region", "spend_limit_cents", "pump_cash_cents") if key in data})
+                trip.update({key: data[key] for key in ("region", "spend_limit_cents", "pump_cash_cents", "diesel_model") if key in data})
                 trip_cover.validate(trip)
                 road = data.get("road_cents")
                 if road is not None:
@@ -739,6 +742,8 @@ class Handler(BaseHTTPRequestHandler):
                             raw = budget["available_raw"]
                         reserve = {"available_cents": raw // budget["raw_units_per_cent"], "road_cents": road, "slot": budget["slot"]}
                     self.respond(200, {**trip_cover.analyze(snapshot, trip, reserve=reserve), "source": source})
+                except diesel_model.CalibrationUnavailable as exc:
+                    self.respond(422, {"error": str(exc)})
                 except (OSError, ValueError, KeyError, ArithmeticError, TypeError, RuntimeError):
                     self.respond(503, {"error": "Could not verify the market comparison for this trip."})
                 return

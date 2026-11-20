@@ -26,6 +26,7 @@
           </select></label>
         </div>
         <p id="region-help">Choose a region to allow for weekly diesel price changes that oil alone can miss.</p>
+        <label id="recent-pattern" class="trip-reserve-choice" hidden><input id="use-recent-pattern" type="checkbox"> Use the region’s recent price pattern</label>
         <label class="trip-reserve-choice"><input id="use-trip-reserve" type="checkbox"> Include my demo fuel reserve</label>
         <div id="trip-road-fields" hidden>
           <label>Keep for tolls and repairs ($)<input id="trip-road" type="number" inputmode="decimal" min="0" max="1000000" step=".01" value="25.00" required disabled></label>
@@ -71,6 +72,7 @@
           <details><summary>What does the extra protection pay?</summary><dl id="protection-outcomes" class="facts"></dl><p id="protection-value"></p><p id="protection-draw"></p></details>
           <button type="button" class="secondary" id="protection-try"></button>
         </section>
+        <div id="fuel-floor" class="fuel-floor" hidden><p id="fuel-floor-note"></p><button id="floor-try" type="button" class="secondary"></button></div>
         <details id="gap-credit" hidden><summary id="gap-title">Check a fuel loan</summary>
           <p>If you already own SOL, see how much of this fuel gap it could cover. Kamino would hold your pledge until you repay the loan.</p>
           <form id="gap-form"><div class="trip-fields">
@@ -88,6 +90,10 @@
           </div>
         </details>
         <details id="regional-evidence" hidden><summary>How much can diesel move on its own?</summary>
+          <p id="pattern-price"></p><dl id="pattern-bills" class="facts"></dl>
+          <p id="pattern-score"></p><details id="pattern-validation" hidden><summary>How did the estimates perform?</summary>
+            <p id="pattern-performance"></p><a href="/evidence/diesel-model" download="FreightOS-weekly-diesel-replay.json">Download all weekly estimates</a>
+          </details><button id="pattern-try" type="button" class="secondary" hidden></button>
           <p id="regional-test"></p><p id="regional-limit"></p><p id="regional-tail"></p>
           <a href="/evidence/regional-diesel" download="FreightOS-regional-diesel.json">Download weekly prices and EIA sources</a>
         </details>
