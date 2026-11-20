@@ -1,0 +1,13 @@
+{
+  "name": "FreightOS private demo",
+  "image": "mcr.microsoft.com/devcontainers/python:3-3.12-bookworm",
+  "postCreateCommand": "python -m pip install --user uv==0.11.13 && python -m uv sync --locked",
+  "postStartCommand": "nohup .venv/bin/python -m freightos.app </dev/null >/tmp/freightos-demo.log 2>&1 &",
+  "forwardPorts": [8783],
+  "portsAttributes": {
+    "8783": {
+      "label": "FreightOS demo",
+      "onAutoForward": "openBrowserOnce"
+    }
+  }
+}

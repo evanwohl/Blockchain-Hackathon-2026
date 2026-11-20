@@ -14,6 +14,8 @@ uv run --locked --extra dev pytest -q
 
 The server prints its loopback URL, normally `http://127.0.0.1:8783`. Run the tests in a second terminal. The browser uses a single in-memory demo wallet shared by tabs. For automated payment tests, launch a second server with `--port` and a free port so a teammate's open bill keeps its state. Dependencies need installing once. The browser flow then runs against bundled data.
 
+For phone reviews, a new GitHub Codespace installs the locked dependencies and starts a separate practice wallet on port 8783. Open **Ports → FreightOS demo** in the signed-in browser. Keep port visibility private. The app accepts the HTTPS origin for that specific codespace and port. Stopping the process resets its in-memory wallet.
+
 ## Editing the workspace
 
 The shared green header and bill summary styles live in `freightos/web/style.css`. The light work areas use `freightos/web/workspace.css`. On Overview, the three Follow the money tabs read the same quote as the summary. Check them with both the keyboard and pointer after changing the funding source. The receipt replay below the tabs belongs to SYN-004, a separate synthetic load. On the evidence and planning screens, keep the amount, its timing and the action together. Keep signed payments, simulations and recorded prices labeled at the point of use.

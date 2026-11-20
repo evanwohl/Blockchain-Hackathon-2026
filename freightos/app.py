@@ -2,6 +2,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 from contextlib import suppress
 from functools import cache, lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -477,6 +478,18 @@ class PublicCheck:
             self.lock.release()
 
 
+def allowed_demo_request(host, origin, port):
+    loopback = (f"localhost:{port}", f"127.0.0.1:{port}")
+    if host in loopback and origin in (None, f"http://{host}"):
+        return True
+    name = os.environ.get("CODESPACE_NAME")
+    domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+    if os.environ.get("CODESPACES") != "true" or not name or not domain:
+        return False
+    public_host = f"{name}-{port}.{domain}"
+    return origin == f"https://{public_host}" and host in (*loopback, "localhost", "127.0.0.1", public_host)
+
+
 class Handler(BaseHTTPRequestHandler):
     def reply(self, status, content_type, body, *, static=False):
         cache_control = "no-cache" if static else "no-store"
@@ -700,8 +713,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         host = self.headers.get("Host", "")
-        allowed_hosts = (f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}")
-        if host not in allowed_hosts or self.headers.get("Origin") not in (None, "http://" + host):
+        if not allowed_demo_request(host, self.headers.get("Origin"), self.server.server_port):
             self.respond(403, {"error": "Local demo requests only"})
             return
         try:

@@ -8,6 +8,10 @@ Run `uv run --locked python -m freightos.public_offer --live` to verify the offe
 
 FreightOS compares ways to fund a load’s fuel bill, shows how a recorded Gemini oil scenario changes the cash needed, and pays the approved vendor from a Kamino USDC reserve. The browser app uses test funds on a local Solana fork. It runs offline after dependency installation.
 
+## Open the demo on a phone
+
+[Create a private demo on GitHub Codespaces](https://codespaces.new/evanwohl/Blockchain-Hackathon-2026). Sign in and tap **Create codespace**. When setup finishes, open **Ports → FreightOS demo (8783) → Open in Browser** if the app has not opened automatically. This runs the full app with a fresh practice wallet. Stop the codespace when finished to end compute usage.
+
 ## Run the app
 
 From the repository root with Python 3.11 or later and uv installed, run:
