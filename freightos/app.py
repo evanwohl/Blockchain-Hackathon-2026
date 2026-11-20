@@ -618,9 +618,9 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, ValueError, KeyError, TypeError):
                 self.respond(503, {"error": "The saved next-stop example is unavailable."})
             return
-        if self.path in ("/evidence/next-stop", "/evidence/two-stops", "/evidence/fuel-buffers"):
+        if self.path in ("/evidence/next-stop", "/evidence/two-stops", "/evidence/fuel-buffers", "/evidence/advance-reserve"):
             snapshot = {"/evidence/two-stops": next_stop.TWO_STOPS, "/evidence/next-stop": next_stop.SNAPSHOT,
-                        "/evidence/fuel-buffers": next_stop.FUEL_BUFFERS}[self.path]
+                        "/evidence/fuel-buffers": next_stop.FUEL_BUFFERS, "/evidence/advance-reserve": next_stop.ADVANCE_CHECKS}[self.path]
             self.reply(200, "application/json", gzip.decompress(snapshot.read_bytes()), static=True)
             return
         if self.path == "/api/trip-cover":
@@ -858,7 +858,10 @@ class Handler(BaseHTTPRequestHandler):
                         run = self.server.credit_checks[drop, days].read() if source == "live" else freight_credit.saved(drop, days)
                         quote = freight_credit.evaluate(run, drop, days)
                     if self.path.startswith("/api/atomic-fuel"):
-                        decision = atomic_fuel.compare_offer(quote, fee, other)
+                        decision = atomic_fuel.compare_offer(quote, fee, other, partial=data.get("partial", False),
+                                                             reserve_fee_cents=data.get("reserve_fee_cents", 0))
+                        if decision["partial"] is not None:
+                            decision["partial"]["recorded"] = str(decision["partial"]["draw_cents"]) in next_stop.advance_recordings()
                         quote = {**quote, "offer": decision}
                         if decision["choice"] != "loan":
                             quote.pop("transaction", None)
@@ -930,6 +933,16 @@ class Handler(BaseHTTPRequestHandler):
                     calendar["decision"] = funding_options(
                         data, calendar, self.server.settlement.load_reserve(data.get("reserve_mode")))
                 self.respond(200, calendar)
+                return
+            if self.path == "/api/advance-reserve":
+                source = data.get("source")
+                if source not in ("recorded", "live"):
+                    raise ValueError("Choose recorded or live evidence")
+                try:
+                    result = next_stop.advance_reserve(data.get("draw_cents"), live=source == "live")
+                    self.respond(200, result)
+                except (OSError, KeyError, TypeError, RuntimeError):
+                    self.respond(503, {"error": "Could not check the reserve on Devnet. Try again."})
                 return
             if self.path in ("/api/next-stop", "/api/two-stops"):
                 fuel, road = data.get("fuel_cents"), data.get("road_cents")

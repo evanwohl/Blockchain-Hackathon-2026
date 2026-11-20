@@ -14,7 +14,7 @@
     <section class="public-cover">
       <p class="panel-label">Working capital · FOS-2048</p>
       <h1>Cover the <em>$190 bill.</em></h1>
-      <p>The sample customer offers to pay a $200 invoice early for $10. If you own SOL, you can pledge it for a fuel loan and collect the full invoice later.</p>
+      <p id="credit-intro">The sample customer offers to pay a $200 invoice early for $10. If you own SOL, you can pledge it for a fuel loan and collect the full invoice later.</p>
       <form id="credit-form"><div class="trip-fields">
         <label>How will you cover the bill?<select id="credit-route"><option value="combined">Pay once from reserve and loan</option><option value="loan">Borrow the full $190</option><option value="reserve">Compare separate payments</option></select></label>
       </div><div id="combined-settings" hidden>
@@ -22,6 +22,8 @@
         <details><summary>Compare my early-pay offer</summary><div class="trip-fields">
           <label>Customer’s fee to pay the $200 invoice before fuel is due ($)<input id="offer-fee" type="number" min="0" max="200" step=".01" value="10.00" required></label>
           <label>Other loan expenses due by payday ($)<input id="offer-other" type="number" min="0" max="1000000" step=".01" value="0.00" required></label>
+          <label class="payday-switch"><input id="allow-partial" type="checkbox"><span>Customer allows a partial advance<small>Same proportional fee on any amount, rounded up to a cent</small></span></label>
+          <label id="partial-expense-field" hidden>Other reserve-payment expenses due by payday ($)<input id="partial-expense" type="number" min="0" max="1000000" step=".01" value="0.00" required></label>
         </div><p>Enter cash expenses such as network and conversion fees in sample dollars. The collateral and refundable deposit are shown separately.</p></details>
       </div><details id="credit-terms"><summary>Adjust terms and check live</summary><div class="trip-fields">
         <label>SOL price drop to allow for<select id="credit-drop"><option value="20">20%</option><option value="40" selected>40%</option><option value="60">60%</option></select></label>
@@ -31,15 +33,21 @@
       <p id="credit-status" role="status" aria-live="polite">Opening the recorded loan preview…</p>
       <p class="credit-scope">Payment preview · test funds only.</p>
     </section>
-    <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label">Secured loan · Kamino</p>
+    <section class="public-slip" aria-labelledby="credit-heading"><p class="panel-label">Fuel funding · Kamino</p>
       <h2 id="credit-heading" tabindex="-1">What borrowing would cost</h2>
       <div id="combined-result" hidden>
         <div class="trip-outcome"><small id="combined-label">Fuel vendor would receive</small><strong id="combined-total"></strong><p id="combined-sources"></p><div class="fuel-source-strip" aria-hidden="true"><i id="combined-bar"></i></div></div>
         <dl class="facts" id="combined-facts"></dl>
-<section class="spending-result"><h3 id="combined-choice"></h3><p id="combined-comparison"></p><p id="combined-payday"></p></section>
+        <button class="secondary" id="partial-request" type="button" hidden>Download advance request</button>
+        <section class="spending-result"><h3 id="combined-choice"></h3><p id="combined-comparison"></p><p id="combined-payday"></p></section>
         <section class="spending-result"><h3 id="combined-failure-title">If the money falls short</h3><p id="combined-failure"></p></section>
         <details><summary>Collateral, fees and next-stop assumptions</summary><p id="combined-terms"></p><p id="combined-risk"></p></details>
-        <details><summary>Inspect the Devnet checks</summary><p id="combined-proof"></p><a id="combined-download" href="/evidence/atomic-fuel" download="FreightOS-combined-fuel.json">Download recorded evidence for all six cases</a></details>
+        <details id="combined-loan-proof"><summary>Inspect the Devnet checks</summary><p id="combined-proof"></p><a id="combined-download" href="/evidence/atomic-fuel" download="FreightOS-combined-fuel.json">Download recorded evidence for all six cases</a></details>
+        <div id="partial-actions" hidden>
+          <button class="secondary" id="partial-saved" type="button" hidden>Replay the reserve payment check</button>
+          <button class="secondary" id="partial-live" type="button" hidden>Check reserve on public Solana</button>
+          <p role="status" id="partial-status"></p><a id="partial-evidence" href="/evidence/advance-reserve" download="FreightOS-advance-reserve.json" hidden>Download recorded reserve checks</a>
+        </div>
         <a class="ledger-back" id="combined-wallet-link" href="/load#combined">Review with the demo carrier wallet →</a>
       </div>
       <div id="split-result" hidden>

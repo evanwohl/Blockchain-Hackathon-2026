@@ -176,10 +176,10 @@ export function setupLoadCredit(inputs, form) {
     status("Checking both funding sources on Devnet…");
     try {
       const q = await request("/api/atomic-fuel/prepare", {address: account.address, source: "live", days, drop,
-        protect_payday: query.get("late") === "1", offer_fee_cents: Number(query.get("fee") ?? 1000), other_cents: Number(query.get("other") ?? 0)}, AbortSignal.timeout(90000));
+        partial: query.get("partial") === "1", reserve_fee_cents: Number(query.get("reservefee") ?? 0), protect_payday: query.get("late") === "1", offer_fee_cents: Number(query.get("fee") ?? 1000), other_cents: Number(query.get("other") ?? 0)}, AbortSignal.timeout(90000));
       if (revision !== version || q.borrower !== account.address) return;
       if (q.offer.choice !== "loan") {
-        status(q.offer.choice === "early" ? "At the current quote, use the early freight payment. Confirm its date with your customer." : "These terms leave a shortfall. Return to the comparison before arranging funds."); return;
+        status(q.offer.choice === "early" ? "At the current quote, use the early freight payment. Confirm its date with your customer." : q.offer.choice === "partial" ? "The partial advance now covers the bill at a lower or equal cost. Return to confirm the customer terms." : "These terms leave a shortfall. Return to the comparison before arranging funds."); return;
       }
       facts(el("combined-review"), [["Vendor receives", usdc(q.vendor_raw)], ["From reserve", usdc(q.reserve_raw)],
         ["New debt principal", usdc(q.borrow_raw)], ["Test SOL pledged", sol(q.pledge_lamports)],

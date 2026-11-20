@@ -1,4 +1,4 @@
-import { el, facts, money, request } from "./common.js";
+import { el, facts, money, request, saveFile, tokenUnits } from "./common.js";
 
 let sequence = 0;
 const sol = lamports => (lamports / 1e9).toLocaleString("en-US", { maximumFractionDigits: 9 }) + " SOL";
@@ -77,10 +77,62 @@ function displaySplit(d) {
   el("split-result").hidden = false;
 }
 
+function showPartial(d) {
+  const offer = d.offer, p = offer.partial;
+  el("credit-heading").textContent = "Advance part of the invoice";
+  el("combined-label").textContent = "Request early from the $200 invoice";
+  el("combined-total").textContent = money(p.gross_cents);
+  el("combined-sources").textContent = "The customer keeps " + money(p.discount_cents) + " and sends " + money(p.advance_cents)
+    + (p.draw_cents ? ". Use " + money(p.draw_cents) + " of spare reserve money to finish paying for fuel." : ". This covers the fuel bill.");
+  el("combined-bar").parentElement.hidden = !p.draw_cents;
+  el("combined-bar").style.width = 100 * p.draw_cents / d.bill_cents + "%";
+  facts(el("combined-facts"), [["Fuel bill covered on the planned date", money(d.bill_cents)],
+    ["Still owed by customer on the regular date", money(p.regular_cents)], ["Put back in the reserve", money(p.draw_cents)],
+    ["Cash left after refill and expenses", money(p.payday_cash_cents)]]);
+  el("combined-choice").textContent = "What the advance costs";
+  el("combined-comparison").textContent = money(p.discount_cents) + " customer fee + " + money(p.missed_yield_cents) + " estimated missed reserve earnings + "
+    + money(p.expense_cents) + " entered reserve expenses = " + money(p.cost_cents) + ".";
+  el("combined-payday").textContent = "The whole-invoice fee is " + money(offer.fee_cents) + (offer.shortfall_cents ? " and still leaves " + money(offer.shortfall_cents) + " of fuel unpaid." : ".")
+    + " The loan plan " + (offer.payday_cash_cents < 0 ? "is short " + money(-offer.payday_cash_cents) + " at payday." : "costs an estimated " + money(offer.loan_cost_cents) + ".");
+  el("combined-failure-title").textContent = "Confirm before paying for fuel";
+  el("combined-failure").textContent = "Confirm the partial advance, fee and both payment dates with the customer. Wait for the advance to clear. No SOL collateral is needed.";
+  el("combined-terms").textContent = "Reserve use is capped so at least " + money(d.holdback.cost_cents) + " remains budgeted for three more gallons under the recorded Gemini oil scenario.";
+  el("combined-risk").textContent = "Estimated missed earnings use the recorded vault yield through the selected refill date. Network expenses use the amount entered. Check the exact withdrawal before using reserve money.";
+  el("partial-status").textContent = "";
+  el("partial-evidence").hidden = true;
+  const saved = el("partial-saved"), live = el("partial-live");
+  saved.hidden = !p.recorded; live.hidden = !p.draw_cents; live.disabled = saved.disabled = false;
+  el("partial-request").onclick = () => saveFile("FreightOS-advance-request.txt",
+    "Freight invoice [invoice or load ID]\n\nPlease confirm a partial early payment under your " + money(offer.fee_cents) + " offer for the full $200 invoice. "
+    + "We request " + money(p.gross_cents) + " early, with a fee of " + money(p.discount_cents) + ". Please confirm that "
+    + money(p.advance_cents) + " will clear by [fuel purchase date] and that the remaining " + money(p.regular_cents)
+    + " will be paid in full on [regular payment date].\n", "text/plain");
+  let previousCheck = "";
+  async function check(source) {
+    const revision = sequence;
+    live.disabled = saved.disabled = true;
+    el("partial-status").textContent = "Checking the vendor transfer and what stays in the vault…";
+    try {
+      const q = await request("/api/advance-reserve", {draw_cents: p.draw_cents, source}, AbortSignal.timeout(90000));
+      if (revision !== sequence) return;
+      el("partial-status").textContent = (source === "live" ? "Public Devnet simulation" : "Recorded Devnet simulation") + " · slot " + q.slot.toLocaleString("en-US")
+        + ". The vendor received " + tokenUnits(q.vendor_raw) + " test USDC (" + money(p.draw_cents) + " at sample scale). The remaining shares could return "
+        + money(Math.floor(q.retained_raw / q.raw_units_per_cent)) + ". The customer advance is arranged separately.";
+      previousCheck = el("partial-status").textContent;
+      el("partial-evidence").hidden = source !== "recorded";
+    } catch (err) {
+      if (revision === sequence) el("partial-status").textContent = "New reserve check unconfirmed. " + err.message + (previousCheck ? " Previous check: " + previousCheck : "");
+    } finally { if (revision === sequence) live.disabled = saved.disabled = false; }
+  }
+  saved.onclick = () => check("recorded"); live.onclick = () => check("live");
+}
+
 function displayCombined(d) {
   const reserve = money(d.reserve_raw / d.scale), debt = money(d.borrow_raw / d.scale);
   const stress = d.payday_stress, offer = d.offer;
+  el("credit-intro").textContent = "Your customer offers to pay a $200 freight invoice early for " + money(offer.fee_cents) + ". Compare that with using fuel reserves and borrowing against SOL.";
   const target = new URLSearchParams({days: d.days, drop: d.drop, late: Number(stress.protected), fee: offer.fee_cents, other: offer.other_cents});
+  if (offer.partial_allowed) { target.set("partial", "1"); target.set("reservefee", offer.reserve_fee_cents); }
   el("combined-wallet-link").href = "/load#combined?" + target;
   el("combined-wallet-link").hidden = offer.choice !== "loan";
   el("combined-download").href = stress.protected ? "/evidence/atomic-late" : "/evidence/atomic-fuel";
@@ -116,7 +168,7 @@ function displayCombined(d) {
   const costs = "Loan costs of " + money(offer.loan_cost_cents) + " include interest, missed reserve earnings and the expenses entered. Early pay costs " + money(offer.fee_cents) + ".";
   const limit = offer.payday_cash_cents < 0 ? "The loan is also short " + money(-offer.payday_cash_cents) + " after repayment and reserve refill."
     : "After loan payoff, reserve refill and cash expenses, the invoice leaves " + money(offer.payday_cash_cents) + ".";
-  el("combined-comparison").textContent = costs + " " + limit + " The highest early-pay fee this plan would accept is " + money(offer.early_fee_ceiling_cents) + ".";
+  el("combined-comparison").textContent = costs + " " + limit + " Compared with the loan, the highest fee to take the whole invoice early is " + money(offer.early_fee_ceiling_cents) + ".";
   el("combined-payday").textContent = stress.protected
     ? "If freight pays on day " + stress.days + " after borrowing and the rate doubles, estimated payoff is " + money(stress.repay_cents) + ". The loan plan pledges "
       + sol(d.pledge_lamports - stress.ordinary_pledge_lamports) + " extra in test collateral to keep its safety margin."
@@ -127,6 +179,16 @@ function displayCombined(d) {
     + money(d.interest_cents) + " projected borrowing cost assumes today’s rate through payday. The three-gallon target uses the recorded Gemini $" + d.holdback.threshold + " oil scenario.";
   el("combined-proof").textContent = "Unsigned public Devnet simulation at slot " + d.slot.toLocaleString("en-US") + ". The vendor received "
     + (d.vendor_raw / 1e6).toFixed(6) + " test USDC in one transfer. A second simulation tried to pay one token unit more than the available proceeds. All token balances stayed unchanged. A third simulation redeemed the remaining shares.";
+  const partial = offer.choice === "partial";
+  el("partial-request").hidden = el("partial-actions").hidden = !partial;
+  el("combined-loan-proof").hidden = partial;
+  if (partial) showPartial(d);
+  else if (offer.partial) el("combined-comparison").textContent += " Advancing part would cost " + money(offer.partial.cost_cents) + ".";
+  if (offer.partial_allowed && offer.partial_fee_limit_cents !== null) {
+    el("combined-comparison").textContent += " With partial payment allowed, the highest full-invoice fee that still "
+      + (offer.payday_cash_cents < 0 ? "covers fuel and the refill" : "covers fuel and the refill at or below the loan cost")
+      + " is " + money(offer.partial_fee_limit_cents) + ".";
+  }
   el("combined-result").hidden = false;
 }
 
@@ -136,11 +198,14 @@ async function compare(source) {
   const split = route === "reserve", combined = route === "combined";
   const body = { drop: Number(el("credit-drop").value), days: Number(el("credit-days").value), source };
   el("combined-settings").hidden = !combined;
-  for (const id of ["offer-fee", "offer-other", "protect-payday"]) el(id).disabled = !combined;
+  if (!combined) el("credit-intro").textContent = "Taking the $200 invoice early costs $10 in this example. Compare it with borrowing against SOL to pay for fuel.";
+  const partial = combined && el("allow-partial").checked;
+  el("partial-expense-field").hidden = el("partial-expense").disabled = !partial;
+  for (const id of ["offer-fee", "offer-other", "protect-payday", "allow-partial"]) el(id).disabled = !combined;
   if (combined) {
     el("credit-check").disabled = false;
     if (!el("credit-form").reportValidity()) { el("credit-status").textContent = "Check the offer amounts."; return; }
-    Object.assign(body, {protect_payday: el("protect-payday").checked,
+    Object.assign(body, {partial, reserve_fee_cents: partial ? Math.round(el("partial-expense").valueAsNumber * 100) : 0, protect_payday: el("protect-payday").checked,
       offer_fee_cents: Math.round(el("offer-fee").valueAsNumber * 100), other_cents: Math.round(el("offer-other").valueAsNumber * 100)});
   }
   const button = el("credit-check");
@@ -175,4 +240,10 @@ el("credit-form").onchange = changeTerms;
 el("credit-form").onsubmit = event => { event.preventDefault(); compare("live"); };
 el("credit-terms").open = matchMedia("(min-width: 761px)").matches;
 el("credit-route").value = location.hash === "#one-payment" ? "combined" : location.hash === "#reserve-first" ? "reserve" : "loan";
+if (location.hash === "#partial-advance") {
+  el("credit-route").value = "combined";
+  el("combined-settings").querySelector("details").open = true;
+  el("allow-partial").checked = el("protect-payday").checked = true;
+  el("offer-fee").value = "3.00";
+}
 changeTerms();

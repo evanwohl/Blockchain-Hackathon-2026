@@ -137,12 +137,13 @@ def terms(reserve, drop, days, rpc, *, prepare=False, protect=False):
     total = reserve["fuel_cents"] * reserve["raw_units_per_cent"]
     report = json.loads((funding.DATA / "case_report.json").read_bytes())
     redeemed_cents = Decimal(reserve["vendor_raw"] + reserve["wallet_increase_raw"]) / reserve["raw_units_per_cent"]
-    def forgone_yield(horizon):
+    def growth(horizon):
         apy = Decimal(funding.refill_cost(report, horizon)["apy"])
-        return credit.ceiling(redeemed_cents * ((1 + apy) ** (Decimal(horizon) / 365) - 1))
-    missed = forgone_yield(days)
+        return (1 + apy) ** (Decimal(horizon) / 365) - 1
+    ordinary_growth, late_growth = growth(days), growth(days + 7)
+    missed = credit.ceiling(redeemed_cents * ordinary_growth)
     late = q["late"]
-    delayed_cost = late["cost_cents"] + forgone_yield(days + 7)
+    delayed_cost = late["cost_cents"] + credit.ceiling(redeemed_cents * late_growth)
     early_pay_fee = reserve_credit.INVOICE_CENTS - reserve["fuel_cents"]
     prepared = {}
     if prepare:
@@ -156,7 +157,7 @@ def terms(reserve, drop, days, rpc, *, prepare=False, protect=False):
               "cost_cents": delayed_cost, "rate_bps": late["rate_bps"], "original_rate_bps": q["rate_bps"],
               "ordinary_pledge_lamports": q["minimum_lamports"], "required_lamports": late["minimum_lamports"],
               "stress_ltv_bps": late["stress_ltv_bps"], "target_ltv_bps": (late["liquidation_pct"] - 10) * 100}
-    return {**prepared, "payday_stress": stress, "bill_cents": reserve["fuel_cents"], "scale": reserve["raw_units_per_cent"], "vendor_raw": total,
+    return {**prepared, "payday_stress": stress, "reserve_growth": str(late_growth if protect else ordinary_growth), "bill_cents": reserve["fuel_cents"], "scale": reserve["raw_units_per_cent"], "vendor_raw": total,
             "reserve_raw": reserve["vendor_raw"], "borrow_raw": reserve["shortfall_raw"], "retained_raw": retained,
             "holdback": reserve["holdback"], "repay_cents": q["repay_cents"], "pledge_lamports": pledge,
             "setup_lamports": q["setup_lamports"], "obligation_rent_lamports": q["obligation_rent"],
@@ -166,7 +167,37 @@ def terms(reserve, drop, days, rpc, *, prepare=False, protect=False):
             "refused_slot": refused["context"]["slot"], "wire_bytes": size, "days": days, "drop": drop}
 
 
-def compare_offer(quote, fee_cents, other_cents):
+def partial_invoice(invoice, bill, cap, fee, growth, reserve_fee, loan_limit):
+    best = None
+    fee_limit = None
+    for draw in range(min(cap, bill - 1) + 1):
+        net = bill - draw
+        expense = reserve_fee if draw else 0
+        missed = credit.ceiling(draw * growth)
+        max_gross = min(invoice - 1, invoice - draw - expense)
+        if loan_limit is not None:
+            max_gross = min(max_gross, net + loan_limit - missed - expense)
+        if max_gross >= net:
+            ceiling = invoice * (max_gross - net) // max_gross
+            fee_limit = ceiling if fee_limit is None else max(fee_limit, ceiling)
+        if fee == invoice:
+            continue
+        gross = (net * invoice + invoice - fee - 1) // (invoice - fee)
+        if gross >= invoice:
+            continue
+        discount = gross - net
+        left = invoice - gross - draw - expense
+        if left < 0:
+            continue
+        cost = discount + missed + expense
+        if best is None or cost < best["cost_cents"]:
+            best = {"gross_cents": gross, "advance_cents": net, "discount_cents": discount, "draw_cents": draw,
+                    "regular_cents": invoice - gross, "payday_cash_cents": left, "missed_yield_cents": missed,
+                    "expense_cents": expense, "cost_cents": cost}
+    return best, fee_limit
+
+
+def compare_offer(quote, fee_cents, other_cents, *, partial=False, reserve_fee_cents=0):
     invoice = reserve_credit.INVOICE_CENTS
     fee = integer(fee_cents, "early payment fee", invoice)
     other = integer(other_cents, "other borrowing costs", 100_000_000)
@@ -180,7 +211,17 @@ def compare_offer(quote, fee_cents, other_cents):
     fuel_room = invoice - quote["bill_cents"]
     ceiling = min(loan_cost, fuel_room) if payday >= 0 else fuel_room
     choice = "early" if fee <= ceiling else "loan" if payday >= 0 else "short"
-    return {"choice": choice, "payday_cash_cents": payday, "fee_cents": fee, "other_cents": other,
+    if type(partial) is not bool:
+        raise ValueError("Choose whether the customer allows a proportional advance")
+    reserve_fee = integer(reserve_fee_cents, "reserve payment expenses", 100_000_000)
+    split, fee_limit = None, None
+    if partial:
+        split, fee_limit = partial_invoice(invoice, quote["bill_cents"], quote["reserve_raw"] // quote["scale"],
+                                fee, Decimal(quote["reserve_growth"]), reserve_fee, loan_cost if payday >= 0 else None)
+        if split is not None and (choice == "short" or (choice == "loan" and split["cost_cents"] <= loan_cost)
+                                  or (choice == "early" and split["cost_cents"] < fee)):
+            choice = "partial"
+    return {"choice": choice, "partial": split, "partial_fee_limit_cents": fee_limit, "partial_allowed": partial, "reserve_fee_cents": reserve_fee, "payday_cash_cents": payday, "fee_cents": fee, "other_cents": other,
             "early_net_cents": net, "shortfall_cents": max(0, quote["bill_cents"] - net),
             "loan_cost_cents": loan_cost, "early_fee_ceiling_cents": ceiling}
 

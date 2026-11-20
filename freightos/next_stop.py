@@ -12,6 +12,7 @@ from hedging.quick_pay import integer
 
 SNAPSHOT = devnet.SAMPLE.with_name("next_stop.json.gz")
 FUEL_BUFFERS = devnet.SAMPLE.with_name("fuel_buffers.json.gz")
+ADVANCE_CHECKS = devnet.SAMPLE.with_name("advance_reserve.json.gz")
 TWO_STOPS = devnet.SAMPLE.with_name("two_stops.json.gz")
 
 
@@ -164,7 +165,7 @@ def check_payment(plan, budget, fuel, road, rpc):
             "network_fee_lamports": value["fee"]}, instructions, state
 
 
-def replay_preview(sample, fuel, road, *, holdback=None, keep_shares=False):
+def replay_preview(sample, fuel, road, *, holdback=None, keep_shares=False, check_genesis=False):
     calls = iter(sample["calls"])
 
     def replay(method, params):
@@ -173,7 +174,7 @@ def replay_preview(sample, fuel, road, *, holdback=None, keep_shares=False):
             raise ValueError("The saved simulation differs from the requested instructions")
         return record["response"]
 
-    if keep_shares and replay("getGenesisHash", []) != devnet.GENESIS:
+    if (keep_shares or check_genesis) and replay("getGenesisHash", []) != devnet.GENESIS:
         raise ValueError("The recorded reserve check requires public Devnet")
     result = preview(devnet.verify(json.loads(devnet.SAMPLE.read_bytes())),
                      public_offer.verify(json.loads(public_offer.SAMPLE.read_bytes())),
@@ -203,5 +204,47 @@ def saved_buffer(case):
     return {**replay_preview(samples[case], fuel, 0, keep_shares=True), "buffer_case": case}
 
 
+@cache
+def advance_recordings():
+    return json.loads(gzip.decompress(ADVANCE_CHECKS.read_bytes()))
+
+
+def advance_reserve(cents, live=False, rpc=devnet.request, *, evidence=None):
+    integer(cents, "reserve payment", 19000)
+    if not cents:
+        raise ValueError("This plan does not need a reserve payment")
+    hold = fuel_holdback(3, fuel_update.saved(), oil_rise=True)
+    if live:
+        if rpc("getGenesisHash", []) != devnet.GENESIS:
+            raise ValueError("Use public Devnet to check the reserve")
+        first = devnet.verify(json.loads(devnet.SAMPLE.read_bytes()), rpc)
+        second = public_offer.verify(json.loads(public_offer.SAMPLE.read_bytes()), rpc)
+        result = observed(preview(first, second, cents, 0, rpc, holdback=hold))
+    else:
+        sample = (advance_recordings() if evidence is None else evidence).get(str(cents))
+        if sample is None:
+            raise ValueError("Use a live reserve check for this amount")
+        result = replay_preview(sample, cents, 0, holdback=hold, check_genesis=True)
+    if (result["vendor_raw"] != cents * result["raw_units_per_cent"] or result["retained_raw"] is None
+            or result["retained_raw"] < hold["cost_cents"] * result["raw_units_per_cent"]):
+        raise ValueError("The reserve cannot pay that amount and protect the next stop at this check")
+    return result
+
+
 def observed(result):
     return {**result, "source": "public-rpc", "checked_at": datetime.now(timezone.utc).isoformat()}
+
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Check the reserve portion of a partial freight advance")
+    parser.add_argument("evidence", type=Path, nargs="?")
+    parser.add_argument("--advance-reserve-cents", type=int, default=1927)
+    parser.add_argument("--live", action="store_true")
+    args = parser.parse_args()
+    if args.live and args.evidence:
+        parser.error("Choose a downloaded recording or a live check")
+    evidence = json.loads(args.evidence.read_bytes()) if args.evidence else None
+    print(json.dumps(advance_reserve(args.advance_reserve_cents, args.live, evidence=evidence), indent=2))
