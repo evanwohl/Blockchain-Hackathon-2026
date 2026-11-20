@@ -821,3 +821,36 @@ main.overview { width: 100%; max-width: none; padding: 0; }
 .load-custom { margin:1.25rem 0; }
 .load-custom > summary { font-weight:600; }
 @media(prefers-reduced-motion:reduce) { .story-meter i { transition:none; } }
+.reserve-board { padding:clamp(1rem,3vw,2rem); border:1px solid var(--rule); background:#242821; }
+.reserve-board .story-choices { margin:0 0 .7rem; }
+.reserve-board .story-choices label { border-color:#777e70; font-weight:600; }
+.reserve-board .story-choices label:has(:checked) { background:var(--citron); color:var(--night); }
+.load-editor .backup-switch { display:flex; align-items:center; gap:.6rem; min-height:44px; cursor:pointer; }
+.backup-switch input { accent-color:var(--lilac); width:18px; height:18px; }
+.backup-switch small { color:var(--lilac); }
+.funding-ticket { margin-top:.8rem; padding:clamp(1rem,3vw,2rem); color:var(--ink); background:var(--paper); border-top:5px solid var(--citron); }
+.funding-ticket[data-state=short] { border-color:#e7aa63; }
+.funding-ticket header,.funding-ticket dl div { display:flex; align-items:baseline; justify-content:space-between; gap:.5rem; }
+.funding-ticket header { font-size:.85rem; border-bottom:1px dashed #909684; padding-bottom:.65rem; }
+.funding-ticket header b { font-size:.72rem; font-weight:500; }
+.ticket-outcome { display:flex; gap:.65rem; align-items:center; margin:1.2rem 0 .8rem; }
+.ticket-outcome h2 { margin:0; font-size:clamp(2.2rem,6vw,4rem); }
+#ticket-icon { background:#dae8b9; color:#314a1e; width:2rem; height:2rem; display:grid; place-items:center; font-weight:800; }
+[data-state=short] #ticket-icon { background:#f3d5ab; color:#6d3b08; }
+.ticket-track { display:flex; height:.9rem; background:repeating-linear-gradient(135deg,#e0e0d4 0 4px,#faf8ee 4px 8px); border:1px solid #929789; }
+.ticket-track i { width:0; background:#535c49; transition:width .45s ease; }
+.ticket-track i:nth-child(2) { background:#adc85f; }
+.ticket-track i:nth-child(3) { background:#ab99cc; }
+.funding-ticket dl div { padding:.3rem 0; }
+.funding-ticket dd { margin:0; font-variant-numeric:tabular-nums; font-weight:650; }
+.funding-ticket dl div:last-child { border-top:1px solid #a8ad9c; margin-top:.35rem; padding-top:.6rem; font-weight:700; }
+#ticket-reason { margin:0; font-size:.9rem; }
+@media(prefers-reduced-motion:reduce) { .ticket-track i { transition:none; } }
+.gap-intro { max-width:48ch; margin:0 0 1.3rem; }
+.fee-choices { margin:1.3rem 0 0; }
+.fee-choices h2 { font-size:1.5rem; }
+.fee-choices ol { list-style:none; margin:0; padding:0; }
+.fee-choices li { display:flex; justify-content:space-between; align-items:baseline; gap:.6rem; padding:.55rem 0; border-bottom:1px solid var(--rule); }
+.fee-choices strong { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.reserve-board > .load-custom .story-choices { margin-top:1rem; }
+.ticket-track i:nth-child(4) { background:#779fa8; }

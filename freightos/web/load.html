@@ -8,7 +8,27 @@
 <body class="workspace load-workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><a href="/">← Overview</a></div></header>
 <main class="load-editor">
-  <header><p class="load-kicker">Sample load · November 5</p><h1>Can I cover a $745 fuel bill?</h1></header>
+  <header><p class="load-kicker">Sample load · November 5</p><h1>How should I cover the $245 gap?</h1></header>
+  <p class="gap-intro">Fuel costs <b>$745</b>. Set aside <b>$100</b> for the road and you have <b>$500</b> to spend.</p>
+  <section class="reserve-board" id="reserve" aria-label="Practice funding preview">
+    <article class="funding-ticket" aria-live="polite" aria-atomic="true">
+      <header><span>Lowest-cost plan · Due Nov 5</span><b>Practice forecast</b></header>
+      <div class="ticket-outcome"><span id="ticket-icon" aria-hidden="true">…</span><h2 id="ticket-title">Checking funds…</h2></div>
+      <div class="ticket-track" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <dl id="ticket-lines"></dl>
+      <p id="ticket-reason"></p><button id="ticket-retry" hidden>Retry preview</button>
+    </article>
+    <section class="fee-choices"><h2>Compare the options</h2><ol id="fee-list"></ol></section>
+    <details class="load-custom" open><summary>Available funding</summary>
+    <fieldset class="story-choices" id="arrival"><legend>When can you use your reserve?</legend>
+      <label><input type="radio" name="arrival" value="2026-11-05" checked>Nov 5 · On time</label>
+      <label><input type="radio" name="arrival" value="2026-11-06">Nov 6 · One day late</label>
+    </fieldset>
+    <label class="backup-switch"><input type="checkbox" id="backup-credit" checked> Approved bank line <small>2% fee</small></label>
+    <label class="backup-switch"><input type="checkbox" id="customer-offer" checked> Customer offers $175 early <small>$5 discount</small></label>
+    </details>
+  </section>
+  <details class="load-custom"><summary>Compare a customer’s early payment</summary>
   <section class="fuel-story" aria-label="Sample fuel walkthrough">
     <fieldset class="story-choices" disabled>
       <legend>When does the customer pay?</legend>
@@ -20,21 +40,39 @@
     <div class="story-meter" aria-hidden="true"><i id="story-cash"></i><i id="story-receipt"></i></div>
     <div class="story-key"><span>Carrier cash <b id="cash-part">—</b></span><span>Customer cash by Nov 5 <b id="receipt-part">—</b></span></div>
     <p id="story-copy" aria-live="polite">Checking the sample calendar…</p>
+
     <button id="retry-story" hidden>Retry example</button>
   </section>
+  </details>
   <details class="load-custom"><summary>Edit my own numbers</summary>
   <p class="load-kicker" id="source">Sample load</p>
   <section class="load-slip" aria-label="Fuel cash forecast">
-    <div><span id="verdict">Calculating cash needed</span><strong id="gap">—</strong><p id="summary"></p></div>
+    <div><span id="verdict">Calculating cash before funding</span><strong id="gap">—</strong><p id="summary"></p></div>
     <dl><div><dt id="fuel-label">Fuel bill</dt><dd id="fuel-total">—</dd></div><div><dt>Keep for the road</dt><dd id="road-total">—</dd></div></dl>
   </section>
+  <section id="funding-result" hidden aria-live="polite"><h2>Funding decision</h2><p id="selected-plan"></p><p id="wait-plan"></p><p id="reserve-result"></p><p id="reserve-backup"></p></section>
   <div class="load-columns">
   <form id="load"><h2>Plan this load</h2>
-<div class="load-offer"><label><span><input name="use_offer" type="checkbox"> Take early payment on the surcharge</span></label><p id="offer-note"></p><div id="offer-terms" class="load-fields"><label>Early payment date<input name="offer_date" type="date" value="2026-11-05"></label><label>Customer fee ($)<input name="offer_fee_cents" type="number" min="0" step=".01" value="5.00"></label></div></div>
+<div class="load-offer"><label><span><input name="use_offer" type="checkbox"> Customer has agreed to early payment</span></label><p id="offer-note"></p><div id="offer-terms" class="load-fields"><label>Early payment date<input name="offer_date" type="date" value="2026-11-05"></label><label>Customer fee ($)<input name="offer_fee_cents" type="number" min="0" step=".01" value="5.00"></label></div></div>
 <details><summary>Cash available<small></small></summary><div class="load-fields"><label>Balance as of<input required name="opening_date" type="date" value="2026-11-01"></label><label>Available USD, including receipts already paid<input required name="opening_cents" type="number" min="0" step=".01" value="600"></label><label>Keep for the road ($)<input required name="floor_cents" type="number" min="0" step=".01" value="100"></label></div></details>
 <details><summary>Fuel purchase<small></small></summary><div class="load-fields"><label>US gallons<input required name="gallon_hundredths" type="number" min=".01" step=".01" value="200"></label><label>Price per gallon ($)<input required name="pump_mills" type="number" min=".001" step=".001" value="3.725"></label><label>Buy fuel on<input required name="fuel_date" type="date" value="2026-11-05"></label></div></details>
 <details><summary>Freight invoice<small></small></summary><div class="load-fields"><label>Amount excluding surcharge ($)<input required name="freight_cents" type="number" min="0" step=".01" value="3000"></label><label>Expected payment date<input required name="freight_date" type="date" value="2026-11-28"></label><label>Payment status<select name="freight_status"><option value="expected">Agreed · awaiting payment</option><option value="received">Received · included in opening cash</option><option value="unconfirmed">Unconfirmed · exclude</option></select></label></div></details>
 <details><summary>Customer surcharge<small></small></summary><div class="load-fields"><label>Additional amount ($)<input required name="surcharge_cents" type="number" min="0" step=".01" value="180"></label><label>Expected payment date<input required name="surcharge_date" type="date" value="2026-11-28"></label><label>Payment status<select name="surcharge_status"><option value="expected">Agreed · awaiting payment</option><option value="received">Received · included in opening cash</option><option value="unconfirmed">Unconfirmed · exclude</option></select></label></div></details>
+<fieldset class="load-fields"><legend>Fuel reserve</legend>
+<label>Reserve to compare<select name="reserve_mode"><option value="off">No reserve</option><option value="sample">Try a separate $600 sample reserve</option><option value="wallet">Use my deposited practice shares</option></select></label>
+<div class="load-fields" id="reserve-terms" hidden>
+<label>Reserve arrives on<input type="date" name="reserve_date" value="2026-11-05"></label>
+<label>Refill reserve on<input type="date" name="refill_date" value="2026-11-28"></label>
+<small>Enter cash outside the vault as your opening balance. Reserve costs use the sample terms.</small></div></fieldset>
+<details><summary>Approved bank credit</summary>
+<label><span><input type="checkbox" name="use_bank"> I have a confirmed line for this bill</span></label>
+<div id="bank-terms" class="load-fields" hidden>
+<label>Unused credit available ($)<input name="bank_cents" type="number" min=".01" step=".01"></label>
+<label>Available on<input name="bank_date" type="date"></label>
+<label>Repay on<input name="bank_due" type="date"></label>
+<label>Fee for the full term (%)<input name="bank_bps" type="number" min="0" max="100" step=".01"></label>
+<label>Fixed fee per draw ($)<input name="bank_fixed_cents" type="number" value="0" min="0" step=".01"></label>
+</div></details>
 <p id="message" role="status"></p><button type="submit" hidden>Try again</button></form>
   <section class="load-ledger"><h2>Cash calendar</h2><p>Projected balance after each entry</p><ol id="entries"></ol></section>
   </div>
