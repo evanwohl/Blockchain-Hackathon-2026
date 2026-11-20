@@ -848,6 +848,7 @@ class Handler(BaseHTTPRequestHandler):
             "/media/inter-latin-wght-normal.woff2": ("media/inter-latin-wght-normal.woff2", "font/woff2"),
             "/surcharge.js": ("surcharge.js", "text/javascript"),
             "/next_trip.js": ("next_trip.js", "text/javascript"),
+            "/payment_slips.js": ("payment_slips.js", "text/javascript"),
             "/common.js": ("common.js", "text/javascript"),
         }
         asset = self.path.partition("?")[0]
@@ -857,7 +858,7 @@ class Handler(BaseHTTPRequestHandler):
         name, mime = assets[asset]
         content = (ASSETS / name).read_bytes()
         if mime.startswith("text/html"):
-            for fragment in ("funding_fields", "loan_receipt"):
+            for fragment in ("funding_fields", "loan_receipt", "payment_slips"):
                 marker = ("{{" + fragment + "}}").encode()
                 if marker in content:
                     content = content.replace(marker, (ASSETS / (fragment + ".html")).read_bytes())

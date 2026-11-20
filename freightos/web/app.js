@@ -1,3 +1,4 @@
+import { drawFunding } from "./payment_slips.js";
 import { cashPriority, downloadReceipt, el, facts, money, oilOptions, request, saveFile, tokenUnits, usesCredit } from "./common.js";
 import { bindWallet, openWalletReturn, walletState } from "./wallet.js";
 import { bindSurcharge } from "./surcharge.js";
@@ -21,7 +22,6 @@ let clockTimer;
 let currentStep;
 let displayedPlan;
 let reopenPayment = false;
-el("schedule").open = window.matchMedia("(min-width: 761px)").matches;
 
 let profile = sessionStorage.getItem("funding-profile") || "quick pay";
 let scenario = sessionStorage.getItem("fuel-scenario") || "oil stress";
@@ -92,7 +92,7 @@ function renderCalendar(plan) {
   renderInvoiceDelay(plan);
   renderNextTrip(state, plan, dayLabel, regularProfile(plan) === "quick pay");
   const gap = primary.day - bill.day;
-  el("day-gap").textContent = "View dates →";
+  el("day-gap").textContent = gap ? Math.abs(gap) + "-day gap" : "Same day";
   el("timing").textContent = gap === 0 ? "The fuel bill and freight payment fall on the same day."
     : "Fuel is due " + Math.abs(gap) + (Math.abs(gap) === 1 ? " day " : " days ") + (gap > 0 ? "before" : "after") + " the freight invoice pays.";
   const days = new Map();
@@ -196,36 +196,6 @@ function explainChoice(plan) {
     + roundedDollars(primary.face_cents) + " for the main load on day " + plan.invoice_elections.find(item => item.invoice === primary.id).day + "."];
 }
 
-function drawTicket(id, { x, y, depth, amount, source, load }) {
-  const ticket = el(id);
-  ticket.style.display = amount ? "" : "none";
-  if (!amount) return;
-  ticket.setAttribute("transform", `translate(${x} ${y})`);
-  ticket.querySelector(".face").setAttribute("transform", "matrix(.92 -.22 .66 .36 0 0)");
-  const right = 354 * .92, rise = -354 * .22;
-  const offset = 145 * .66, drop = 145 * .36;
-  ticket.querySelector(".slip-side").setAttribute("d",
-    `M0 0l${offset} ${drop}v${depth}l${-offset} ${-drop}Z`);
-  ticket.querySelector(".slip-front").setAttribute("d",
-    `M${offset} ${drop}l${right} ${rise}v${depth}l${-right} ${-rise}Z`);
-  const edges = [];
-  for (let z = 1; z < depth; z += 2.2) {
-    edges.push(`M0 ${z}l${offset} ${drop}l${right} ${rise}`);
-  }
-  ticket.querySelector(".slip-edges").setAttribute("d", edges.join(" "));
-  ticket.querySelector(".ticket-value").textContent = roundedDollars(amount);
-  ticket.querySelector(".ticket-source").textContent = source;
-  ticket.querySelector(".ticket-load").textContent = load;
-}
-
-function drawFunding(plan) {
-  const reserveDepth = 48 * plan.payment_cents / plan.bill_cents;
-  drawTicket("direct-ticket", { x: 38, y: plan.payment_cents ? 175 : 127, depth: 48 - reserveDepth,
-    amount: plan.other_funds_cents, source: outsideSource(plan), load: plan.load });
-  drawTicket("reserve-ticket", { x: 13, y: 93, depth: reserveDepth, amount: plan.payment_cents,
-    source: "Fuel reserve", load: plan.load });
-}
-
 function renderSource(id, label, amount, explanation) {
   const row = el(id);
   row.hidden = !amount;
@@ -246,7 +216,7 @@ function feeComparison(plan, workspace = state) {
 function renderPlan(plan) {
   const profile = profiles[plan.profile];
   renderCalendar(plan);
-  drawFunding(plan);
+  drawFunding(plan, outsideSource(plan));
   el("allocation").style.setProperty("--reserve-share", (100 * plan.payment_cents / plan.bill_cents) + "%");
   const comparison = feeComparison(plan);
   el("plan-kind").textContent = plan.backup_for ? "Selected backup plan" : "Recommended plan";

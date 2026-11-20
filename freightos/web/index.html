@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#1a1d19"><title>Load overview · FreightOS</title>
+  <meta name="theme-color" content="#1a1d19"><title>Fuel bill · FreightOS</title>
   <link rel="icon" href="/media/freightos-mark.svg" type="image/svg+xml">
   <link rel="preload" href="/media/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/media/barlow-condensed-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -31,28 +31,7 @@
         <a id="plan-jump" class="plan-jump" href="#plan-head">See plan costs</a>
       </section>
       <section class="split-figure" aria-label="How this bill is covered">
-        <svg id="slips" viewBox="0 0 480 252" aria-hidden="true" focusable="false">
-          <defs>
-            <pattern id="paper-lines" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 4L4 0" stroke="currentColor" stroke-width=".4" opacity=".45"/></pattern>
-            <g id="engraving" fill="none" stroke="currentColor" stroke-width=".9">
-                <defs><ellipse id="seal-loop" rx="36" ry="14"/></defs>
-                <use href="#seal-loop" transform="rotate(0)"/> <use href="#seal-loop" transform="rotate(10)"/> <use href="#seal-loop" transform="rotate(20)"/> <use href="#seal-loop" transform="rotate(30)"/> <use href="#seal-loop" transform="rotate(40)"/> <use href="#seal-loop" transform="rotate(50)"/> <use href="#seal-loop" transform="rotate(60)"/> <use href="#seal-loop" transform="rotate(70)"/> <use href="#seal-loop" transform="rotate(80)"/> <use href="#seal-loop" transform="rotate(90)"/> <use href="#seal-loop" transform="rotate(100)"/> <use href="#seal-loop" transform="rotate(110)"/> <use href="#seal-loop" transform="rotate(120)"/> <use href="#seal-loop" transform="rotate(130)"/> <use href="#seal-loop" transform="rotate(140)"/> <use href="#seal-loop" transform="rotate(150)"/> <use href="#seal-loop" transform="rotate(160)"/> <use href="#seal-loop" transform="rotate(170)"/>
-              </g>
-            <g id="paid-mark" transform="translate(291 71)"><circle r="17" fill="currentColor"/><path d="m-8 0 5 5 11-12" fill="none" stroke="var(--face)" stroke-width="3"/></g>
-            <g id="ticket-face">
-              <path d="M0 0H354V145H0Z" fill="var(--face)"/>
-              <path d="M228 1H241V144H228Z" fill="url(#paper-lines)"/>
-              <path d="M6 6H348V139H6Z" fill="none" stroke="currentColor" opacity=".55"/>
-              <path d="M14 29H341M14 113H341M242 29V113" fill="none" stroke="currentColor" opacity=".55"/>
-              <rect x="243" y="30" width="97" height="82" fill="url(#paper-lines)"/>
-              <use href="#engraving" transform="translate(291 71)"/>
-              <path d="M15 12H35L31 17H13ZM13 19H29L25 24H11Z" fill="currentColor"/>
-              <text x="41" y="22" class="ticket-brand">FreightOS</text>
-            </g>
-          </defs>
-          <g id="direct-ticket" class="ticket direct"><path class="slip-side"/><path class="slip-front"/><path class="slip-edges"/><g class="face"><use href="#ticket-face"/><use class="paid-mark" href="#paid-mark"/><text x="14" y="99" class="ticket-value"></text><text x="14" y="131" class="ticket-source"></text><text x="340" y="22" class="ticket-load" text-anchor="end"></text></g></g>
-          <g id="reserve-ticket" class="ticket reserve"><path class="slip-side"/><path class="slip-front"/><path class="slip-edges"/><g class="face"><use href="#ticket-face"/><use class="paid-mark" href="#paid-mark"/><text x="14" y="99" class="ticket-value"></text><text x="14" y="131" class="ticket-source"></text><text x="340" y="22" class="ticket-load" text-anchor="end"></text></g></g>
-        </svg>
+        {{payment_slips}}
         <div class="split-key"><span>Payment split</span><i id="allocation" aria-hidden="true"></i></div>
         <div id="payment-log">
           <details id="reserve-part"><summary><span>Through FreightOS</span><strong></strong></summary><p></p></details>
@@ -61,10 +40,6 @@
       </section>
     </div>
   </div>
-  <section class="wallet-strip" id="wallet-strip" aria-labelledby="wallet-title" hidden>
-    <div><h2 id="wallet-title">Your fuel reserve</h2><p id="wallet-summary"></p></div>
-    <div class="wallet-actions"><button class="secondary" id="open-return">Check unused money</button><button class="plain" id="last-return" hidden>View wallet receipt</button></div>
-  </section>
   <div class="bill-tabs" role="tablist" aria-label="Bill details" hidden>
     <button role="tab" id="fees-tab" aria-controls="plan-panel" aria-selected="true">Plan &amp; fees</button>
     <button role="tab" id="dates-tab" aria-controls="dates-panel" aria-selected="false" tabindex="-1">Dates &amp; backup</button>
@@ -90,7 +65,15 @@
       <details class="plan-method"><summary>Why this plan?</summary><p id="method"></p><dl class="pair-fees facts" id="pair-fees"></dl><p id="pair-limit"></p><p id="terms"></p><a href="/fuel-credit">Try a secured loan on the $190 sample payment →</a></details>
     </section>
     <div class="schedule-column" id="dates-panel">
-    <div class="planning-stack">
+    <details class="ledger" id="schedule" open><summary class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><span>Payment schedule</span></summary><p id="timing"></p><ol id="timeline" aria-label="Planned cash movements"></ol>
+      <details class="calendar-export"><summary>Use my trip dates</summary>
+        <form id="trip-form"><label for="trip-start">First day of the trip</label>
+        <input id="trip-start" type="date" min="1900-01-01" max="9998-12-31" required>
+        <button class="secondary" type="submit">Save calendar file</button></form>
+        <p>Includes the planned bill and funding dates. Open the file in your calendar.</p>
+      </details>
+    </details>
+    <details class="planning-stack"><summary>Check timing and fuel changes</summary>
     <section class="deadline" id="deadline" aria-labelledby="deadline-title" hidden>
       <header><p class="panel-label">Funding deadline</p><h2 id="deadline-title"></h2></header>
       <ol class="deadline-path" aria-label="Reserve timing">
@@ -113,17 +96,13 @@
     <summary><span>How we estimate fuel</span><span id="market-assumption"></span></summary>
     <div><p id="signal"></p><p id="quote-evidence"></p><a href="/evidence/gemini" target="_blank" rel="noopener">See the Gemini oil contracts</a> <a href="/public-offer#fuel-update">Check the paid example against Gemini →</a></div>
   </details>
-    </div>
-    <details class="ledger" id="schedule"><summary class="section-heading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 11h18"/></svg><span>Payment schedule</span></summary><p id="timing"></p><ol id="timeline" aria-label="Planned cash movements"></ol>
-      <details class="calendar-export"><summary>Use my trip dates</summary>
-        <form id="trip-form"><label for="trip-start">First day of the trip</label>
-        <input id="trip-start" type="date" min="1900-01-01" max="9998-12-31" required>
-        <button class="secondary" type="submit">Save calendar file</button></form>
-        <p>Includes the planned bill and funding dates. Open the file in your calendar.</p>
-      </details>
     </details>
     </div>
   </div>
+  <section class="wallet-strip" id="wallet-strip" aria-labelledby="wallet-title" hidden>
+    <div><h2 id="wallet-title">Your fuel reserve</h2><p id="wallet-summary"></p></div>
+    <div class="wallet-actions"><button class="secondary" id="open-return">Check unused money</button><button class="plain" id="last-return" hidden>View wallet receipt</button></div>
+  </section>
   <dialog id="surcharge" aria-labelledby="surcharge-title"><div class="sheet">
     <div class="dialog-head"><p class="eyebrow">Customer terms · FOS-2048</p><button class="close" type="button" data-dismiss aria-label="Close surcharge check">×</button></div>
     <h2 id="surcharge-title">When does the fuel money arrive?</h2>

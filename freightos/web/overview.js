@@ -1,3 +1,4 @@
+import { drawFunding } from "./payment_slips.js";
 import { cashPriority, el, money, oilOptions, request, usesCredit, verifySample } from "./common.js";
 
 let state;
@@ -7,18 +8,20 @@ function displayQuote() {
   const profile = cashPriority(state, el("quote-profile").value, scenario);
   const plan = state.funding_plans[profile][scenario];
   const locked = state.review || state.receipt || state.manual_payment;
-  const source = { "quick pay": "You pay with early pay from the return trip", "credit line": "You pay with bank credit", "cash on hand": "You pay with cash" };
+  const source = { "quick pay": "You pay from the return-load invoice", "credit line": "You pay with bank credit", "cash on hand": "You pay directly with cash" };
   const due = plan.calendar.bills[0].day;
   const paid = plan.invoice_elections.find(item => item.invoice === "primary load").day;
   const main = plan.calendar.invoices.find(item => item.id === "primary load");
-  el("driver-story").textContent = "A driver owes " + money(plan.bill_cents) + " for diesel on day " + due
-    + ". The customer pays " + money(main.face_cents) + " on day " + paid + ". FreightOS compares the cost of covering those weeks with savings, early invoice pay, or credit.";
   el("window-due").textContent = "Day " + due;
   el("window-paid").textContent = "Day " + paid;
   el("window-gap").textContent = Math.abs(paid - due) + "-day gap";
-  el("cash-window").hidden = false;
+
   el("quote-load").textContent = plan.load;
-  el("quote-bill").textContent = money(plan.bill_cents);
+  const [dollars, cents] = money(plan.bill_cents).split(".");
+  const fraction = document.createElement("span");
+  fraction.className = "balance-cents";
+  fraction.textContent = "." + cents;
+  el("quote-bill").replaceChildren(dollars, fraction);
   el("quote-reserve").textContent = money(plan.payment_cents);
   el("quote-reserve").parentElement.hidden = !plan.payment_cents;
   el("quote-outside").textContent = money(plan.other_funds_cents);
@@ -38,7 +41,7 @@ function displayQuote() {
   el("offer-example").href = "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario, view: "surcharge-offer" });
   el("delay-link").hidden = locked || !state.pairing_values[profile][scenario].invoice_delay;
   el("delay-link").href = "/bill#" + new URLSearchParams({ plan: profile, fuel: scenario, view: "late-freight" });
-  el("quote-scope").textContent = plan.payment_cents ? "Test dollars on a local copy of Solana. No wallet setup needed." : "Cash covers this bill. You can record your direct payment in the demo.";
+  el("quote-scope").textContent = plan.payment_cents ? "Practice bill · Test funds on a local Solana fork" : "Practice bill · You record the direct payment";
   const original = state.plans["fuel budget"].bill_cents;
   el("flow-load").textContent = "Sample load " + plan.load;
   el("flow-plan").href = el("quote-open").href;
@@ -71,6 +74,12 @@ function displayQuote() {
       ? "Borrow " + money(plan.other_funds_cents) + " from the bank and cover the rest from the reserve. Both freight invoices can pay on their usual dates."
       : "The driver has enough cash for fuel. Both freight invoices can pay on their usual dates and the financing fee is zero.";
   }
+  el("preview-title").textContent = el("mechanism-choice-title").textContent;
+  el("driver-story").textContent = profile === "quick pay"
+    ? "Use " + money(plan.other_funds_cents) + " from the return load and " + money(plan.payment_cents)
+      + " from your fuel reserve. Collect the full " + money(main.face_cents) + " freight invoice on day " + paid + "."
+    : el("mechanism-choice").textContent;
+  drawFunding(plan, profile === "quick pay" ? "Return-load invoice" : usesCredit(profile) ? "Bank credit" : "Your cash");
   el("mechanism-pay-title").textContent = plan.payment_cents ? "Send " + money(plan.payment_cents) + " to the fuel company" : "Record the direct payment";
   el("mechanism-pay").textContent = plan.payment_cents ? "The reserve holds digital dollars in Kamino, a lending vault on Solana. On approval, the payment program checks the fuel company and amount. The driver pays " + money(plan.other_funds_cents) + " separately."
     : "The driver pays the fuel company directly and records the payment. This cash plan needs no blockchain transaction.";

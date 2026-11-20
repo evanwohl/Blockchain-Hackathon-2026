@@ -8,13 +8,31 @@
 </head>
 <body class="workspace">
 <header class="mast"><div class="bar"><a class="brand" href="/"><img class="brand-mark" src="/media/freightos-mark.svg" alt="" width="38" height="38">FreightOS</a><nav aria-label="Main navigation"><a href="/">Overview</a><a href="/bill">Fuel bill</a><a href="/trial">Sample loads</a></nav><span class="sandbox"><i></i>Public Devnet</span></div></header>
-<main class="public-ledger">
-  <div class="offer-navigation"><a class="ledger-back" href="/">← Load overview</a><nav aria-label="Paid bill sections"><a href="#slip-title">Signed receipt</a><a href="#funding-check">Compare fuel money</a><a href="#fuel-cover">Oil protection</a></nav></div>
+<main class="public-ledger offer-ledger">
+  <div class="offer-navigation"><a class="ledger-back" href="/">← Load overview</a><nav aria-label="Paid bill sections"><a href="#slip-title">Signed receipt</a><a href="#fuel-cover">Oil protection</a></nav></div>
   <div class="public-spread offer-spread">
     <section class="public-cover">
       <p class="panel-label">Customer offer · FOS-2048-OFFER</p>
       <h1>Fuel bill<br> <em>paid in full.</em></h1>
-      <p>The driver covered a $745 fuel bill with $175 from the customer and $570 from the fuel reserve. Both wallets signed one payment to the fuel company.</p>
+      <p>The driver covered a $745 fuel bill with $175 from the customer and $570 from the fuel reserve. The customer and driver signed together. The fuel company received both parts in one transaction.</p>
+      <a class="preview-primary" href="#funding-check">Compare fuel money</a>
+      <p class="signed-context">Public Devnet · Sponsored test funds</p>
+    </section>
+    <section class="public-slip offer-slip" aria-labelledby="slip-title">
+      <p class="panel-label">Fuel company receipt · Solana Devnet</p>
+      <h2 id="slip-title">Received in one transaction</h2>
+      <strong class="public-amount"><span id="full-payment">7.45</span> <small>test USDC</small></strong>
+      <p>One test cent represents one dollar of the fuel bill.</p>
+      <div id="settled-split" hidden><div id="settled-bar" aria-hidden="true"></div><dl class="facts" id="settled-sources"></dl></div>
+      <button class="secondary" id="verify-offer" disabled>Verify on public Solana</button>
+      <p id="offer-status" class="public-status" role="status">Opening the saved receipt…</p>
+      <a class="receipt-fallback" href="https://explorer.solana.com/tx/2MAefNg3M2xFj27U82XEg2bwBQDhnmSUD24Ta4s7o47nN4hu5T1dMTKwyhAtHRZR9TQpFa2rAVa1yrNPx1QTGzvc?cluster=devnet" target="_blank" rel="noopener">Open the settlement on Explorer ↗</a>
+      <details class="offer-audit" id="offer-trace"><summary>Trace the money</summary><ol class="payment-stops" id="offer-stops"></ol><a href="/evidence/public-offer" download="FreightOS-public-offer.json">Download signed evidence</a></details>
+    </section>
+  </div>
+  <div class="offer-paper">
+  <p class="offer-footnote">FreightOS funded both demo wallets with test tokens. The payment and customer fee settled on devnet. Trip dates, dollar amounts and estimated savings use sample contract terms.</p>
+  <section class="offer-terms" aria-label="Customer offer and next steps">
       <div class="receipt-cost"><h2>Why take the offer?</h2>
         <p>The customer offered to pay a $180 fuel surcharge on day 5 for a $5 fee. That puts $175 toward fuel when it’s due. The driver keeps both freight invoices on regular terms.</p>
         <dl id="offer-costs" hidden></dl><p id="offer-savings"></p>
@@ -34,22 +52,9 @@
       </div>
       <a class="ledger-back" href="#fuel-update">Check the budget against the next oil close ↓</a><br>
       <a class="ledger-back" href="/bill#plan=quick+pay&amp;fuel=oil+stress&amp;view=surcharge-offer">Try a different fee or payment date →</a>
-    </section>
-    <section class="public-slip offer-slip" aria-labelledby="slip-title">
-      <p class="panel-label">Fuel company receipt · Solana Devnet</p>
-      <h2 id="slip-title">Received in one transaction</h2>
-      <strong class="public-amount"><span id="full-payment">7.45</span> <small>test USDC</small></strong>
-      <p>One test cent represents one dollar of the fuel bill.</p>
-      <div id="settled-split" hidden><div id="settled-bar" aria-hidden="true"></div><dl class="facts" id="settled-sources"></dl></div>
-      <button class="secondary" id="verify-offer" disabled>Verify on public Solana</button>
-      <p id="offer-status" class="public-status" role="status">Opening the saved receipt…</p>
-      <details class="offer-audit"><summary>Plan the next stop</summary><a class="ledger-back next-stop-link" href="/next-stop">Check what’s left for the next stop →</a>
+      <details class="public-fuel"><summary>Plan the next stop</summary><a class="ledger-back next-stop-link" href="/next-stop">Check what’s left for the next stop →</a>
       <a class="ledger-back" href="/load#credit">Follow a fuel loan through repayment →</a><a class="ledger-back" href="/fuel-credit#one-payment">Preview a combined reserve and loan payment →</a></details>
-      <a class="receipt-fallback" href="https://explorer.solana.com/tx/2MAefNg3M2xFj27U82XEg2bwBQDhnmSUD24Ta4s7o47nN4hu5T1dMTKwyhAtHRZR9TQpFa2rAVa1yrNPx1QTGzvc?cluster=devnet" target="_blank" rel="noopener">Open the settlement on Explorer ↗</a>
-      <details class="offer-audit" id="offer-trace"><summary>Trace the money</summary><ol class="payment-stops" id="offer-stops"></ol><a href="/evidence/public-offer" download="FreightOS-public-offer.json">Download signed evidence</a></details>
-    </section>
-  </div>
-  <p class="offer-footnote">FreightOS funded both demo wallets with test tokens. The payment and customer fee settled on devnet. Trip dates, dollar amounts and estimated savings use sample contract terms.</p>
+  </section>
   <section id="funding-check" class="reserve-proof funding-check" aria-labelledby="funding-title">
     <div class="reserve-balance">
       <p class="panel-label">Before paying · Compare funding</p>
@@ -125,6 +130,7 @@
     </div>
   </section>
   <a class="ledger-back" href="/public-payment">Explore the original reserve payment and remaining vault shares →</a>
+  </div>
 </main>
 </body>
 </html>
